@@ -5,7 +5,7 @@
       "type": "responses",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKeyEnv": "OPENROUTER_API_KEY",
-      "models": ["openrouter/auto"]
+      "models": ["openrouter/auto", "poolside/laguna-s-2.1:free"]
     },
     {
       "name": "groq",
