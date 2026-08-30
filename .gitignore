@@ -7,6 +7,7 @@ build/
 
 # Runtime state (local SQLite, generated at runtime)
 data/
+prismd.json
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
