@@ -1,0 +1,20 @@
+#!/bin/sh
+# 推送前安全核查：gitleaks 全仓 + 全历史扫描
+set -eu
+
+root="$(git rev-parse --show-toplevel)"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "ERROR: gitleaks not found. Install it first:" >&2
+  echo "  brew install gitleaks   # macOS" >&2
+  exit 1
+fi
+
+# 全历史扫描：任何一次提交里有密钥都会阻止推送；仓库很小，全量扫可接受
+if ! gitleaks git --no-banner -v --config "$root/.gitleaks.toml" "$root"; then
+  echo "ERROR: gitleaks 在仓库历史中发现密钥，推送已阻止。" >&2
+  echo "处置顺序：1) 立即轮换泄漏的密钥；2) 确属误报用 .gitleaksignore 按指纹忽略；" >&2
+  echo "3) 真实泄漏需与用户确认是否重写历史。" >&2
+  exit 1
+fi
+exit 0

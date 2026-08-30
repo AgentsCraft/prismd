@@ -1,0 +1,21 @@
+[extend]
+# 关键：保留默认规则集（~200 条）；自定义配置默认会整体替换默认规则
+useDefault = true
+
+# 默认规则没有 OpenRouter / Groq（prismd 的两个上游），补两条前缀规则
+[[rules]]
+id = "openrouter-api-key"
+description = "Detected an OpenRouter API key (sk-or-v1-), risking unauthorized use of upstream LLM quota"
+regex = '''sk-or-v1-[A-Za-z0-9-]{20,}'''
+
+[[rules]]
+id = "groq-api-key"
+description = "Detected a Groq API key (gsk_), risking unauthorized use of upstream LLM quota"
+regex = '''gsk_[A-Za-z0-9]{20,}'''
+
+[allowlist]
+description = "构建产物与测试夹具（fixtures 必须用假密钥）"
+paths = [
+  '''dist/''',
+  '''test/fixtures/''',
+]

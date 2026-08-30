@@ -1,0 +1,10 @@
+#!/bin/sh
+# 仓库级 core.hooksPath 会遮蔽全局 hooksPath；把 commit-msg 委托回全局钩子（若存在），
+# 保证全局约定（如拒绝 AI 署名）继续生效。pre-commit/pre-push 同理可扩展。
+set -eu
+
+global_hooks="$(git config --global --get core.hooksPath 2>/dev/null || true)"
+if [ -n "$global_hooks" ] && [ -x "$global_hooks/commit-msg" ]; then
+  exec "$global_hooks/commit-msg" "$@"
+fi
+exit 0
