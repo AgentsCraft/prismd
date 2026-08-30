@@ -37,6 +37,23 @@ prismd：本地优先的 LLM 网关，聚合多个免费/低额度模型 API（O
 
 正文可选，用于解释 why；破坏性变更加 `BREAKING CHANGE:` 脚注。
 
+## 版本与发布（GitHub Actions）
+
+tag、npm 发布与 Release 全部自动生成，无需手动打 tag（见 `.github/workflows/`）。两条通道对应两个 npm 包：
+
+| 触发 | workflow | npm 包 | tag | GitHub Release |
+|---|---|---|---|---|
+| 合入 `develop` | `release-rc.yml` | `@agentscraft/prismd`（RC 通道） | `vX.Y.Z-rc.N`（对齐下一个正式版本：最近正式 tag patch +1；无正式 tag 时基线 `v1.0.0`） | pre-release，自动带 changelog |
+| 合入 `main` | `release.yml` | `@prismd/prismd`（正式） | 最近正式 tag patch +1（首次为 `v1.0.0`） | 正式 Release，自动带 changelog |
+
+- RC 序号 N 按同一目标版本下已有 rc 数自动递增（`v1.0.1-rc.1`、`rc.2`…），与正式版同族可追溯。
+- major/minor 发版：在 Actions 页手动触发 `Release` workflow，选择 `major`/`minor`/`patch` 级别。
+- tag 已存在时跳过，不报错；发布版本与 tag 同步（`npm version` 同步 package.json，不提交改动）。`package.json` 存在前发布步骤自动跳过；已在 npm 上的版本跳过。
+- 仓库 `package.json` 的 `name` 以正式包 `@prismd/prismd` 为准；RC 发布时 workflow 临时改写为 `@agentscraft/prismd`（不提交）。
+- npm 发布优先走 **Trusted Publishing（OIDC）**，未配置时回退 `NPM_TOKEN`（granular token）兜底，首版发布即由 CI 自动完成。两个包各自在 npmjs 配置 Trusted Publisher（GitHub Actions，workflow 文件名分别填 `release-rc.yml` / `release.yml`）后，可移除 token。
+- 包不存在时无法配置 Trusted Publisher（无 API，需网页操作，每包一次）。Classic Token 已于 2025-12 全部撤销，本地 `npm login` 只剩 2 小时会话，首版发布用 CI + `NPM_TOKEN`。
+- scoped 包需在 `package.json` 声明 `"publishConfig": { "access": "public" }`；开源公开后 provenance 要求 `repository` 字段精确指向 GitHub 仓库。
+
 ## 推送
 
 - 默认**不自动推送**到远端；推送前与用户确认。

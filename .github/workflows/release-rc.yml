@@ -1,0 +1,100 @@
+name: RC Release
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: write
+  id-token: write # npm Trusted Publishing（OIDC）
+
+concurrency:
+  group: rc-release
+  cancel-in-progress: false
+
+jobs:
+  rc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute RC tag
+        id: version
+        run: |
+          set -euo pipefail
+
+          # 对齐下一个正式版本：最近正式 tag patch+1；基线 v1.0.0
+          latest_stable=$(git tag -l 'v[0-9]*' | grep -v -- '-rc' | sort -V | tail -n1 || true)
+          if [ -z "$latest_stable" ]; then
+            next_stable="v1.0.0"
+          else
+            next_stable=$(echo "${latest_stable#v}" | awk -F. '{printf "v%d.%d.%d", $1, $2, $3+1}')
+          fi
+
+          # 按同一目标版本下已有 rc 数 +1 得序号
+          count=$(git tag -l "${next_stable}-rc.*" | wc -l | tr -d ' ')
+          tag="${next_stable}-rc.$((count + 1))"
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
+        with:
+          node-version: '24' # Trusted Publishing 要求 npm ≥ 11.5.1、Node ≥ 22.14
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish RC to npm
+        if: hashFiles('package.json') != ''
+        env:
+          # OIDC（Trusted Publisher）未配置时由 token 兜底；配好后可移除此行
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # RC 通道包：@agentscraft/prismd（正式包为 @prismd/prismd）
+          pkg="@agentscraft/prismd"
+          if npm view "${pkg}@${TAG#v}" version >/dev/null 2>&1; then
+            echo "::notice::${pkg}@${TAG#v} already on npm, skip publish"
+            exit 0
+          fi
+
+          npm ci
+          npm pkg set "name=${pkg}"
+          npm version "${TAG#v}" --no-git-tag-version
+          # 优先 OIDC（Trusted Publishing），未配置时回退 NODE_AUTH_TOKEN。
+          # prerelease 必须显式 --tag；RC 包以 latest 指向最新 rc（按包名分通道）
+          npm publish --tag latest
+
+      - name: Create tag and pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::notice::tag ${TAG} already exists, skip"
+            exit 0
+          fi
+
+          # changelog 边界：HEAD 可追溯的最近一个 tag（可能是上一个 rc 或最近的正式版）
+          prev=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$prev" ]; then
+            changelog=$(git log --pretty=format:'- %s (%h)' HEAD)
+          else
+            changelog=$(git log --pretty=format:'- %s (%h)' "${prev}..HEAD")
+          fi
+
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag -a "$TAG" -m "Release candidate $TAG"
+          git push origin "$TAG"
+
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --prerelease \
+            --notes "$changelog"
