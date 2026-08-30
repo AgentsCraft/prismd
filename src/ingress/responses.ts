@@ -63,7 +63,7 @@ export async function responses(c: Context): Promise<Response> {
   } catch (err) {
     console.error("[prismd] upstream request failed:", err);
     return c.json(
-      gatewayError(502, "gateway_upstream_error", `failed to reach provider "${candidate.provider}"`),
+      gatewayError(502, "gateway_all_candidates_failed", `failed to reach provider "${candidate.provider}"`),
       502,
     );
   }

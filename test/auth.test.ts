@@ -60,5 +60,5 @@ test("correct token passes auth and reaches the egress (502: upstream unreachabl
   const res = await post("Bearer test-token");
   assert.equal(res.status, 502);
   const body = (await res.json()) as { error: { code: string } };
-  assert.equal(body.error.code, "gateway_upstream_error");
+  assert.equal(body.error.code, "gateway_all_candidates_failed");
 });
