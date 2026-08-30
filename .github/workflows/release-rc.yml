@@ -25,10 +25,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 对齐下一个正式版本：最近正式 tag patch+1；基线 v1.0.0
+          # 对齐下一个正式版本：最近正式 tag patch+1；基线 v0.0.1
           latest_stable=$(git tag -l 'v[0-9]*' | grep -v -- '-rc' | sort -V | tail -n1 || true)
           if [ -z "$latest_stable" ]; then
-            next_stable="v1.0.0"
+            next_stable="v0.0.1"
           else
             next_stable=$(echo "${latest_stable#v}" | awk -F. '{printf "v%d.%d.%d", $1, $2, $3+1}')
           fi
