@@ -13,6 +13,9 @@ prismd.json
 *.sqlite-wal
 *.sqlite-shm
 
+# Local user config overrides (generated config layer; not committed)
+config.user.json
+
 # Secrets / local env
 .env
 .env.*
