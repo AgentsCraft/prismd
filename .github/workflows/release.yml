@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 手动发版时的版本递增级别
+        type: choice
+        options: [major, minor, patch]
+        default: patch
+
+permissions:
+  contents: write
+  id-token: write # npm Trusted Publishing（OIDC）
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute release version
+        id: version
+        run: |
+          set -euo pipefail
+
+          latest=$(git tag -l 'v[0-9]*' | grep -v -- '-rc' | sort -V | tail -n1 || true)
+          if [ -z "$latest" ]; then
+            # 首次发布直接 v1.0.0
+            tag="v1.0.0"
+          else
+            # push 触发默认 patch；手动触发按选择的级别
+            case "${{ github.event.inputs.bump || 'patch' }}" in
+              major) tag=$(echo "${latest#v}" | awk -F. '{printf "v%d.0.0", $1+1}') ;;
+              minor) tag=$(echo "${latest#v}" | awk -F. '{printf "v%d.%d.0", $1, $2+1}') ;;
+              *)     tag=$(echo "${latest#v}" | awk -F. '{printf "v%d.%d.%d", $1, $2, $3+1}') ;;
+            esac
+          fi
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: hashFiles('package.json') != ''
+        with:
+          node-version: '24' # Trusted Publishing 要求 npm ≥ 11.5.1、Node ≥ 22.14
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        if: hashFiles('package.json') != ''
+        env:
+          # OIDC（Trusted Publisher）未配置时由 token 兜底；配好后可移除此行
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # 正式包：@prismd/prismd（RC 通道包为 @agentscraft/prismd）
+          pkg="@prismd/prismd"
+          if npm view "${pkg}@${TAG#v}" version >/dev/null 2>&1; then
+            echo "::notice::${pkg}@${TAG#v} already on npm, skip publish"
+            exit 0
+          fi
+
+          npm ci
+          npm version "${TAG#v}" --no-git-tag-version
+          # 优先 OIDC（Trusted Publishing），未配置时回退 NODE_AUTH_TOKEN
+          npm publish
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::notice::tag ${TAG} already exists, skip"
+            exit 0
+          fi
+
+          # changelog 边界：最近一个正式 tag（rc 不计入，保证用户看到完整变更）
+          prev=$(git tag -l 'v[0-9]*' | grep -v -- '-rc' | sort -V | tail -n1 || true)
+          if [ -z "$prev" ]; then
+            changelog=$(git log --pretty=format:'- %s (%h)' HEAD)
+          else
+            changelog=$(git log --pretty=format:'- %s (%h)' "${prev}..HEAD")
+          fi
+
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "$changelog"
