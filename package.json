@@ -14,7 +14,12 @@
   "files": [
     "dist",
     "presets",
-    "examples"
+    "examples",
+    "config.schema.json",
+    "scripts",
+    "config.user.example.json",
+    "prismd.example.json",
+    ".env.example"
   ],
   "bin": {
     "prismd": "dist/server.js"
