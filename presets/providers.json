@@ -1,0 +1,18 @@
+{
+  "providers": [
+    {
+      "name": "openrouter",
+      "type": "responses",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "models": ["openrouter/auto", "poolside/laguna-s-2.1:free"]
+    },
+    {
+      "name": "groq",
+      "type": "responses",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "apiKeyEnv": "GROQ_API_KEY",
+      "models": ["groq/placeholder"]
+    }
+  ]
+}
