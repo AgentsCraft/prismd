@@ -19,5 +19,6 @@ export interface GatewayError {
     message: string;
     type: string;
     code: string;
+    metadata?: Record<string, unknown>;
   };
 }
