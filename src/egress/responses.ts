@@ -18,17 +18,22 @@ const builders: Record<string, RequestBuilder> = {
 /**
  * Call the upstream and return its Response; the body stream is relayed
  * to the client without buffering (SSE chunks pass through as they arrive).
+ *
+ * The request body keeps the client's shape but the alias in "model" is
+ * replaced with the concrete upstream providerModelId.
  */
 export async function callUpstream(
+  providerName: string,
   provider: ProviderConfig,
+  providerModelId: string,
   body: ResponsesRequestBody,
   apiKey: string,
 ): Promise<Response> {
-  const builder = builders[provider.name];
+  const builder = builders[providerName];
   if (!builder) {
-    throw new Error(`no responses egress for provider "${provider.name}"`);
+    throw new Error(`no responses egress for provider "${providerName}"`);
   }
-  const request = builder(provider, body, apiKey);
+  const request = builder(provider, { ...body, model: providerModelId }, apiKey);
   return fetch(request.url, {
     method: "POST",
     headers: request.headers,
