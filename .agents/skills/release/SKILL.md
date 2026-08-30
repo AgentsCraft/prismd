@@ -8,6 +8,7 @@ description: prismd 发布流程：develop → main、版本号、changelog、np
 ## 前置条件
 
 - `develop` 已通过全部测试，功能与规划里程碑一致。
+- `/security-audit` 通过（全仓 gitleaks 干净）。
 - 仓库可见性符合当期策略（`AgentsCraft/prismd` 开源时翻 public，翻之前与用户确认）。
 
 ## 步骤

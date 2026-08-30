@@ -16,6 +16,7 @@ description: prismd 开发总流程（工作流主入口），编排所有开发
 | `/developer` | 实现 + 单测 | `.agents/agents/implementer.md` |
 | `/unittest` | 补测试 | `.agents/agents/unit-test-writer.md` |
 | `/e2etest` | e2e 验收 | `.agents/agents/e2e-test-writer.md` |
+| `/security-audit` | 提交前/推送前安全核查 | `.agents/agents/security-auditor.md` |
 
 各阶段入口是薄包装：按本技能的对应环节执行，职责细节见对应角色文件。
 
@@ -26,6 +27,7 @@ description: prismd 开发总流程（工作流主入口），编排所有开发
 | 规划/对齐 | 主 agent 自身 | 需求不明、范围存疑时先与用户对齐 | inherit |
 | 实现 + 单测 | `.agents/agents/implementer.md` | 任务目标明确后 | inherit |
 | 审查 | `.agents/agents/reviewer.md` | 每次实现完成、合回前 | reasoning（支持时） |
+| 安全核查 | `.agents/agents/security-auditor.md` | 每次提交前、推送前 | reasoning（支持时） |
 | 补测试 | `.agents/agents/unit-test-writer.md` | reviewer 指出覆盖缺口时 | inherit |
 | e2e 验收 | `.agents/agents/e2e-test-writer.md` | 里程碑完成、发布前 | inherit |
 
@@ -47,15 +49,17 @@ description: prismd 开发总流程（工作流主入口），编排所有开发
 1. **对齐**：读规划文档确认功能边界；不明先问用户。
 2. **分支**：从 `develop` 拉 `feature/*`。
 3. **实现**：派 implementer（单测随实现），保持最小范围。
-4. **审查**：派 reviewer 审 diff。
-5. **修复**：blocking 返回 implementer 修；advisory/nit 由主 agent 判断。
-6. **合回**：干净后合回 `develop`。
-7. **里程碑验收**：派 e2e-test-writer。
-8. **推送**：向用户确认。
+4. **安全核查（提交前）**：派 security-auditor（暂存 diff + 敏感文件快扫）；gitleaks hook 强制暂存扫描。
+5. **审查**：派 reviewer 审 diff。
+6. **修复**：blocking 返回 implementer 修；advisory/nit 由主 agent 判断。
+7. **合回**：干净后合回 `develop`。
+8. **里程碑验收**：派 e2e-test-writer。
+9. **推送**：向用户确认；推送前再过一遍安全核查（全仓）。
 
 ## Loop 规则
 
 - **审查循环**：审查 → 修 blocking → 复审，最多 3 轮；3 轮后仍有 blocking，停下来与用户对齐（说明分歧在哪）。
+- **安全核查循环**：与审查同一循环（blocking 返回 implementer 修，最多 3 轮）；gitleaks 误报走 `.gitleaksignore` 指纹忽略，真实泄漏先轮换密钥。
 - **范围爆炸**：实现中发现范围比预想大 → 立即停，回规划确认，禁止擅自扩范围。
 - **规划缺口**：发现规划文档没有该功能 → 停，先补规划文档再实现。
 - 每轮循环留下记录：做了什么、结论、下一步（落在提交信息或向用户的汇报里）。
