@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Runtime state (local SQLite, generated at runtime)
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AI agent local configs — repo only carries the standard AGENTS.md spec
+.codebuddy/
+.cursor/
+.claude/
+.windsurf/
+.gemini/
