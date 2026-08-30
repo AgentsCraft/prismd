@@ -13,6 +13,7 @@
 
 - `agents/` 是**规范文档**：主 agent 编排时按角色文件派生子代理，各工具无统一的加载机制。
 - `skills/` 是**可被工具原生加载的开放标准**（SKILL.md）。skill 即斜杠命令（支持的工具中），也可靠 description 自动匹配（渐进式披露）。
+- 仓库根的 `.githooks/` 配套安全核查（提交前/推送前 gitleaks 钩子），安装方式见下文「Git hooks 安装」。
 
 ## 斜杠入口
 
@@ -26,6 +27,7 @@
 | `/release` | 发布流程 |
 | `/git-workflow` | 分支与提交规范 |
 | `/code-review` | 提交前审查清单 |
+| `/security-audit` | 提交前/推送前安全核查 |
 
 ## 兼容矩阵
 
@@ -54,6 +56,14 @@ ln -s .agents/skills skills
 ```
 
 dsh 与 pi 无需操作，原生读取 `.agents/skills`。
+
+## Git hooks 安装（每台机器一次性，不入库）
+
+gitleaks 钩子（提交前暂存扫描 + 推送前全仓扫描）不随 git clone 自动生效，每台机器在仓库根执行一次：
+
+    git config core.hooksPath .githooks
+
+前提：本机已安装 gitleaks（macOS: `brew install gitleaks`）。CI 侧由 `.github/workflows/security-scan.yml` 独立兜底，不依赖本地 hooks。
 
 ## 角色与模型
 
