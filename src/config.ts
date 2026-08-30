@@ -1,29 +1,65 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { PrismdConfig, ProviderConfig } from "./types/config.js";
+import { Ajv } from "ajv";
+import type { PrismdConfig } from "./types/config.js";
 
-const DEFAULT_CONFIG_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "presets",
-  "providers.json",
-);
+/** Packaged at the repo/package root, next to config.schema.json in dev and dist. */
+const SCHEMA_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "config.schema.json");
 
-let cached: PrismdConfig | undefined;
+const DEFAULT_CONFIG_PATH = join(process.cwd(), "prismd.json");
 
-export function getConfig(): PrismdConfig {
-  if (cached) return cached;
-  const path = process.env.PRISMD_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
-  const config = JSON.parse(readFileSync(path, "utf8")) as PrismdConfig;
-  if (!Array.isArray(config.providers) || config.providers.length === 0) {
-    throw new Error(`invalid provider config: ${path} (expected a non-empty "providers" array)`);
+/**
+ * Load and validate a prismd.json file. Throws on missing file, invalid
+ * JSON, schema violations (with instance paths) or a non-loopback
+ * server.host (security: fail fast, no silent fallback).
+ */
+export function loadConfig(filePath: string): PrismdConfig {
+  let text: string;
+  try {
+    text = readFileSync(filePath, "utf8");
+  } catch (err) {
+    throw new Error(`cannot read prismd config "${filePath}": ${(err as Error).message}`);
   }
-  cached = config;
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`invalid JSON in prismd config "${filePath}": ${(err as Error).message}`);
+  }
+
+  const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf8"));
+  const ajv = new Ajv({ allErrors: true });
+  const validate = ajv.compile(schema);
+  if (!validate(raw)) {
+    const details = (validate.errors ?? [])
+      .map((err) => `  ${err.instancePath || "(root)"} ${err.message}`)
+      .join("\n");
+    throw new Error(`invalid prismd config "${filePath}":\n${details}`);
+  }
+
+  const config = raw as PrismdConfig;
+  if (config.server.host !== "127.0.0.1" && config.server.host !== "localhost") {
+    throw new Error(
+      `refusing to bind to non-loopback host "${config.server.host}"; ` +
+        'set server.host to "127.0.0.1" or "localhost"',
+    );
+  }
   return config;
 }
 
-/** Find the provider whose preset declares the requested model. */
-export function findProvider(config: PrismdConfig, model: string): ProviderConfig | undefined {
-  return config.providers.find((p) => p.models.includes(model));
+let cached: PrismdConfig | undefined;
+
+/** Get the validated runtime config, loading (once) from PRISMD_CONFIG_PATH or ./prismd.json. */
+export function getConfig(): PrismdConfig {
+  if (cached) return cached;
+  const path = process.env.PRISMD_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
+  cached = loadConfig(path);
+  return cached;
+}
+
+/** Test-only: drop the cached config so getConfig reloads. */
+export function resetConfigForTests(): void {
+  cached = undefined;
 }

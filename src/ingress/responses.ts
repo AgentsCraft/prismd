@@ -1,51 +1,71 @@
 import type { Context } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { findProvider, getConfig } from "../config.js";
+import { getConfig } from "../config.js";
+import { gatewayError } from "../core/errors.js";
+import { resolveAlias } from "../core/router.js";
 import { callUpstream } from "../egress/responses.js";
-import type { GatewayError, ResponsesRequestBody } from "../types/protocol.js";
+import type { ResponsesRequestBody } from "../types/protocol.js";
 
 /**
- * POST /v1/responses ingress. Finds the provider that declares the
- * requested model and relays the request/response verbatim (streaming
- * or non-streaming). No vendor is hardcoded: presets drive routing.
+ * POST /v1/responses ingress. Resolves the requested model alias to its
+ * first candidate and relays the request/response verbatim (streaming or
+ * non-streaming). M1 picks the first candidate only; failover, quota and
+ * timeouts are M2.
  */
 export async function responses(c: Context): Promise<Response> {
   let body: ResponsesRequestBody;
   try {
     body = await c.req.json<ResponsesRequestBody>();
   } catch {
-    return gatewayError(c, 400, "invalid_request_error", "request body must be valid JSON");
+    return c.json(
+      gatewayError(400, "invalid_request_error", "request body must be valid JSON"),
+      400,
+    );
   }
   if (typeof body.model !== "string" || body.model === "") {
-    return gatewayError(c, 400, "invalid_request_error", 'missing "model" field');
+    return c.json(gatewayError(400, "invalid_request_error", 'missing "model" field'), 400);
   }
 
-  const provider = findProvider(getConfig(), body.model);
+  const config = getConfig();
+  const candidates = resolveAlias(config.models, body.model);
+  if (!candidates) {
+    return c.json(gatewayError(404, "model_not_found", `model alias "${body.model}" is not defined`), 404);
+  }
+
+  // M1: no failover yet — the first candidate is the only attempt.
+  const candidate = candidates[0];
+  const provider = config.providers[candidate.provider];
   if (!provider) {
-    return gatewayError(
-      c,
-      404,
-      "model_not_found",
-      `model "${body.model}" is not declared in any provider preset`,
+    return c.json(
+      gatewayError(
+        500,
+        "gateway_internal_error",
+        `candidate "${candidate.providerModelId}" references unknown provider "${candidate.provider}"`,
+      ),
+      500,
     );
   }
 
   const apiKey = process.env[provider.apiKeyEnv];
   if (!apiKey) {
-    return gatewayError(
-      c,
+    return c.json(
+      gatewayError(
+        500,
+        "gateway_internal_error",
+        `missing API key for provider "${candidate.provider}" (set ${provider.apiKeyEnv})`,
+      ),
       500,
-      "gateway_internal_error",
-      `missing API key for provider "${provider.name}" (set ${provider.apiKeyEnv})`,
     );
   }
 
   let upstream: Response;
   try {
-    upstream = await callUpstream(provider, body, apiKey);
+    upstream = await callUpstream(candidate.provider, provider, candidate.providerModelId, body, apiKey);
   } catch (err) {
     console.error("[prismd] upstream request failed:", err);
-    return gatewayError(c, 502, "gateway_upstream_error", `failed to reach provider "${provider.name}"`);
+    return c.json(
+      gatewayError(502, "gateway_all_candidates_failed", `failed to reach provider "${candidate.provider}"`),
+      502,
+    );
   }
 
   // Relay upstream response as-is: the body stream passes through without
@@ -54,15 +74,4 @@ export async function responses(c: Context): Promise<Response> {
     status: upstream.status,
     headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
   });
-}
-
-function gatewayError(c: Context, status: ContentfulStatusCode, code: string, message: string): Response {
-  const body: GatewayError = {
-    error: {
-      message,
-      type: status >= 500 ? "server_error" : "invalid_request_error",
-      code,
-    },
-  };
-  return c.json(body, status);
 }

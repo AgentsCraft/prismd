@@ -1,0 +1,25 @@
+{
+  "aliases": {
+    "free-auto": {
+      "candidates": [
+        "poolside/laguna-s-2.1:free",
+        "cohere/north-mini-code:free"
+      ]
+    },
+    "free-fast": {
+      "candidates": [
+        "poolside/laguna-xs-2.1:free"
+      ]
+    },
+    "free-code": {
+      "candidates": [
+        "cohere/north-mini-code:free",
+        "poolside/laguna-s-2.1:free"
+      ]
+    }
+  },
+  "policies": {
+    "maxCandidatesPerRequest": 2,
+    "quotaSoftLimitRatio": 0.8
+  }
+}
