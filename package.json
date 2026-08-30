@@ -11,7 +11,14 @@
   "publishConfig": {
     "access": "public"
   },
-  "files": [],
+  "files": [
+    "dist",
+    "presets",
+    "examples"
+  ],
+  "bin": {
+    "prismd": "dist/server.js"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",

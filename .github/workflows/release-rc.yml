@@ -62,6 +62,7 @@ jobs:
           fi
 
           npm ci
+          npm run build
           npm pkg set "name=${pkg}"
           npm version "${TAG#v}" --no-git-tag-version
           # 优先 OIDC（Trusted Publishing），未配置时回退 NODE_AUTH_TOKEN。

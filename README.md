@@ -6,10 +6,21 @@ Current status: **M0 minimal prototype** — `POST /v1/responses` passthrough (s
 
 ## Quick start
 
+From source:
+
 ```bash
 npm install
 cp .env.example .env   # set PRISMD_API_KEY and OPENROUTER_API_KEY
 npm run dev            # listens on http://127.0.0.1:8787
+```
+
+Or install the npm package (RC channel):
+
+```bash
+npm install -g @agentscraft/prismd
+export PRISMD_API_KEY=<local-token>
+export OPENROUTER_API_KEY=<your-key>
+prismd                 # listens on http://127.0.0.1:8787
 ```
 
 Smoke test:
@@ -18,7 +29,7 @@ Smoke test:
 curl -N http://127.0.0.1:8787/v1/responses \
   -H "Authorization: Bearer $PRISMD_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"model":"openrouter/auto","input":"say hi","stream":true}'
+  -d '{"model":"poolside/laguna-s-2.1:free","input":"say hi","stream":true}'
 ```
 
 ## Codex
