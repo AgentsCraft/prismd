@@ -2,6 +2,12 @@
 
 Local-first LLM gateway aggregating free/low-quota model APIs (OpenRouter, Groq, ...) for coding agents.
 
+## Support
+
+If prismd saves you time or quota, consider buying the author a coffee:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
+
 Current status: **M1** — generated runtime config (`prismd.json`) with model alias routing. `POST /v1/responses` resolves an alias such as `free-auto` to its first candidate and passes the request through (streaming SSE and non-streaming JSON), guarded by a local bearer token.
 
 ## Quick start
