@@ -19,7 +19,7 @@
  * (verified against the installed binary), so the conservative minimum of
  * maxOutputTokens is not expressible and intentionally dropped.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -243,6 +243,7 @@ export function main(argv, { stdout = process.stdout, stderr = process.stderr } 
       warn: (message) => stderr.write(`${message}\n`),
     });
     const target = outPath ?? DEFAULT_OUT_PATH();
+    mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, `${JSON.stringify(catalog, null, 2)}\n`);
     stdout.write(`wrote ${target}\n`);
     return 0;
