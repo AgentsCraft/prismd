@@ -6,26 +6,31 @@
  */
 import { destination, pino } from "pino";
 
+/** Redact paths for the shared logger; exported for tests. */
+export const REDACT_PATHS = [
+  "authorization",
+  "*.authorization",
+  "apiKey",
+  "*.apiKey",
+  "api_key",
+  "*.api_key",
+  "api-key",
+  "*.api-key",
+  "token",
+  "*.token",
+  "apiKeyValue",
+  "*.apiKeyValue",
+  "authorizationHeader",
+  "*.authorizationHeader",
+  "x-api-key",
+  "*.x-api-key",
+];
+
 export const logger = pino(
   {
     level: process.env.PRISMD_LOG_LEVEL ?? "info",
     redact: {
-      paths: [
-        "authorization",
-        "*.authorization",
-        "apiKey",
-        "*.apiKey",
-        "api_key",
-        "*.api_key",
-        "token",
-        "*.token",
-        "apiKeyValue",
-        "*.apiKeyValue",
-        "authorizationHeader",
-        "*.authorizationHeader",
-        "x-api-key",
-        "*.x-api-key",
-      ],
+      paths: REDACT_PATHS,
       censor: "****",
     },
   },
