@@ -34,6 +34,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
+    "test:e2e": "tsx --test test/e2e/*.test.ts",
     "generate:config": "node scripts/generate-config.mjs",
     "generate:codex-catalog": "node scripts/generate-codex-catalog.mjs"
   },
