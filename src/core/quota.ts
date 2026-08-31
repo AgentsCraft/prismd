@@ -155,7 +155,9 @@ export class QuotaManager {
       this.store.flushUsage(rows);
       this.store.insertRequestLogs(this.pendingLogs);
     } catch (err) {
-      logger.warn({ err: String(err) }, "quota flush failed; keeping data in memory");
+      // Pass the error object under `err` so pino's built-in err serializer
+      // (type/message/stack) applies, matching the rest of observability.
+      logger.warn({ err }, "quota flush failed; keeping data in memory");
       return; // keep pending data; retried on the next flush
     }
     this.pendingUsage.clear();

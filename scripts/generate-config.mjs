@@ -8,7 +8,7 @@
  * Output is validated against config.schema.json before writing and is
  * byte-identical for identical inputs (stable key order).
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -191,16 +191,36 @@ function keyConfigured(provider, keys) {
 }
 
 /**
+ * Warn when a key file is readable by group/others (mode & 0o077).
+ * Never fails the load; the message names only the path, never values.
+ */
+function warnOnLoosePermissions(filePath, warn) {
+  try {
+    if ((statSync(filePath).mode & 0o077) !== 0) {
+      warn(`warning: ${filePath} is readable by group/others; consider chmod 600 ${filePath}`);
+    }
+  } catch {
+    // missing/unreadable files are handled by the callers
+  }
+}
+
+/**
  * Load the key sources: live OS env vars plus a one-shot snapshot of
  * ~/.prismd/.env and ~/.prismd/keys.yaml. `overrides` supplies test values.
  */
-function loadKeys({ env, homeDir } = {}) {
+function loadKeys({ env, homeDir, warn = () => {} } = {}) {
   const keys = { env: { ...process.env, ...(env ?? {}) }, envFile: {}, yaml: {} };
   const dir = join(homeDir ?? homedir(), '.prismd');
   const envPath = join(dir, '.env');
-  if (existsSync(envPath)) keys.envFile = parseEnvFile(readFileSync(envPath, 'utf8'));
+  if (existsSync(envPath)) {
+    warnOnLoosePermissions(envPath, warn);
+    keys.envFile = parseEnvFile(readFileSync(envPath, 'utf8'));
+  }
   const yamlPath = join(dir, 'keys.yaml');
-  if (existsSync(yamlPath)) keys.yaml = parseKeysYaml(readFileSync(yamlPath, 'utf8'));
+  if (existsSync(yamlPath)) {
+    warnOnLoosePermissions(yamlPath, warn);
+    keys.yaml = parseKeysYaml(readFileSync(yamlPath, 'utf8'));
+  }
   return keys;
 }
 
@@ -275,7 +295,7 @@ export function generate(rootDir, { env, homeDir, warn = () => {} } = {}) {
   const userPath = join(rootDir, 'config.user.json');
   if (existsSync(userPath)) userConfig = readJson(userPath);
 
-  const keys = loadKeys({ env, homeDir });
+  const keys = loadKeys({ env, homeDir, warn });
 
   const config = buildConfig({ presets, userConfig, keys, warn });
   if (Object.keys(config.models).length === 0) {

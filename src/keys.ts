@@ -8,9 +8,10 @@
  *
  * Files are read once at startup (no hot reload); env vars win over files.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { logger } from "./observability/logger.js";
 
 export interface KeyStore {
   /** Parsed ~/.prismd/.env */
@@ -73,6 +74,20 @@ export function envVarFor(field: string): string {
   return `${field.toUpperCase()}_API_KEY`;
 }
 
+/**
+ * Warn when a key file is readable by group/others (mode & 0o077).
+ * Never fails the load; the message names only the path, never values.
+ */
+function warnOnLoosePermissions(filePath: string): void {
+  try {
+    if ((statSync(filePath).mode & 0o077) !== 0) {
+      logger.warn(`${filePath} is readable by group/others; consider chmod 600 ${filePath}`);
+    }
+  } catch {
+    // unreadable files are tolerated by the callers
+  }
+}
+
 /** Load ~/.prismd/.env and ~/.prismd/keys.yaml once. Missing files are fine. */
 export function loadKeyStore(homeDir: string = homedir()): KeyStore {
   const dir = join(homeDir, ".prismd");
@@ -80,6 +95,7 @@ export function loadKeyStore(homeDir: string = homedir()): KeyStore {
   let yaml: Record<string, string> = {};
   const envPath = join(dir, ".env");
   if (existsSync(envPath)) {
+    warnOnLoosePermissions(envPath);
     try {
       envFile = parseEnvFile(readFileSync(envPath, "utf8"));
     } catch {
@@ -88,6 +104,7 @@ export function loadKeyStore(homeDir: string = homedir()): KeyStore {
   }
   const yamlPath = join(dir, "keys.yaml");
   if (existsSync(yamlPath)) {
+    warnOnLoosePermissions(yamlPath);
     try {
       yaml = parseKeysYaml(readFileSync(yamlPath, "utf8"));
     } catch {
