@@ -34,7 +34,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
-    "generate:config": "node scripts/generate-config.mjs"
+    "generate:config": "node scripts/generate-config.mjs",
+    "generate:codex-catalog": "node scripts/generate-codex-catalog.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
