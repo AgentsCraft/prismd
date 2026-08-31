@@ -87,8 +87,8 @@ class SseEventSplitter {
 function dataPayloads(event: string): string[] {
   return event
     .split("\n")
-    .filter((line) => line.startsWith("data: "))
-    .map((line) => line.slice(6));
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => (line[5] === " " ? line.slice(6) : line.slice(5)));
 }
 
 /** Try to find usage inside an SSE event payload (response.completed). */
@@ -126,6 +126,7 @@ function wrapStream(
   const isSse = (upstream.headers.get("content-type") ?? "").includes("text/event-stream");
   const splitter = new SseEventSplitter();
   let idleTimer: NodeJS.Timeout | undefined;
+  let firstTokenSent = false;
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -166,7 +167,9 @@ function wrapStream(
     clearIdle();
     if (options.streamIdleTimeoutMs > 0) {
       idleTimer = setTimeout(() => {
-        abort(controller, "stream_idle_timeout", `no SSE events for ${options.streamIdleTimeoutMs}ms`);
+        // The timer resets on any received bytes (chunks may split events
+        // arbitrarily), so report activity, not complete SSE events.
+        abort(controller, "stream_idle_timeout", `no upstream data for ${options.streamIdleTimeoutMs}ms`);
       }, options.streamIdleTimeoutMs);
     }
   }
@@ -178,7 +181,10 @@ function wrapStream(
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (accounting.firstTokenMs === 0) {
+        // Boolean guard: a first chunk landing at 0ms would otherwise keep
+        // firstTokenMs at its 0 sentinel and re-fire onFirstToken.
+        if (!firstTokenSent) {
+          firstTokenSent = true;
           accounting.firstTokenMs = Date.now() - startedAtMs;
           options.onFirstToken?.(accounting.firstTokenMs);
         }

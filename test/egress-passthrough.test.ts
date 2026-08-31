@@ -5,9 +5,10 @@ import type { AddressInfo } from "node:net";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { app } from "../src/app.js";
 import { resetConfigForTests } from "../src/config.js";
-import { resetRuntimeForTests } from "../src/core/runtime.js";
+import { resetRuntimeForTests, shutdownRuntime } from "../src/core/runtime.js";
 import { makeValidConfig, useTempDataPath } from "./helpers.js";
 
 const SSE_EVENTS = [
@@ -62,7 +63,7 @@ function startMock(
   });
 }
 
-async function setup(mockPort: number): Promise<void> {
+async function setup(mockPort: number): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "prismd-egress-"));
   writeFileSync(
     join(dir, "prismd.json"),
@@ -82,9 +83,10 @@ async function setup(mockPort: number): Promise<void> {
   process.env.PRISMD_CONFIG_PATH = join(dir, "prismd.json");
   process.env["PRISMD_API_KEY"] = "test-token";
   process.env["OPENROUTER_API_KEY"] = "test-key";
-  useTempDataPath();
+  const dataPath = useTempDataPath();
   resetConfigForTests();
   resetRuntimeForTests();
+  return dataPath;
 }
 
 function post(body: Record<string, unknown>): Promise<Response> {
@@ -188,4 +190,32 @@ test("missing upstream API key at runtime returns 500 with the key field name", 
   const body = (await res.json()) as { error: { code: string; message: string } };
   assert.equal(body.error.code, "gateway_internal_error");
   assert.ok(body.error.message.includes("openrouter"));
+});
+
+test("SSE 'data:' lines without a space are still accounted as output", async (t) => {
+  const mock = await startMock((body, res) => {
+    if (body?.stream === true) {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end('data:{"type":"response.output_text.delta","delta":"x"}\n\n');
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ id: "mock-resp" }));
+  });
+  t.after(() => new Promise((r) => mock.server.close(r)));
+  const dataPath = await setup(mock.port);
+
+  const res = await post({ model: "free-auto", input: "hi", stream: true });
+  assert.equal(res.status, 200);
+  await res.text();
+
+  shutdownRuntime();
+  const db = new DatabaseSync(dataPath, { readOnly: true });
+  try {
+    const rows = db.prepare("SELECT output_tokens FROM usage_daily").all() as { output_tokens: number }[];
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0].output_tokens > 0, "no-space 'data:' payload must contribute to the output estimate");
+  } finally {
+    db.close();
+  }
 });
