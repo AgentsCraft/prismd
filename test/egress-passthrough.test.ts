@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { app } from "../src/app.js";
 import { resetConfigForTests } from "../src/config.js";
-import { makeValidConfig } from "./helpers.js";
+import { resetRuntimeForTests } from "../src/core/runtime.js";
+import { makeValidConfig, useTempDataPath } from "./helpers.js";
 
 const SSE_EVENTS = [
   'data: {"type":"response.output_item.added","index":0}\n\n',
@@ -71,7 +72,7 @@ async function setup(mockPort: number): Promise<void> {
           openrouter: {
             type: "responses",
             baseUrl: `http://127.0.0.1:${mockPort}`,
-            apiKeyEnv: "OPENROUTER_API_KEY",
+            apiKeyField: "openrouter",
             extraHeaders: { "HTTP-Referer": "https://localhost/prismd", "X-Title": "prismd" },
           },
         },
@@ -81,7 +82,9 @@ async function setup(mockPort: number): Promise<void> {
   process.env.PRISMD_CONFIG_PATH = join(dir, "prismd.json");
   process.env["PRISMD_API_KEY"] = "test-token";
   process.env["OPENROUTER_API_KEY"] = "test-key";
+  useTempDataPath();
   resetConfigForTests();
+  resetRuntimeForTests();
 }
 
 function post(body: Record<string, unknown>): Promise<Response> {
@@ -151,12 +154,12 @@ test("unknown alias returns 404 model_not_found", async (t) => {
   assert.ok(body.error.message.includes("nope"));
 });
 
-test("upstream non-2xx responses are relayed as-is (no failover in M1)", async (t) => {
+test("request-class 4xx is relayed as-is without failover", async (t) => {
   const mock = await startMock((_body, res) => {
-    res.writeHead(429, { "content-type": "application/json" });
+    res.writeHead(422, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
-        error: { message: "rate limited", type: "rate_limit_error", code: "rate_limit_exceeded" },
+        error: { message: "bad window", type: "invalid_request_error", code: "context_window_exceeded" },
       }),
     );
   });
@@ -164,14 +167,14 @@ test("upstream non-2xx responses are relayed as-is (no failover in M1)", async (
   await setup(mock.port);
 
   const res = await post({ model: "free-auto", input: "hi" });
-  assert.equal(res.status, 429);
+  assert.equal(res.status, 422);
   assert.equal(res.headers.get("content-type"), "application/json");
   const body = (await res.json()) as { error: { code: string; message: string } };
-  assert.equal(body.error.code, "rate_limit_exceeded");
-  assert.equal(body.error.message, "rate limited");
+  assert.equal(body.error.code, "context_window_exceeded");
+  assert.equal(body.error.message, "bad window");
 });
 
-test("missing upstream API key at runtime returns 500 with the env var name", async (t) => {
+test("missing upstream API key at runtime returns 500 with the key field name", async (t) => {
   const mock = await startMock();
   t.after(() => new Promise((r) => mock.server.close(r)));
   await setup(mock.port);
@@ -184,5 +187,5 @@ test("missing upstream API key at runtime returns 500 with the env var name", as
   assert.equal(res.status, 500);
   const body = (await res.json()) as { error: { code: string; message: string } };
   assert.equal(body.error.code, "gateway_internal_error");
-  assert.ok(body.error.message.includes("OPENROUTER_API_KEY"));
+  assert.ok(body.error.message.includes("openrouter"));
 });
