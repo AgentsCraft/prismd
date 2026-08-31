@@ -3,12 +3,22 @@ import { auth } from "./auth.js";
 import { getConfig } from "./config.js";
 import { responses } from "./ingress/responses.js";
 import { newRequestId } from "./observability/request-id.js";
+import { healthzRoute } from "./routes/healthz.js";
+import { modelsRoute } from "./routes/models.js";
+import { modelstatusRoute } from "./routes/modelstatus.js";
+import { uiRoute } from "./routes/ui.js";
 
 type Variables = {
   requestId: string;
 };
 
 export const app = new Hono<{ Variables: Variables }>();
+
+// Unauthenticated status and discovery routes
+app.route("", healthzRoute);
+app.route("", modelsRoute);
+app.route("", modelstatusRoute);
+app.route("", uiRoute);
 
 // Config is resolved lazily at request time so importing the app never
 // reads prismd.json (server.ts validates it explicitly at startup).

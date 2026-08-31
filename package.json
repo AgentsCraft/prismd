@@ -35,6 +35,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "test:e2e": "tsx --test test/e2e/*.test.ts",
+    "status": "tsx src/cli/status.ts",
     "generate:config": "node scripts/generate-config.mjs",
     "generate:codex-catalog": "node scripts/generate-codex-catalog.mjs"
   },

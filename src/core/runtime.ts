@@ -9,6 +9,7 @@ import { getConfig } from "../config.js";
 import { HealthManager } from "./health.js";
 import { QuotaManager } from "./quota.js";
 import { StateStore } from "./state.js";
+import { statusBroadcaster } from "./status-events.js";
 
 const DEFAULT_DATA_PATH = join(process.cwd(), "data", "prismd.sqlite");
 
@@ -17,16 +18,40 @@ let quota: QuotaManager | undefined;
 
 function makeHealth(): HealthManager {
   const policies = getConfig().policies;
-  return new HealthManager({
+  const hm = new HealthManager({
     failThreshold: policies.failThreshold,
     cooldownMs: policies.cooldownMs,
     respectRetryAfter: policies.respectRetryAfter,
   });
+  hm.on("change", ({ provider, model, health }) => {
+    statusBroadcaster.notifyHealthChange(provider, model, health);
+  });
+  return hm;
 }
 
 function makeQuota(): QuotaManager {
   const store = new StateStore(process.env.PRISMD_DATA_PATH ?? DEFAULT_DATA_PATH);
-  return new QuotaManager({ store });
+  return new QuotaManager({
+    store,
+    onRecord: (provider, model, usedRequests) => {
+      const config = getConfig();
+      for (const aliasModel of Object.values(config.models)) {
+        const candidate = aliasModel.candidates.find(
+          (c) => c.provider === provider && c.providerModelId === model,
+        );
+        if (candidate) {
+          statusBroadcaster.notifyQuotaChange(
+            provider,
+            model,
+            usedRequests,
+            candidate.limits.dailyRequests,
+            config.policies.quotaSoftLimitRatio,
+          );
+          break;
+        }
+      }
+    },
+  });
 }
 
 /** Shared passive-health state machine (per-process singleton). */
@@ -46,6 +71,7 @@ export function shutdownRuntime(): void {
   quota?.shutdown();
   quota = undefined;
   health = undefined;
+  statusBroadcaster.reset();
 }
 
 /** Test-only: drop singletons so the next use rebuilds from current config. */
@@ -53,4 +79,5 @@ export function resetRuntimeForTests(): void {
   quota?.shutdown();
   quota = undefined;
   health = undefined;
+  statusBroadcaster.reset();
 }

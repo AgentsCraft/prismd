@@ -59,6 +59,13 @@ interface FlushedSnapshot {
   outputTokens: number;
 }
 
+export interface CandidateUsageSnapshot {
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  source: UsageSource;
+}
+
 export interface QuotaManagerOptions {
   store: StateStore;
   /** Flush interval in ms (default 5000). */
@@ -66,6 +73,7 @@ export interface QuotaManagerOptions {
   /** Pending record count triggering an immediate flush (default 20). */
   flushBatchSize?: number;
   now?: () => Date;
+  onRecord?: (provider: string, model: string, usedRequests: number) => void;
 }
 
 export const TOKENS_PER_CHAR = 4;
@@ -80,6 +88,7 @@ export class QuotaManager {
   private readonly flushIntervalMs: number;
   private readonly flushBatchSize: number;
   private readonly now: () => Date;
+  private readonly onRecord?: (provider: string, model: string, usedRequests: number) => void;
   /** Full-day totals; never cleared so getDailyRequests sees everything. */
   private readonly pendingUsage = new Map<string, Accumulator>();
   /** Per key, the totals already persisted to usage_daily. */
@@ -94,6 +103,7 @@ export class QuotaManager {
     this.flushIntervalMs = options.flushIntervalMs ?? 5000;
     this.flushBatchSize = options.flushBatchSize ?? 20;
     this.now = options.now ?? (() => new Date());
+    this.onRecord = options.onRecord;
     this.seedDailyCounters();
     this.timer = setInterval(() => {
       void this.flush();
@@ -145,6 +155,8 @@ export class QuotaManager {
     acc.sawReal ||= inputReal || outputReal;
     acc.sawEstimated ||= !inputReal || !outputReal;
 
+    this.onRecord?.(input.provider, input.model, acc.requests);
+
     this.pendingLogs.push({
       requestId: input.requestId,
       ts: input.ts,
@@ -168,6 +180,23 @@ export class QuotaManager {
   getDailyRequests(provider: string, model: string): number {
     const key = keyOf(localDate(this.now()), provider, model);
     return this.pendingUsage.get(key)?.requests ?? 0;
+  }
+
+  /** Today's accumulated usage snapshot (requests, tokens, source) in memory. */
+  getUsageSnapshot(provider: string, model: string): CandidateUsageSnapshot {
+    const key = keyOf(localDate(this.now()), provider, model);
+    const acc = this.pendingUsage.get(key);
+    if (!acc) {
+      return { requests: 0, inputTokens: 0, outputTokens: 0, source: "estimated" };
+    }
+    const source: UsageSource =
+      acc.sawReal && !acc.sawEstimated ? "real" : acc.sawReal ? "mixed" : "estimated";
+    return {
+      requests: acc.requests,
+      inputTokens: acc.inputTokens,
+      outputTokens: acc.outputTokens,
+      source,
+    };
   }
 
   /** Force a synchronous flush of pending usage and logs. */

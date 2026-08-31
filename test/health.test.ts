@@ -95,10 +95,14 @@ test("401/403 failures mark lastError auth_error for /healthz highlighting", () 
   h.recordFailure("openrouter", "m1", { status: 403 });
   assert.equal(h.get("openrouter", "m1").lastError, "auth_error");
 
-  // Non-auth failures do not set lastError.
+  // 429 and 500 set lastError appropriately
   const h2 = new HealthManager();
-  h2.recordFailure("openrouter", "m2", { status: 500 });
-  assert.equal(h2.get("openrouter", "m2").lastError, undefined);
+  h2.recordFailure("openrouter", "m2", { status: 429 });
+  assert.equal(h2.get("openrouter", "m2").lastError, "429");
+
+  const h3 = new HealthManager();
+  h3.recordFailure("openrouter", "m3", { status: 500 });
+  assert.equal(h3.get("openrouter", "m3").lastError, "500");
 });
 
 test("state is per (provider, model)", () => {
