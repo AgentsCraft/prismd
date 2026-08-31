@@ -5,6 +5,11 @@
  * path. Flush failures only log a warning. Graceful shutdown forces a
  * final flush.
  *
+ * The in-memory accumulator keeps the full day (seeded from usage_daily
+ * at startup, never cleared), so routing decisions always see the real
+ * total; each flush writes only the delta since the last successful
+ * flush and SQLite's ON CONFLICT keeps accumulating across restarts.
+ *
  * Usage: real upstream numbers when available, otherwise conservative
  * estimates (request body chars / 4 for input, accumulated SSE output
  * chars / 4). The per-day source column is real | estimated | mixed.
@@ -47,6 +52,13 @@ interface Accumulator {
   sawEstimated: boolean;
 }
 
+/** The part of an accumulator already persisted to usage_daily. */
+interface FlushedSnapshot {
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface QuotaManagerOptions {
   store: StateStore;
   /** Flush interval in ms (default 5000). */
@@ -68,7 +80,10 @@ export class QuotaManager {
   private readonly flushIntervalMs: number;
   private readonly flushBatchSize: number;
   private readonly now: () => Date;
+  /** Full-day totals; never cleared so getDailyRequests sees everything. */
   private readonly pendingUsage = new Map<string, Accumulator>();
+  /** Per key, the totals already persisted to usage_daily. */
+  private readonly flushedUsage = new Map<string, FlushedSnapshot>();
   private readonly pendingLogs: RequestLogEntry[] = [];
   private readonly timer: NodeJS.Timeout;
   private flushing = false;
@@ -79,10 +94,31 @@ export class QuotaManager {
     this.flushIntervalMs = options.flushIntervalMs ?? 5000;
     this.flushBatchSize = options.flushBatchSize ?? 20;
     this.now = options.now ?? (() => new Date());
+    this.seedDailyCounters();
     this.timer = setInterval(() => {
       void this.flush();
     }, this.flushIntervalMs);
     this.timer.unref();
+  }
+
+  /** Load today's usage_daily rows as the in-memory seed (restart-safe). */
+  private seedDailyCounters(): void {
+    const date = localDate(this.now());
+    for (const row of this.store.getDailyUsage(date)) {
+      const key = keyOf(row.date, row.provider, row.model);
+      this.pendingUsage.set(key, {
+        requests: row.requests,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        sawReal: row.source !== "estimated",
+        sawEstimated: row.source !== "real",
+      });
+      this.flushedUsage.set(key, {
+        requests: row.requests,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+      });
+    }
   }
 
   /**
@@ -138,29 +174,48 @@ export class QuotaManager {
   flushSync(): void {
     if (this.closed) return;
     if (this.pendingUsage.size === 0 && this.pendingLogs.length === 0) return;
-    const rows: UsageRow[] = [];
+    // Only the part not yet persisted is written: the in-memory accumulator
+    // keeps the full day, so a flush never zeroes getDailyRequests().
+    const deltas: { key: string; row: UsageRow }[] = [];
     for (const [key, acc] of this.pendingUsage) {
+      const flushed = this.flushedUsage.get(key);
+      const requests = acc.requests - (flushed?.requests ?? 0);
+      const inputTokens = acc.inputTokens - (flushed?.inputTokens ?? 0);
+      const outputTokens = acc.outputTokens - (flushed?.outputTokens ?? 0);
+      if (requests === 0 && inputTokens === 0 && outputTokens === 0) continue;
       const [date, provider, model] = key.split("\u0000");
-      rows.push({
-        date,
-        provider,
-        model,
-        requests: acc.requests,
-        inputTokens: acc.inputTokens,
-        outputTokens: acc.outputTokens,
-        source: acc.sawReal && !acc.sawEstimated ? "real" : acc.sawReal ? "mixed" : "estimated",
+      deltas.push({
+        key,
+        row: {
+          date,
+          provider,
+          model,
+          requests,
+          inputTokens,
+          outputTokens,
+          source: acc.sawReal && !acc.sawEstimated ? "real" : acc.sawReal ? "mixed" : "estimated",
+        },
       });
     }
     try {
-      this.store.flushUsage(rows);
-      this.store.insertRequestLogs(this.pendingLogs);
+      this.store.flushUsageAndLogs(
+        deltas.map((d) => d.row),
+        this.pendingLogs,
+      );
     } catch (err) {
       // Pass the error object under `err` so pino's built-in err serializer
       // (type/message/stack) applies, matching the rest of observability.
       logger.warn({ err }, "quota flush failed; keeping data in memory");
       return; // keep pending data; retried on the next flush
     }
-    this.pendingUsage.clear();
+    for (const { key } of deltas) {
+      const acc = this.pendingUsage.get(key)!;
+      this.flushedUsage.set(key, {
+        requests: acc.requests,
+        inputTokens: acc.inputTokens,
+        outputTokens: acc.outputTokens,
+      });
+    }
     this.pendingLogs.length = 0;
   }
 

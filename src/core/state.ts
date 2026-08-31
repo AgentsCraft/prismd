@@ -125,6 +125,39 @@ export class StateStore {
     }
   }
 
+  /** Read one day's usage rows (accumulator seed when the process starts). */
+  getDailyUsage(date: string): UsageRow[] {
+    return this.db
+      .prepare(
+        `SELECT date, provider, model, requests,
+                input_tokens AS inputTokens, output_tokens AS outputTokens, source
+         FROM usage_daily WHERE date = ?`,
+      )
+      .all(date) as unknown as UsageRow[];
+  }
+
+  /**
+   * Atomically write usage deltas + request logs in one transaction, so a
+   * failure partway never leaves usage counted while logs are missing
+   * (which would double-count the usage delta on the next flush retry).
+   */
+  flushUsageAndLogs(rows: UsageRow[], entries: RequestLogEntry[]): void {
+    if (rows.length === 0 && entries.length === 0) return;
+    this.db.exec("BEGIN");
+    try {
+      this.flushUsage(rows);
+      this.insertRequestLogs(entries);
+      this.db.exec("COMMIT");
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        /* connection already broken; nothing left to roll back */
+      }
+      throw err;
+    }
+  }
+
   /** Append request_log entries (batch insert). */
   insertRequestLogs(entries: RequestLogEntry[]): void {
     if (entries.length === 0) return;

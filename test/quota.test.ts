@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { QuotaManager, estimateTokens } from "../src/core/quota.js";
-import { StateStore } from "../src/core/state.js";
+import { StateStore, type RequestLogEntry } from "../src/core/state.js";
 
 function makeStore(t: { name: string }): { store: StateStore; dbPath: string } {
   const dir = mkdtempSync(join(tmpdir(), `prismd-quota-${t.name}-`));
@@ -180,6 +180,95 @@ test("flush across separate managers merges into usage_daily", () => {
   assert.equal(rows[0].input_tokens, 12);
   assert.equal(rows[0].output_tokens, 12);
   assert.equal(rows[0].source, "mixed");
+});
+
+test("daily counters survive flushSync and flushed deltas never double-count", () => {
+  const { store } = makeStore({ name: "daily-persist" });
+  const q = new QuotaManager({ store, flushIntervalMs: 60_000, now: () => new Date("2026-08-31T12:00:00") });
+  const input = (requestId: string): Parameters<QuotaManager["record"]>[0] => ({
+    requestId,
+    ts: "2026-08-31T12:00:00Z",
+    alias: "a",
+    provider: "p",
+    model: "m",
+    status: 200,
+    failover: 0,
+    durationMs: 1,
+    usage: { inputChars: 8, outputChars: 0 },
+  });
+  for (let i = 0; i < 5; i += 1) q.record(input(`r${i}`));
+  q.flushSync();
+  // The in-memory accumulator keeps the full day even after a flush.
+  assert.equal(q.getDailyRequests("p", "m"), 5);
+
+  for (let i = 5; i < 8; i += 1) q.record(input(`r${i}`));
+  q.flushSync();
+  const rows = readTable(store.dbPath, "usage_daily");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].requests, 8, "sqlite holds the cumulative total, not a double-counted delta");
+  assert.equal(rows[0].input_tokens, 16); // 8 requests * ceil(8/4) = 2 tokens each
+  assert.equal(q.getDailyRequests("p", "m"), 8);
+  q.shutdown();
+});
+
+test("startup seeds today's counters from usage_daily", () => {
+  const { store, dbPath } = makeStore({ name: "seed" });
+  const now = () => new Date("2026-08-31T12:00:00");
+  const input = (requestId: string): Parameters<QuotaManager["record"]>[0] => ({
+    requestId,
+    ts: "2026-08-31T12:00:00Z",
+    alias: "a",
+    provider: "p",
+    model: "m",
+    status: 200,
+    failover: 0,
+    durationMs: 1,
+    usage: { inputChars: 8, outputChars: 0 },
+  });
+  const q1 = new QuotaManager({ store, flushIntervalMs: 60_000, now });
+  q1.record(input("r1"));
+  q1.shutdown();
+
+  // Reopen: today's persisted usage must seed the accumulator, so the
+  // daily limit keeps counting across restarts without re-adding.
+  const store2 = new StateStore(dbPath);
+  const q2 = new QuotaManager({ store: store2, flushIntervalMs: 60_000, now });
+  assert.equal(q2.getDailyRequests("p", "m"), 1);
+  q2.record(input("r2"));
+  q2.shutdown();
+
+  const rows = readTable(dbPath, "usage_daily");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].requests, 2);
+  assert.equal(rows[0].input_tokens, 4);
+});
+
+test("usage and request logs flush atomically: a failed log insert rolls the usage delta back", () => {
+  const { store, dbPath } = makeStore({ name: "atomic" });
+  const badLog = {
+    requestId: "bad",
+    ts: "2026-08-31T12:00:00Z",
+    alias: null, // violates NOT NULL -> the log insert fails mid-transaction
+    provider: "p",
+    model: "m",
+    status: 200,
+    inputTokens: 1,
+    outputTokens: 1,
+    estimated: 0,
+    failover: 0,
+    durationMs: 1,
+  };
+  assert.throws(() =>
+    store.flushUsageAndLogs(
+      [{ date: "2026-08-31", provider: "p", model: "m", requests: 1, inputTokens: 10, outputTokens: 20, source: "estimated" }],
+      [badLog as unknown as RequestLogEntry],
+    ),
+  );
+  // The usage delta must be rolled back with the failed log insert,
+  // otherwise the next flush would double-count it.
+  assert.equal(readTable(dbPath, "usage_daily").length, 0);
+  assert.equal(readTable(dbPath, "request_log").length, 0);
+  store.close();
 });
 
 test("startup prunes request_log rows older than 14 days", () => {
