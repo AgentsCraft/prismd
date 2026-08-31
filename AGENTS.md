@@ -16,7 +16,10 @@ prismd：本地优先的 LLM 网关，聚合多个免费/低额度模型 API（O
 ├── README.md     # 兼容矩阵与各工具桥接说明
 ├── agents/       # 子代理定义：frontmatter（name、description）+ 职责说明
 └── skills/       # Agent Skills 开放标准：每技能一个目录，含 SKILL.md
-                  # 斜杠入口：/workflow /project-manager /developer /unittest /e2etest 等
+                  # 斜杠入口：/workflow /project-manager /developer /unittest /e2etest /security-audit 等
+
+.githooks/        # gitleaks 钩子（提交前暂存扫描 + 推送前全历史扫描）
+                  # 每台机器一次性：git config core.hooksPath .githooks（见 .agents/README.md）
 ```
 
 ## 分支模型（Gitflow）
@@ -54,6 +57,13 @@ tag、npm 发布与 Release 全部自动生成，无需手动打 tag（见 `.git
 - npm 发布走 **Trusted Publishing（OIDC）**，无需 token。包不存在时无法配置 Trusted Publisher（无 API，需网页操作）：首次先本地 `npm login` + `npm publish` 发占位版本建包（72h 内可 unpublish），再到 npmjs 包设置配置 Trusted Publisher（GitHub Actions，workflow 文件名分别填 `release-rc.yml` / `release.yml`），此后 CI 全自动发布。
 - `NODE_AUTH_TOKEN` 仅作可选兜底（本仓库未配置）；bypass-2FA token 的 direct publish 计划 2027-01 停用。
 - scoped 包需在 `package.json` 声明 `"publishConfig": { "access": "public" }`；开源公开后 provenance 要求 `repository` 字段精确指向 GitHub 仓库。
+
+## 安全核查
+
+- 提交前/推送前强制 gitleaks 扫描（`.githooks/pre-commit` 暂存、`.githooks/pre-push` 全历史），每台机器一次性 `git config core.hooksPath .githooks`（见 `.agents/README.md`）。
+- agent 语义核查走 `/security-audit`（角色 `.agents/agents/security-auditor.md`），覆盖暂存 diff + 全仓敏感文件快扫。
+- CI 兜底：`.github/workflows/security-scan.yml`（push/PR 到 develop/main 时全历史扫描）。
+- 误报用 `.gitleaksignore` 按指纹忽略；真实泄漏先轮换密钥，再决定是否重写历史。
 
 ## 推送
 

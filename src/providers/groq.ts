@@ -2,8 +2,8 @@ import type { ProviderConfig } from "../types/config.js";
 import type { ResponsesRequestBody, UpstreamRequest } from "../types/protocol.js";
 
 /**
- * Groq Responses request. Placeholder entry for now (no key available);
- * same shape as OpenRouter, differences converge here as they appear.
+ * Groq Responses request. Placeholder entry until a Groq key and models
+ * are available; same shape as OpenRouter, differences converge here.
  */
 export function createRequest(
   provider: ProviderConfig,
@@ -15,6 +15,7 @@ export function createRequest(
     headers: {
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
+      ...provider.extraHeaders,
     },
     body: JSON.stringify(body),
   };

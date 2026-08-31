@@ -1,0 +1,156 @@
+{
+  "auth": {
+    "localTokenField": "prismd"
+  },
+  "models": {
+    "free-auto": {
+      "candidates": [
+        {
+          "contextWindow": 262144,
+          "limits": {
+            "dailyRequests": 50,
+            "maxConcurrent": 2,
+            "rpm": 20
+          },
+          "maxOutputTokens": 32768,
+          "provider": "openrouter",
+          "providerModelId": "poolside/laguna-s-2.1:free",
+          "supportsReasoning": true,
+          "supportsTools": true,
+          "tags": [
+            "free",
+            "long-context"
+          ]
+        },
+        {
+          "contextWindow": 256000,
+          "limits": {
+            "dailyRequests": 50,
+            "maxConcurrent": 2,
+            "rpm": 20
+          },
+          "maxOutputTokens": 64000,
+          "provider": "openrouter",
+          "providerModelId": "cohere/north-mini-code:free",
+          "supportsReasoning": true,
+          "supportsTools": true,
+          "tags": [
+            "free",
+            "long-context",
+            "code"
+          ]
+        }
+      ],
+      "description": "Auto-select a free coding model, with fallback candidates"
+    },
+    "free-code": {
+      "candidates": [
+        {
+          "contextWindow": 256000,
+          "limits": {
+            "dailyRequests": 50,
+            "maxConcurrent": 2,
+            "rpm": 20
+          },
+          "maxOutputTokens": 64000,
+          "provider": "openrouter",
+          "providerModelId": "cohere/north-mini-code:free",
+          "supportsReasoning": true,
+          "supportsTools": true,
+          "tags": [
+            "free",
+            "long-context",
+            "code"
+          ]
+        },
+        {
+          "contextWindow": 262144,
+          "limits": {
+            "dailyRequests": 50,
+            "maxConcurrent": 2,
+            "rpm": 20
+          },
+          "maxOutputTokens": 32768,
+          "provider": "openrouter",
+          "providerModelId": "poolside/laguna-s-2.1:free",
+          "supportsReasoning": true,
+          "supportsTools": true,
+          "tags": [
+            "free",
+            "long-context"
+          ]
+        }
+      ],
+      "description": "Free models tuned for code generation"
+    },
+    "free-fast": {
+      "candidates": [
+        {
+          "contextWindow": 262144,
+          "limits": {
+            "dailyRequests": 50,
+            "maxConcurrent": 2,
+            "rpm": 20
+          },
+          "maxOutputTokens": 32768,
+          "provider": "openrouter",
+          "providerModelId": "poolside/laguna-xs-2.1:free",
+          "supportsReasoning": true,
+          "supportsTools": true,
+          "tags": [
+            "free",
+            "long-context"
+          ]
+        }
+      ],
+      "description": "Smaller, faster free model"
+    }
+  },
+  "policies": {
+    "connectTimeoutMs": 10000,
+    "cooldownMs": 60000,
+    "failThreshold": 3,
+    "failoverOn": [
+      "401",
+      "403",
+      "429",
+      "500",
+      "502",
+      "503",
+      "504"
+    ],
+    "maxCandidatesPerRequest": 2,
+    "quotaSoftLimitRatio": 0.8,
+    "respectRetryAfter": true,
+    "retryAfterStream": false,
+    "retryBeforeStream": true,
+    "streamIdleTimeoutMs": 300000
+  },
+  "providers": {
+    "groq": {
+      "apiKeyField": "groq",
+      "auth": {
+        "type": "api_key"
+      },
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "type": "responses"
+    },
+    "openrouter": {
+      "apiKeyField": "openrouter",
+      "auth": {
+        "type": "api_key"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "extraHeaders": {
+        "HTTP-Referer": "https://localhost/prismd",
+        "X-Title": "prismd"
+      },
+      "type": "responses"
+    }
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8787
+  },
+  "version": 1
+}

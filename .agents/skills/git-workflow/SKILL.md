@@ -35,13 +35,13 @@ fix(router): filter candidates without free quota
 ## 流程
 
 1. **开工**：从最新 `develop` 拉 `feature/*`。
-2. **提交**：小步提交，一个提交只做一件事；不要混入无关改动。
+2. **提交**：小步提交，一个提交只做一件事；不要混入无关改动。提交前先跑 `/security-audit`；`.githooks/pre-commit` 会强制 gitleaks 暂存扫描（本机未装 gitleaks 时提交被阻止，先按提示安装）。
 3. **合回**：功能完成后合回 `develop`（保留提交历史，不 squash 无关提交）。
-4. **推送**：默认不自动推送。推送前必须向用户确认；推送的是公开仓库时再次确认。
+4. **推送**：默认不自动推送。推送前必须向用户确认；推送的是公开仓库时再次确认。推送前再跑 `/security-audit`（全仓）；`.githooks/pre-push` 强制全历史 gitleaks 扫描。
 5. **发布**：`develop` → `main`，打 tag `vX.Y.Z`，走 `release` skill（`.agents/skills/release/SKILL.md`）。
 
 ## 禁止
 
-- 不推送任何包含密钥、个人路径、本地配置的内容（先跑 `git diff --cached` 自查）。
-- 不 force push；不绕过 hook（`--no-verify`）。
+- 不推送任何包含密钥、个人路径、本地配置的内容（先跑 `git diff --cached` 自查，再走 `/security-audit`）。
+- 不 force push；不绕过 hook（`--no-verify`）——安全 hook 尤甚，绕过需向用户说明。
 - 不把规划/设计文档提交进本仓库。

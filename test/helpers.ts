@@ -1,0 +1,98 @@
+/** Shared test fixtures: schema-valid prismd.json builders. No secrets, no network. */
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const FIXTURE_POLICIES = {
+  failoverOn: ["401", "403", "429", "500", "502", "503", "504"],
+  retryBeforeStream: true,
+  retryAfterStream: false,
+  maxCandidatesPerRequest: 2,
+  respectRetryAfter: true,
+  quotaSoftLimitRatio: 0.8,
+  connectTimeoutMs: 10000,
+  streamIdleTimeoutMs: 300000,
+  failThreshold: 3,
+  cooldownMs: 60000,
+};
+
+export function deepMerge(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      base[key] !== null &&
+      typeof base[key] === "object" &&
+      !Array.isArray(base[key])
+    ) {
+      out[key] = deepMerge(base[key] as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+/** A valid prismd.json object; `overrides` are deep-merged on top. */
+export function makeValidConfig(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    version: 1,
+    server: { host: "127.0.0.1", port: 8787 },
+    auth: { localTokenField: "prismd" },
+    providers: {
+      openrouter: {
+        type: "responses",
+        baseUrl: "https://openrouter.ai/api/v1",
+        apiKeyField: "openrouter",
+        extraHeaders: { "HTTP-Referer": "https://localhost/prismd", "X-Title": "prismd" },
+      },
+      groq: {
+        type: "responses",
+        baseUrl: "https://api.groq.com/openai/v1",
+        apiKeyField: "groq",
+      },
+    },
+    models: {
+      "free-auto": {
+        description: "auto",
+        candidates: [
+          {
+            provider: "openrouter",
+            providerModelId: "poolside/laguna-s-2.1:free",
+            contextWindow: 262144,
+            maxOutputTokens: 32768,
+            supportsTools: true,
+            supportsReasoning: true,
+            limits: { dailyRequests: 50, rpm: 20, maxConcurrent: 2 },
+            tags: ["free"],
+          },
+          {
+            provider: "groq",
+            providerModelId: "llama-3.3-70b-versatile",
+            contextWindow: 131072,
+            maxOutputTokens: 8192,
+            supportsTools: true,
+            supportsReasoning: false,
+            limits: { dailyRequests: null, rpm: 30, maxConcurrent: 4 },
+            tags: ["free", "fast"],
+          },
+        ],
+      },
+    },
+    policies: FIXTURE_POLICIES,
+  };
+  return deepMerge(base, overrides);
+}
+
+/**
+ * Point the runtime at a fresh temp SQLite file so tests never touch the
+ * repo's data/. Call alongside resetRuntimeForTests() when rebuilding.
+ */
+export function useTempDataPath(): string {
+  const dir = mkdtempSync(join(tmpdir(), "prismd-data-"));
+  const path = join(dir, "prismd.sqlite");
+  process.env.PRISMD_DATA_PATH = path;
+  return path;
+}

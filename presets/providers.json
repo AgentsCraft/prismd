@@ -1,18 +1,82 @@
 {
-  "providers": [
-    {
-      "name": "openrouter",
+  "limitsSource": "https://openrouter.ai/docs/limits",
+  "providers": {
+    "openrouter": {
       "type": "responses",
       "baseUrl": "https://openrouter.ai/api/v1",
-      "apiKeyEnv": "OPENROUTER_API_KEY",
-      "models": ["openrouter/auto", "poolside/laguna-s-2.1:free"]
+      "apiKeyField": "openrouter",
+      "auth": {
+        "type": "api_key"
+      },
+      "extraHeaders": {
+        "HTTP-Referer": "https://localhost/prismd",
+        "X-Title": "prismd"
+      }
     },
-    {
-      "name": "groq",
+    "groq": {
       "type": "responses",
       "baseUrl": "https://api.groq.com/openai/v1",
-      "apiKeyEnv": "GROQ_API_KEY",
-      "models": ["groq/placeholder"]
+      "apiKeyField": "groq",
+      "auth": {
+        "type": "api_key"
+      }
     }
-  ]
+  },
+  "models": {
+    "poolside/laguna-s-2.1:free": {
+      "provider": "openrouter",
+      "contextWindow": 262144,
+      "maxOutputTokens": 32768,
+      "supportsTools": true,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": 50, "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "long-context"],
+      "source": "https://openrouter.ai/api/v1/models",
+      "checkedAt": "2026-08-30"
+    },
+    "poolside/laguna-xs-2.1:free": {
+      "provider": "openrouter",
+      "contextWindow": 262144,
+      "maxOutputTokens": 32768,
+      "supportsTools": true,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": 50, "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "long-context"],
+      "source": "https://openrouter.ai/api/v1/models",
+      "checkedAt": "2026-08-30"
+    },
+    "cohere/north-mini-code:free": {
+      "provider": "openrouter",
+      "contextWindow": 256000,
+      "maxOutputTokens": 64000,
+      "supportsTools": true,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": 50, "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "long-context", "code"],
+      "source": "https://openrouter.ai/api/v1/models",
+      "checkedAt": "2026-08-30"
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "description": "Auto-select a free coding model, with fallback candidates",
+      "candidates": [
+        "poolside/laguna-s-2.1:free",
+        "cohere/north-mini-code:free"
+      ]
+    },
+    "free-fast": {
+      "description": "Smaller, faster free model",
+      "candidates": [
+        "poolside/laguna-xs-2.1:free"
+      ]
+    },
+    "free-code": {
+      "description": "Free models tuned for code generation",
+      "candidates": [
+        "cohere/north-mini-code:free",
+        "poolside/laguna-s-2.1:free"
+      ]
+    }
+  }
 }

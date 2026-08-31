@@ -1,0 +1,21 @@
+#!/bin/sh
+# 提交前安全核查：gitleaks 扫描暂存区改动
+set -eu
+
+root="$(git rev-parse --show-toplevel)"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "ERROR: gitleaks not found. Install it first:" >&2
+  echo "  brew install gitleaks   # macOS" >&2
+  echo "  # 或从 https://github.com/gitleaks/gitleaks/releases 下载二进制" >&2
+  echo "Emergency bypass (forbidden by repo policy): git commit --no-verify" >&2
+  exit 1
+fi
+
+# --pre-commit --staged：只扫暂存改动（快）；--no-banner 去掉横幅；输出默认 100% 脱敏
+if ! gitleaks git --pre-commit --staged --no-banner -v --config "$root/.gitleaks.toml" "$root"; then
+  echo "ERROR: gitleaks 在暂存改动中发现疑似密钥，提交已阻止。" >&2
+  echo "修复后重新 git add 再提交；确认为误报时用 .gitleaksignore 按指纹忽略。" >&2
+  exit 1
+fi
+exit 0

@@ -2,9 +2,9 @@
 # Place at ~/.codex/prismd.config.toml, then run:
 #   PRISMD_API_KEY=<local-token> codex --profile prismd
 #
-# M0 has no alias routing yet: "model" must be one of the ids listed in
-# presets/providers.json (e.g. "openrouter/auto"). Aliases (free-auto) land in M1.
-model = "openrouter/auto"
+# model is a prismd alias (see presets/providers.json), not an upstream
+# model id. free-auto picks the first available free Responses candidate.
+model = "free-auto"
 model_provider = "prismd"
 
 [model_providers.prismd]

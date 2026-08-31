@@ -3,7 +3,7 @@ import type { ResponsesRequestBody, UpstreamRequest } from "../types/protocol.js
 
 /**
  * OpenRouter Responses request. Differences from other providers
- * (base URL, extra headers, model mapping) converge in this module.
+ * (base URL, extra headers) converge in this module.
  */
 export function createRequest(
   provider: ProviderConfig,
@@ -15,6 +15,8 @@ export function createRequest(
     headers: {
       authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
+      // Static upstream headers (HTTP-Referer / X-Title) only when configured.
+      ...provider.extraHeaders,
     },
     body: JSON.stringify(body),
   };
