@@ -217,6 +217,21 @@ export class QuotaManager {
       });
     }
     this.pendingLogs.length = 0;
+    // Drop accumulators for past days now that their deltas are safely
+    // persisted: without this, a long-running process crossing midnight
+    // would keep yesterday's keys in both maps forever.
+    this.pruneStaleKeys();
+  }
+
+  /** Delete every non-today key from the in-memory maps (flush-safe). */
+  private pruneStaleKeys(): void {
+    const today = localDate(this.now());
+    const prefix = `${today}\u0000`;
+    for (const key of this.pendingUsage.keys()) {
+      if (key.startsWith(prefix)) continue;
+      this.pendingUsage.delete(key);
+      this.flushedUsage.delete(key);
+    }
   }
 
   /** Async flush used by the interval timer; never throws. */

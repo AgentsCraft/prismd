@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { QuotaManager, estimateTokens } from "../src/core/quota.js";
 import { StateStore, type RequestLogEntry } from "../src/core/state.js";
@@ -269,6 +269,64 @@ test("usage and request logs flush atomically: a failed log insert rolls the usa
   assert.equal(readTable(dbPath, "usage_daily").length, 0);
   assert.equal(readTable(dbPath, "request_log").length, 0);
   store.close();
+});
+
+test("non-today accumulators flush then leave memory across midnight", () => {
+  const { store, dbPath } = makeStore({ name: "midnight" });
+  let now = new Date("2026-08-31T23:59:00");
+  const q = new QuotaManager({ store, flushIntervalMs: 60_000, now: () => now });
+  const input = (requestId: string, ts: string): Parameters<QuotaManager["record"]>[0] => ({
+    requestId,
+    ts,
+    alias: "a",
+    provider: "p",
+    model: "m",
+    status: 200,
+    failover: 0,
+    durationMs: 1,
+    usage: { inputChars: 8, outputChars: 0 },
+  });
+  q.record(input("r1", "2026-08-31T23:59:00Z"));
+  now = new Date("2026-09-01T00:01:00"); // day rolls over before any flush
+  q.record(input("r2", "2026-09-01T00:01:00Z"));
+  q.flushSync();
+
+  // Yesterday's delta must be persisted before its key leaves memory.
+  const rows = readTable(dbPath, "usage_daily");
+  assert.equal(rows.length, 2);
+  assert.equal(rows.find((r) => r.date === "2026-08-31")?.requests, 1);
+  assert.equal(rows.find((r) => r.date === "2026-09-01")?.requests, 1);
+
+  // Both in-memory maps keep only today's keys, so a long-running
+  // process crossing midnight does not grow them without bound.
+  const internals = q as unknown as {
+    pendingUsage: Map<string, unknown>;
+    flushedUsage: Map<string, unknown>;
+  };
+  assert.deepEqual([...internals.pendingUsage.keys()], ["2026-09-01\u0000p\u0000m"]);
+  assert.deepEqual([...internals.flushedUsage.keys()], ["2026-09-01\u0000p\u0000m"]);
+  q.shutdown();
+});
+
+test("data dir and db files are locked down, including pre-existing dirs", () => {
+  const { store, dbPath } = makeStore({ name: "perm" });
+  const dir = dirname(dbPath);
+  assert.equal(statSync(dir).mode & 0o777, 0o700);
+  assert.equal(statSync(dbPath).mode & 0o777, 0o600);
+  for (const sidecar of [`${dbPath}-wal`, `${dbPath}-shm`]) {
+    // Both sidecars exist while the WAL connection is open; each must be
+    // tightened to 0600, never exposed at sqlite's default 0644.
+    assert.ok(existsSync(sidecar), `${sidecar} should exist with an open WAL connection`);
+    assert.equal(statSync(sidecar).mode & 0o777, 0o600);
+  }
+  store.close();
+
+  // A directory created before this guard (wider mode) is tightened too.
+  const wideDir = mkdtempSync(join(tmpdir(), "prismd-quota-wide-"));
+  chmodSync(wideDir, 0o755);
+  const store2 = new StateStore(join(wideDir, "prismd.sqlite"));
+  assert.equal(statSync(wideDir).mode & 0o777, 0o700);
+  store2.close();
 });
 
 test("startup prunes request_log rows older than 14 days", () => {

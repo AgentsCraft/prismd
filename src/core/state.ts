@@ -8,7 +8,7 @@
  *                     the last N days at startup
  */
 import { DatabaseSync } from "node:sqlite";
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 export interface UsageRow {
@@ -46,15 +46,26 @@ export class StateStore {
   constructor(dbPath: string) {
     this.dbPath = dbPath;
     // 0700 so the directory itself never widens access for the -wal/-shm
-    // sidecar files (chmod 600 below only covers the main database file).
+    // sidecar files. Forced unconditionally: mkdirSync's mode only applies
+    // when the directory is created, so existing installs keep their old,
+    // wider permissions unless tightened explicitly here.
     mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
+    chmodSync(dirname(dbPath), 0o700);
     this.db = new DatabaseSync(dbPath);
+    // chmod 600 BEFORE WAL activation: the main database file is never
+    // exposed at default permissions, even briefly. Only the local user
+    // may read usage data.
+    chmodSync(dbPath, 0o600);
     // WAL improves concurrent read/write behavior; single file + sidecars.
     this.db.exec("PRAGMA journal_mode = WAL;");
-    // chmod 600: only the local user may read usage data.
-    chmodSync(dbPath, 0o600);
     this.migrate();
     this.pruneRequestLogs(REQUEST_LOG_RETENTION_DAYS);
+    // The -wal/-shm sidecars exist only once WAL is active (some are
+    // created lazily by the statements above). Tighten them too so they
+    // never sit at 0644 even if the directory permissions are ever relaxed.
+    for (const sidecar of [`${dbPath}-wal`, `${dbPath}-shm`]) {
+      if (existsSync(sidecar)) chmodSync(sidecar, 0o600);
+    }
   }
 
   private migrate(): void {
