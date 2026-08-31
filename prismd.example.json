@@ -1,6 +1,6 @@
 {
   "auth": {
-    "localTokenEnv": "PRISMD_API_KEY"
+    "localTokenField": "prismd"
   },
   "models": {
     "free-auto": {
@@ -108,6 +108,8 @@
   },
   "policies": {
     "connectTimeoutMs": 10000,
+    "cooldownMs": 60000,
+    "failThreshold": 3,
     "failoverOn": [
       "401",
       "403",
@@ -126,7 +128,7 @@
   },
   "providers": {
     "groq": {
-      "apiKeyEnv": "GROQ_API_KEY",
+      "apiKeyField": "groq",
       "auth": {
         "type": "api_key"
       },
@@ -134,7 +136,7 @@
       "type": "responses"
     },
     "openrouter": {
-      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "apiKeyField": "openrouter",
       "auth": {
         "type": "api_key"
       },

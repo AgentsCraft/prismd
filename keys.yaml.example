@@ -1,0 +1,19 @@
+# ~/.prismd/keys.yaml — prismd API keys (one flat field per provider).
+# Copy to ~/.prismd/keys.yaml and chmod 600. Never commit real keys.
+#
+# Lookup priority (highest wins):
+#   1. OS environment variable  <FIELD>_API_KEY  (e.g. OPENROUTER_API_KEY)
+#   2. ~/.prismd/.env           KEY=VALUE lines
+#   3. this file                field: value
+
+# Local gateway auth token; generate with: openssl rand -hex 32
+prismd: ""
+
+# Upstream API keys, referenced by apiKeyField in presets/providers.json.
+openrouter: ""
+groq: ""
+
+# Future providers (unused today):
+# cerebras: ""
+# github: ""
+# google: ""

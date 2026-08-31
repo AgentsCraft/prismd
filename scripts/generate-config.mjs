@@ -2,12 +2,14 @@
 /**
  * Generates prismd.json from the four config layers:
  *   presets/providers.json  (defaults)  +  config.user.json  (overrides)
- *   .env                    (which API keys are configured)
+ *   keys: OS env vars > ~/.prismd/.env > ~/.prismd/keys.yaml
+ *         (which API keys are configured)
  *
  * Output is validated against config.schema.json before writing and is
  * byte-identical for identical inputs (stable key order).
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import Ajv from 'ajv';
@@ -15,7 +17,7 @@ import Ajv from 'ajv';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const DEFAULT_SERVER = { host: '127.0.0.1', port: 8787 };
-const DEFAULT_AUTH = { localTokenEnv: 'PRISMD_API_KEY' };
+const DEFAULT_AUTH = { localTokenField: 'prismd' };
 const DEFAULT_POLICIES = {
   failoverOn: ['401', '403', '429', '500', '502', '503', '504'],
   retryBeforeStream: true,
@@ -25,6 +27,8 @@ const DEFAULT_POLICIES = {
   quotaSoftLimitRatio: 0.8,
   connectTimeoutMs: 10000,
   streamIdleTimeoutMs: 300000,
+  failThreshold: 3,
+  cooldownMs: 60000,
 };
 
 function isPlainObject(value) {
@@ -69,6 +73,31 @@ export function parseEnvFile(text) {
     if (key !== '') env[key] = value;
   }
   return env;
+}
+
+/**
+ * Minimal flat keys.yaml parser: `field: value` lines, full-line #
+ * comments, blank lines, quotes stripped. No nested structures or flow
+ * syntax — deliberately no yaml dependency (mirrors parseEnvFile).
+ */
+export function parseKeysYaml(text) {
+  const out = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (line === '' || line.startsWith('#')) continue;
+    const colon = line.indexOf(':');
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim();
+    let value = line.slice(colon + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (key !== '' && !value.startsWith('#')) out[key] = value;
+  }
+  return out;
 }
 
 /**
@@ -144,18 +173,41 @@ function expandCandidates(entries, modelCatalog, alias, warn) {
   return candidates;
 }
 
-function keyConfigured(provider, env) {
+/** Key sources in priority order: env vars > ~/.prismd/.env > ~/.prismd/keys.yaml. */
+function resolveKeyValue(keys, field) {
+  const envVar = `${field.toUpperCase()}_API_KEY`;
+  if (keys.env[envVar]) return keys.env[envVar];
+  if (keys.envFile[envVar]) return keys.envFile[envVar];
+  if (keys.yaml[field]) return keys.yaml[field];
+  return undefined;
+}
+
+function keyConfigured(provider, keys) {
   const authType = provider?.auth?.type ?? 'api_key';
   if (authType !== 'api_key') return true;
-  const envVar = provider?.apiKeyEnv;
-  if (!envVar) return true;
-  return env[envVar] !== undefined && env[envVar] !== '';
+  const field = provider?.apiKeyField;
+  if (!field) return true;
+  return resolveKeyValue(keys, field) !== undefined;
+}
+
+/**
+ * Load the key sources: live OS env vars plus a one-shot snapshot of
+ * ~/.prismd/.env and ~/.prismd/keys.yaml. `overrides` supplies test values.
+ */
+function loadKeys({ env, homeDir } = {}) {
+  const keys = { env: { ...process.env, ...(env ?? {}) }, envFile: {}, yaml: {} };
+  const dir = join(homeDir ?? homedir(), '.prismd');
+  const envPath = join(dir, '.env');
+  if (existsSync(envPath)) keys.envFile = parseEnvFile(readFileSync(envPath, 'utf8'));
+  const yamlPath = join(dir, 'keys.yaml');
+  if (existsSync(yamlPath)) keys.yaml = parseKeysYaml(readFileSync(yamlPath, 'utf8'));
+  return keys;
 }
 
 /**
  * Build the runtime config object. Pure function; warnings go to `warn`.
  */
-export function buildConfig({ presets, userConfig = {}, env = {}, warn = () => {} }) {
+export function buildConfig({ presets, userConfig = {}, keys, warn = () => {} }) {
   const config = {
     version: userConfig.version ?? 1,
     server: deepMerge(DEFAULT_SERVER, userConfig.server),
@@ -177,10 +229,11 @@ export function buildConfig({ presets, userConfig = {}, env = {}, warn = () => {
         warn(`warning: skipping candidate for alias "${alias}": unknown provider "${provider}"`);
         return false;
       }
-      if (!keyConfigured(providerDef, env)) {
+      if (!keyConfigured(providerDef, keys)) {
+        const envVar = `${providerDef.apiKeyField.toUpperCase()}_API_KEY`;
         warn(
           `warning: skipping candidate "${candidate.providerModelId}" for alias "${alias}": ` +
-            `${providerDef.apiKeyEnv} is not set in .env`,
+            `key "${providerDef.apiKeyField}" not found (${envVar} / ~/.prismd/.env / ~/.prismd/keys.yaml)`,
         );
         return false;
       }
@@ -214,27 +267,23 @@ export function formatErrors(errors) {
 
 /**
  * Full pipeline for a root dir: read layers, merge, validate, serialize.
- * `envText` overrides the .env file (used by tests).
+ * `env`/`homeDir` override the key sources (used by tests).
  */
-export function generate(rootDir, { envText, warn = () => {} } = {}) {
+export function generate(rootDir, { env, homeDir, warn = () => {} } = {}) {
   const presets = readJson(join(rootDir, 'presets', 'providers.json'));
   let userConfig = {};
   const userPath = join(rootDir, 'config.user.json');
   if (existsSync(userPath)) userConfig = readJson(userPath);
 
-  let env = {};
-  if (envText !== undefined) {
-    env = parseEnvFile(envText);
-  } else {
-    const envPath = join(rootDir, '.env');
-    if (existsSync(envPath)) {
-      env = parseEnvFile(readFileSync(envPath, 'utf8'));
-    } else {
-      warn('warning: .env not found; candidates whose provider needs an API key will be skipped');
-    }
-  }
+  const keys = loadKeys({ env, homeDir });
 
-  const config = buildConfig({ presets, userConfig, env, warn });
+  const config = buildConfig({ presets, userConfig, keys, warn });
+  if (Object.keys(config.models).length === 0) {
+    warn(
+      'warning: no aliases generated — configure at least one API key ' +
+        '(env vars, ~/.prismd/.env or ~/.prismd/keys.yaml)',
+    );
+  }
   const schema = readJson(join(rootDir, 'config.schema.json'));
   const { valid, errors } = validateConfig(config, schema);
   if (!valid) {
@@ -245,9 +294,9 @@ export function generate(rootDir, { envText, warn = () => {} } = {}) {
 
 const USAGE = `usage: node scripts/generate-config.mjs [--root <dir>]
 
-Reads presets/providers.json, config.user.json and .env from --root
-(defaults to the repository root), then writes a schema-validated
-prismd.json next to them.`;
+Reads presets/providers.json, config.user.json and the key sources
+(env vars > ~/.prismd/.env > ~/.prismd/keys.yaml), then writes a
+schema-validated prismd.json next to --root (defaults to the repo root).`;
 
 /** CLI entry; returns the process exit code. */
 export function main(argv, { stdout = process.stdout, stderr = process.stderr } = {}) {

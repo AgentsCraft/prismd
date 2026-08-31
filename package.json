@@ -22,6 +22,7 @@
     "scripts",
     "config.user.example.json",
     "prismd.example.json",
+    "keys.yaml.example",
     ".env.example"
   ],
   "bin": {

@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { app } from "../src/app.js";
 import { resetConfigForTests } from "../src/config.js";
-import { makeValidConfig } from "./helpers.js";
+import { resetRuntimeForTests } from "../src/core/runtime.js";
+import { makeValidConfig, useTempDataPath } from "./helpers.js";
 
 // Upstream points at a port with nothing listening: a request that
 // reaches the egress fails fast with connection refused (502), which
@@ -21,7 +22,25 @@ writeFileSync(
         openrouter: {
           type: "responses",
           baseUrl: UNREACHABLE_UPSTREAM,
-          apiKeyEnv: "OPENROUTER_API_KEY",
+          apiKeyField: "openrouter",
+        },
+      },
+      // Single candidate: failover has nowhere to go, so the outcome is
+      // deterministic (502) without touching a second provider.
+      models: {
+        "free-auto": {
+          candidates: [
+            {
+              provider: "openrouter",
+              providerModelId: "poolside/laguna-s-2.1:free",
+              contextWindow: 262144,
+              maxOutputTokens: 32768,
+              supportsTools: true,
+              supportsReasoning: true,
+              limits: { dailyRequests: 50, rpm: 20, maxConcurrent: 2 },
+              tags: ["free"],
+            },
+          ],
         },
       },
     }),
@@ -30,7 +49,9 @@ writeFileSync(
 process.env.PRISMD_CONFIG_PATH = join(dir, "prismd.json");
 process.env["PRISMD_API_KEY"] = "test-token";
 process.env["OPENROUTER_API_KEY"] = "test-key";
+useTempDataPath();
 resetConfigForTests();
+resetRuntimeForTests();
 
 function post(authorization?: string): Promise<Response> {
   const headers: Record<string, string> = { "content-type": "application/json" };

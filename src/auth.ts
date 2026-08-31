@@ -1,14 +1,15 @@
 import type { MiddlewareHandler } from "hono";
+import { resolveLocalToken } from "./config.js";
 
 /**
- * Local token check: Authorization: Bearer must match the token from
- * the configured env var (auth.localTokenEnv, default PRISMD_API_KEY).
+ * Local token check: Authorization: Bearer must match the token resolved
+ * from auth.localTokenField (env var > ~/.prismd/.env > ~/.prismd/keys.yaml).
  * Rejects before any upstream call, so 401 never touches a provider.
  */
 export const auth =
-  (localTokenEnv: string = "PRISMD_API_KEY"): MiddlewareHandler =>
+  (localTokenField: string): MiddlewareHandler =>
   async (c, next) => {
-    const expected = process.env[localTokenEnv];
+    const expected = resolveLocalToken(localTokenField);
     const header = c.req.header("authorization") ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
     if (!expected || token !== expected) {
