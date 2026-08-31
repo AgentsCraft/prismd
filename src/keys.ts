@@ -88,8 +88,11 @@ function warnOnLoosePermissions(filePath: string): void {
   }
 }
 
-/** Load ~/.prismd/.env and ~/.prismd/keys.yaml once. Missing files are fine. */
-export function loadKeyStore(homeDir: string = homedir()): KeyStore {
+/**
+ * Load ~/.prismd/.env and ~/.prismd/keys.yaml once. Missing files are fine.
+ * Defaults to PRISMD_HOME (if set) or homedir().
+ */
+export function loadKeyStore(homeDir: string = process.env.PRISMD_HOME ?? homedir()): KeyStore {
   const dir = join(homeDir, ".prismd");
   let envFile: Record<string, string> = {};
   let yaml: Record<string, string> = {};

@@ -8,7 +8,7 @@ If prismd saves you time or quota, consider buying the author a coffee:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
 
-## What it does (current status: M2a)
+## What it does (current status: M2b)
 
 | Capability | Behavior |
 | --- | --- |
@@ -19,6 +19,10 @@ If prismd saves you time or quota, consider buying the author a coffee:
 | **Passive health checks** | 3 consecutive failures → cooldown 60s → half-open single probe; 401/403 flagged separately |
 | **Timeouts** | Connect timeout (default 10s) and stream idle timeout (default 300s), per-policy configurable |
 | **Key management** | Keys live in `~/.prismd/` (`.env` or `keys.yaml`), never in the repo or the generated config; lookup: OS env > `~/.prismd/.env` > `~/.prismd/keys.yaml` |
+| **Model discovery** | `GET /v1/models` lists all configured logical alias models (OpenAI-compatible) without auth |
+| **Status API & SSE** | `GET /healthz` for gateway health; `GET /v1/modelstatus` for in-memory candidate status snapshots; `GET /v1/modelstatus/stream` for real-time SSE push on health/quota changes |
+| **Embedded Web UI** | `GET /ui` serves a standalone zero-dependency dashboard showing candidate status badges, quota progress bars, token metrics, active markers and live event stream |
+| **CLI status** | `prismd status` (or `npm run status`) prints live terminal tables with colorized statuses, quota ratios, and offline SQLite fallback |
 | **Observability** | pino JSON logs on stderr with a per-request id and one summary line per request; secrets redacted |
 
 ## Quick start
@@ -211,6 +215,33 @@ PRISMD_API_KEY=<local-token> codex --profile prismd
 - The profile's `model` is the gateway alias `free-auto`; `model_catalog_json` gives Codex real metadata (context window etc.) so it stops warning about unknown models. The catalog has one entry per alias with the **minimum** context window across its candidates — a conservative value so a small-window candidate never overflows.
 - Keep Codex retries low: `request_max_retries = 0` (let the gateway do failover — it knows candidate health and quota) and `stream_max_retries = 1` (stream reconnects; the gateway never retries mid-stream, so the two layers don't stack).
 
+## Status, Web UI & Discovery
+
+prismd provides built-in, zero-dependency endpoints and tools to inspect routing state, candidate health, and token usage in real time:
+
+- **Web UI dashboard (`GET /ui`)**:
+  Open `http://127.0.0.1:8787/ui` in your browser. Displays live status badges (🟢 healthy, 🟡 rate_limited/cooldown, 🔴 unavailable), daily request progress bars with soft-limit warning indicators, token counts, context window sizes, active candidate tags, and a live recent event stream. Automatically subscribes to SSE updates and gracefully degrades to polling if SSE drops.
+
+- **CLI status command (`prismd status` / `npm run status`)**:
+  Inspect gateway status directly from your terminal:
+  ```bash
+  prismd status          # when installed globally or via package binary
+  npm run status         # from source repository
+  ```
+  If the gateway is running, it renders an ANSI-colored status table with live metrics. If offline, it automatically falls back to reading SQLite `usage_daily` to report today's recorded token usage.
+
+- **JSON Status API (`GET /v1/modelstatus`)**:
+  Returns the complete in-memory status snapshot of all aliases, candidates, health states, cooldown timers, token usage, and simulated `activeCandidate` without disk I/O. Unauthenticated.
+
+- **SSE Real-time Stream (`GET /v1/modelstatus/stream`)**:
+  Subscribe to real-time status updates via Server-Sent Events. Emits a full `status` snapshot on connect, incremental `candidate_changed` events on health changes (429, 401, cooldown, recovery) or quota threshold crossings (80%, 100%), and 30s heartbeats. Unauthenticated.
+
+- **Health check (`GET /healthz`)**:
+  Returns `{ "status": "ok", "uptime": ..., "candidates": [...] }`. Returns `"status": "degraded"` with `authErrors` if any candidate encounters an invalid API key (`auth_error`). Unauthenticated.
+
+- **Model discovery (`GET /v1/models`)**:
+  Returns the list of configured alias models in standard OpenAI-compatible format `{ "object": "list", "data": [...] }`. Unauthenticated.
+
 ## Observability
 
 - **Structured logs**: pino JSON on stderr — one line per event, safe to pipe anywhere.
@@ -241,10 +272,13 @@ PRISMD_API_KEY=<local-token> codex --profile prismd
 - `scripts/generate-codex-catalog.mjs` — generates `~/.codex/prismd-models.json` (Codex `model_catalog_json`) from the same metadata, one entry per alias.
 - `src/ingress/` — client protocol entry (Responses only for now).
 - `src/egress/` — upstream protocol passthrough (Responses only for now).
+- `src/routes/` — unauthenticated status and discovery routes (`/healthz`, `/v1/models`, `/v1/modelstatus`, `/ui`).
+- `src/ui/` — embedded standalone Web UI status page (single-file HTML/CSS/JS).
+- `src/cli/` — CLI commands (`prismd status` terminal table renderer).
 - `src/providers/` — per-provider request construction (base URL, extra headers).
-- `src/core/` — alias routing (quota/window/health filtering, soft demotion), passive health state machine, quota accounting, SQLite state store.
+- `src/core/` — alias routing (quota/window/health filtering, soft demotion), passive health state machine, status event broadcaster, quota accounting, SQLite state store.
 - `src/observability/` — pino structured logging (stderr JSON), request-id, exporter interface.
-- `src/keys.ts` — key resolution from env / `~/.prismd/.env` / `~/.prismd/keys.yaml`.
+- `src/keys.ts` — key resolution from env / `~/.prismd/.env` / `~/.prismd/keys.yaml` (with `PRISMD_HOME` override support).
 - `src/auth.ts` — local bearer token check (`auth.localTokenField`); 401 never reaches upstream.
 
 ## Scripts
@@ -254,5 +288,6 @@ PRISMD_API_KEY=<local-token> codex --profile prismd
 - `npm run typecheck` — `tsc --noEmit`
 - `npm test` — unit/integration tests (tsx + node:test)
 - `npm run test:e2e` — black-box acceptance journeys against a mock upstream
+- `npm run status` — print formatted live candidate status and quota table
 - `npm run generate:config` — regenerate `prismd.json` from presets + `config.user.json` + `~/.prismd/` keys
 - `npm run generate:codex-catalog` — regenerate `~/.codex/prismd-models.json`

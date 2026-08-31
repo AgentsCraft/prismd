@@ -6,6 +6,13 @@ import { waitForStreams } from "./core/drain.js";
 import { getQuota, shutdownRuntime } from "./core/runtime.js";
 import { logger } from "./observability/logger.js";
 
+import { runStatusCli } from "./cli/status.js";
+
+if (process.argv[2] === "status") {
+  await runStatusCli();
+  process.exit(0);
+}
+
 // Loads and validates prismd.json up front: schema violations and
 // non-loopback server.host fail fast here, before any socket opens.
 const config = getConfig();

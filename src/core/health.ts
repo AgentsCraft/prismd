@@ -34,8 +34,10 @@ export interface CandidateHealth {
   consecutiveFailures: number;
   /** Absolute timestamp (ms) when the current cooldown ends, if cooling. */
   cooldownUntil: number | null;
-  /** "auth_error" when the last failure was 401/403; undefined otherwise. */
+  /** "auth_error", "429", status code, or undefined. */
   lastError?: string;
+  /** ISO timestamp when the last failure occurred, or null. */
+  lastErrorAt?: string | null;
 }
 
 export interface RecordFailureInput {
@@ -72,7 +74,7 @@ export class HealthManager extends EventEmitter {
   get(provider: string, model: string): CandidateHealth {
     const existing = this.states.get(keyOf(provider, model));
     if (existing) return this.snapshot(existing);
-    return { state: "healthy", consecutiveFailures: 0, cooldownUntil: null };
+    return { state: "healthy", consecutiveFailures: 0, cooldownUntil: null, lastErrorAt: null };
   }
 
   /** True when a candidate may serve requests (healthy, or half-open probe). */
@@ -97,16 +99,23 @@ export class HealthManager extends EventEmitter {
     const key = keyOf(provider, model);
     let entry = this.states.get(key);
     if (!entry) {
-      entry = { state: "healthy", consecutiveFailures: 0, cooldownUntil: null };
+      entry = { state: "healthy", consecutiveFailures: 0, cooldownUntil: null, lastErrorAt: null };
       this.states.set(key, entry);
     }
 
+    const { now, cooldownMs, failThreshold, respectRetryAfter } = this.options;
+    const currentNow = now();
     entry.consecutiveFailures += 1;
+    entry.lastErrorAt = new Date(currentNow).toISOString();
+
     if (input.status === 401 || input.status === 403) {
       entry.lastError = AUTH_ERROR;
+    } else if (input.status === 429) {
+      entry.lastError = "429";
+    } else if (input.status !== undefined) {
+      entry.lastError = String(input.status);
     }
 
-    const { now, cooldownMs, failThreshold, respectRetryAfter } = this.options;
     let coolFor = cooldownMs;
     if (input.status === 429 && respectRetryAfter && input.retryAfterMs !== undefined) {
       coolFor = Math.max(cooldownMs, input.retryAfterMs);
@@ -118,7 +127,7 @@ export class HealthManager extends EventEmitter {
     }
     // Failures above the threshold (or any failure in half-open) re-cool.
     entry.state = "cooldown";
-    entry.cooldownUntil = now() + coolFor;
+    entry.cooldownUntil = currentNow + coolFor;
     this.emit("change", { provider, model, health: this.snapshot(entry) });
     return this.snapshot(entry);
   }
@@ -128,7 +137,7 @@ export class HealthManager extends EventEmitter {
     const key = keyOf(provider, model);
     const entry = this.states.get(key);
     if (!entry) {
-      const fresh: CandidateHealth = { state: "healthy", consecutiveFailures: 0, cooldownUntil: null };
+      const fresh: CandidateHealth = { state: "healthy", consecutiveFailures: 0, cooldownUntil: null, lastErrorAt: null };
       this.states.set(key, fresh);
       return this.snapshot(fresh);
     }
@@ -136,6 +145,7 @@ export class HealthManager extends EventEmitter {
     entry.consecutiveFailures = 0;
     entry.cooldownUntil = null;
     entry.lastError = undefined;
+    entry.lastErrorAt = null;
     this.emit("change", { provider, model, health: this.snapshot(entry) });
     return this.snapshot(entry);
   }
