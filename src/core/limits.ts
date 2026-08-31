@@ -65,10 +65,9 @@ export function selectCandidate(
   const survivors: Candidate[] = [];
   const demoted: Candidate[] = [];
   const softThreshold = ctx.quotaSoftLimitRatio;
+  const inputTokens = estimateInputTokens(ctx.inputChars);
 
   for (const candidate of candidates) {
-    const inputTokens = estimateInputTokens(ctx.inputChars);
-
     if (inputTokens > candidate.contextWindow) {
       windowExceeded.push({
         provider: candidate.provider,
