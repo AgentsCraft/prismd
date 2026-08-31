@@ -17,6 +17,7 @@ import {
   deepMerge,
   generate,
   parseEnvFile,
+  parseKeysYaml,
   stableStringify,
   validateConfig,
 } from '../scripts/generate-config.mjs';
@@ -31,13 +32,13 @@ const FIXTURE_PRESETS = {
     openrouter: {
       type: 'responses',
       baseUrl: 'https://openrouter.ai/api/v1',
-      apiKeyEnv: 'OPENROUTER_API_KEY',
+      apiKeyField: 'openrouter',
       extraHeaders: { 'HTTP-Referer': 'https://localhost/prismd', 'X-Title': 'prismd' },
     },
     groq: {
       type: 'responses',
       baseUrl: 'https://api.groq.com/openai/v1',
-      apiKeyEnv: 'GROQ_API_KEY',
+      apiKeyField: 'groq',
     },
   },
   models: {
@@ -76,8 +77,15 @@ const FIXTURE_PRESETS = {
   },
 };
 
-/** Build a temp root dir with presets + schema (+ optional user config / .env). */
-function makeRoot({ presets = FIXTURE_PRESETS, user, env } = {}) {
+/** Both upstream keys configured (used as the happy-path key source). */
+const BOTH_KEYS = {
+  env: {},
+  envFile: { OPENROUTER_API_KEY: 'test-key', GROQ_API_KEY: 'test-key' },
+  yaml: {},
+};
+
+/** Build a temp root dir with presets + schema (+ optional user config). */
+function makeRoot({ presets = FIXTURE_PRESETS, user } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'prismd-config-'));
   mkdirSync(join(dir, 'presets'), { recursive: true });
   writeFileSync(join(dir, 'presets', 'providers.json'), JSON.stringify(presets, null, 2));
@@ -85,9 +93,15 @@ function makeRoot({ presets = FIXTURE_PRESETS, user, env } = {}) {
   if (user !== undefined) {
     writeFileSync(join(dir, 'config.user.json'), JSON.stringify(user, null, 2));
   }
-  if (env !== undefined) {
-    writeFileSync(join(dir, '.env'), env);
-  }
+  return dir;
+}
+
+/** Build a fake home dir containing ~/.prismd/.env and/or keys.yaml. */
+function makeHome({ env, yaml } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'prismd-home-'));
+  mkdirSync(join(dir, '.prismd'), { recursive: true });
+  if (env !== undefined) writeFileSync(join(dir, '.prismd', '.env'), env);
+  if (yaml !== undefined) writeFileSync(join(dir, '.prismd', 'keys.yaml'), yaml);
   return dir;
 }
 
@@ -99,7 +113,16 @@ function envWith(...pairs) {
   return `${pairs.map(([key, value]) => `${key}=${value}`).join('\n')}\n`;
 }
 
-const ENV_OR = envWith(['OPENROUTER_API_KEY', 'test-key']);
+const HOME_ENV = envWith(['OPENROUTER_API_KEY', 'test-key']);
+
+/** Child-process env for CLI tests: isolates from the developer's real keys. */
+function childEnv(home: string): Record<string, string> {
+  const env = { ...process.env, HOME: home };
+  for (const name of ['OPENROUTER_API_KEY', 'GROQ_API_KEY', 'PRISMD_API_KEY']) {
+    delete env[name];
+  }
+  return env;
+}
 
 test('deepMerge merges objects recursively and replaces arrays/scalars', () => {
   const base = {
@@ -135,18 +158,41 @@ test('parseEnvFile parses KEY=value lines, comments and quotes', () => {
   });
 });
 
+test('parseKeysYaml parses flat field: value lines, comments and quotes', () => {
+  const yaml = parseKeysYaml(
+    [
+      '# comment',
+      '',
+      'prismd: "local-token"',
+      "openrouter: 'sk-fake'",
+      'groq: plain-value',
+      '  # indented comment line',
+      'not-key-value',
+      'empty:',
+    ].join('\n'),
+  );
+  assert.deepEqual(yaml, {
+    prismd: 'local-token',
+    openrouter: 'sk-fake',
+    groq: 'plain-value',
+    empty: '',
+  });
+});
+
 test('buildConfig expands aliases, applies defaults, drops presets-only fields', () => {
   const warns = [];
   const config = buildConfig({
     presets: FIXTURE_PRESETS,
     userConfig: {},
-    env: { OPENROUTER_API_KEY: 'test-key', GROQ_API_KEY: 'test-key' },
+    keys: BOTH_KEYS,
     warn: (m) => warns.push(m),
   });
   assert.equal(config.version, 1);
   assert.deepEqual(config.server, { host: '127.0.0.1', port: 8787 });
-  assert.deepEqual(config.auth, { localTokenEnv: 'PRISMD_API_KEY' });
+  assert.deepEqual(config.auth, { localTokenField: 'prismd' });
   assert.equal(config.policies.maxCandidatesPerRequest, 2);
+  assert.equal(config.policies.failThreshold, 3);
+  assert.equal(config.policies.cooldownMs, 60000);
   assert.deepEqual(config.policies.failoverOn, [
     '401',
     '403',
@@ -176,15 +222,54 @@ test('partial availability skips keyless providers and omits empty aliases', () 
   const config = buildConfig({
     presets: FIXTURE_PRESETS,
     userConfig: {},
-    env: { OPENROUTER_API_KEY: 'test-key' },
+    keys: { env: {}, envFile: { OPENROUTER_API_KEY: 'test-key' }, yaml: {} },
     warn: (m) => warns.push(m),
   });
   assert.deepEqual(Object.keys(config.models), ['free-auto']);
   const auto = config.models['free-auto'];
   assert.equal(auto.candidates.length, 1);
   assert.equal(auto.candidates[0].providerModelId, 'poolside/laguna-s-2.1:free');
-  assert.ok(warns.some((w) => w.includes('GROQ_API_KEY is not set in .env')));
+  assert.ok(warns.some((w) => w.includes('key "groq" not found')));
   assert.ok(warns.some((w) => w.includes('omitting alias "free-fast"')));
+});
+
+test('key lookup prefers env vars over .env over keys.yaml', () => {
+  const presets = FIXTURE_PRESETS;
+  const user = {};
+  const warns = [];
+
+  const envOnly = buildConfig({
+    presets,
+    userConfig: user,
+    keys: { env: { OPENROUTER_API_KEY: 'env-key' }, envFile: {}, yaml: {} },
+    warn: (m) => warns.push(m),
+  });
+  assert.equal(envOnly.models['free-auto'].candidates.length, 1);
+
+  const fileOnly = buildConfig({
+    presets,
+    userConfig: user,
+    keys: { env: {}, envFile: { OPENROUTER_API_KEY: 'file-key' }, yaml: {} },
+    warn: () => {},
+  });
+  assert.equal(fileOnly.models['free-auto'].candidates.length, 1);
+
+  const yamlOnly = buildConfig({
+    presets,
+    userConfig: user,
+    keys: { env: {}, envFile: {}, yaml: { openrouter: 'yaml-key' } },
+    warn: () => {},
+  });
+  assert.equal(yamlOnly.models['free-auto'].candidates.length, 1);
+
+  // Empty-string values do not count as configured.
+  const emptyOnly = buildConfig({
+    presets,
+    userConfig: user,
+    keys: { env: {}, envFile: { OPENROUTER_API_KEY: '' }, yaml: { openrouter: '' } },
+    warn: () => {},
+  });
+  assert.deepEqual(emptyOnly.models, {});
 });
 
 test('user inline candidates deep merge over preset metadata', () => {
@@ -211,7 +296,7 @@ test('user inline candidates deep merge over preset metadata', () => {
   const config = buildConfig({
     presets: FIXTURE_PRESETS,
     userConfig,
-    env: { OPENROUTER_API_KEY: 'test-key', GROQ_API_KEY: 'test-key' },
+    keys: BOTH_KEYS,
     warn: () => {},
   });
   const candidates = config.models['free-auto'].candidates;
@@ -226,12 +311,25 @@ test('user inline candidates deep merge over preset metadata', () => {
 });
 
 test('generate output is deterministic and byte-identical', () => {
-  const dir = makeRoot({ env: ENV_OR });
-  const first = generate(dir);
-  const second = generate(dir);
+  const dir = makeRoot();
+  const home = makeHome({ env: HOME_ENV });
+  const first = generate(dir, { homeDir: home });
+  const second = generate(dir, { homeDir: home });
   assert.equal(first, second);
   assert.ok(first.endsWith('\n'));
   assert.deepEqual(JSON.parse(first), JSON.parse(second));
+});
+
+test('generate reads keys from ~/.prismd/.env and keys.yaml', () => {
+  const dir = makeRoot();
+  const homeEnv = makeHome({ env: HOME_ENV });
+  const fromEnvFile = JSON.parse(generate(dir, { homeDir: homeEnv }));
+  assert.deepEqual(Object.keys(fromEnvFile.models), ['free-auto']);
+  assert.equal(fromEnvFile.models['free-auto'].candidates.length, 1);
+
+  const homeYaml = makeHome({ yaml: 'openrouter: "test-key"\n' });
+  const fromYaml = JSON.parse(generate(dir, { homeDir: homeYaml }));
+  assert.deepEqual(Object.keys(fromYaml.models), ['free-auto']);
 });
 
 test('stableStringify sorts object keys recursively', () => {
@@ -248,7 +346,7 @@ test('schema validation failure reports instance paths', () => {
   const config = buildConfig({
     presets: FIXTURE_PRESETS,
     userConfig,
-    env: { OPENROUTER_API_KEY: 'test-key' },
+    keys: BOTH_KEYS,
     warn: () => {},
   });
   const { valid, errors } = validateConfig(config, schema);
@@ -262,18 +360,18 @@ test('schema validation failure reports instance paths', () => {
 test('generate throws with schema paths on invalid output', () => {
   const dir = makeRoot({
     user: { aliases: { bad: { candidates: [{ provider: 'openrouter', providerModelId: 'x:free' }] } } },
-    env: ENV_OR,
   });
-  assert.throws(() => generate(dir), /schema validation/);
+  assert.throws(() => generate(dir, { homeDir: makeHome({ env: HOME_ENV }) }), /schema validation/);
 });
 
 test('CLI writes prismd.json, exits 0, and is idempotent across runs', () => {
-  const dir = makeRoot({ env: ENV_OR });
-  const first = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], { encoding: 'utf8' });
+  const dir = makeRoot();
+  const home = makeHome({ env: HOME_ENV });
+  const first = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], { encoding: 'utf8', env: childEnv(home) });
   assert.equal(first.status, 0, first.stderr);
   assert.ok(existsSync(join(dir, 'prismd.json')));
   const bytes = readFileSync(join(dir, 'prismd.json'), 'utf8');
-  const second = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], { encoding: 'utf8' });
+  const second = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], { encoding: 'utf8', env: childEnv(home) });
   assert.equal(second.status, 0, second.stderr);
   assert.equal(readFileSync(join(dir, 'prismd.json'), 'utf8'), bytes);
 });
@@ -281,19 +379,26 @@ test('CLI writes prismd.json, exits 0, and is idempotent across runs', () => {
 test('CLI exits non-zero with instance path on invalid generated config', () => {
   const dir = makeRoot({
     user: { aliases: { bad: { candidates: [{ provider: 'openrouter', providerModelId: 'x:free' }] } } },
-    env: ENV_OR,
   });
-  const run = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], { encoding: 'utf8' });
+  const home = makeHome({ env: HOME_ENV });
+  const run = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], {
+    encoding: 'utf8',
+    env: childEnv(home),
+  });
   assert.notEqual(run.status, 0);
   assert.ok(run.stderr.includes('/models/bad/candidates/0'), run.stderr);
   assert.ok(!existsSync(join(dir, 'prismd.json')));
 });
 
-test('CLI without .env warns and generates config with no models', () => {
+test('CLI without any keys warns and generates config with no models', () => {
   const dir = makeRoot();
-  const run = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], { encoding: 'utf8' });
+  const home = makeHome();
+  const run = spawnSync(process.execPath, [SCRIPT_PATH, '--root', dir], {
+    encoding: 'utf8',
+    env: childEnv(home),
+  });
   assert.equal(run.status, 0, run.stderr);
-  assert.ok(run.stderr.includes('.env not found'), run.stderr);
+  assert.ok(run.stderr.includes('no aliases generated'), run.stderr);
   const config = JSON.parse(readFileSync(join(dir, 'prismd.json'), 'utf8'));
   assert.deepEqual(config.models, {});
   assert.deepEqual(Object.keys(config.providers).sort(), ['groq', 'openrouter']);

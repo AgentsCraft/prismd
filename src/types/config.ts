@@ -6,7 +6,8 @@ export interface ServerConfig {
 }
 
 export interface AuthConfig {
-  localTokenEnv: string;
+  /** Key field for the local gateway token in ~/.prismd/keys.yaml (env: <FIELD>_API_KEY). */
+  localTokenField: string;
 }
 
 /** Reserved for M3+ oauth; phase 1 only api_key is used. */
@@ -15,8 +16,8 @@ export type ProviderAuthType = "api_key" | "oauth" | "none";
 export interface ProviderConfig {
   type: "responses";
   baseUrl: string;
-  /** Env var holding the upstream API key */
-  apiKeyEnv: string;
+  /** Key field in ~/.prismd/keys.yaml; env var lookup uses <FIELD>_API_KEY uppercased. */
+  apiKeyField: string;
   auth?: {
     type: ProviderAuthType;
     [key: string]: unknown;
@@ -60,6 +61,10 @@ export interface PoliciesConfig {
   quotaSoftLimitRatio: number;
   connectTimeoutMs: number;
   streamIdleTimeoutMs: number;
+  /** Consecutive failures before a candidate is marked unhealthy (default 3). */
+  failThreshold?: number;
+  /** Cooldown duration in ms after unhealthy (default 60000). */
+  cooldownMs?: number;
 }
 
 export interface PrismdConfig {

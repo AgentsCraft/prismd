@@ -8,7 +8,7 @@ If prismd saves you time or quota, consider buying the author a coffee:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
 
-Current status: **M1** — generated runtime config (`prismd.json`) with model alias routing. `POST /v1/responses` resolves an alias such as `free-auto` to its first candidate and passes the request through (streaming SSE and non-streaming JSON), guarded by a local bearer token.
+Current status: **M2a** — `POST /v1/responses` routes a model alias through health checks, daily-quota limits and context-window checks, then fails over across candidates on 401/403/429/5xx/connection errors (before the stream starts). Usage is accounted to a local SQLite store, keys resolve from env vars > `~/.prismd/.env` > `~/.prismd/keys.yaml`, and structured logs carry a per-request id.
 
 ## Quick start
 
@@ -16,10 +16,13 @@ From source:
 
 ```bash
 npm install
-cp .env.example .env      # set PRISMD_API_KEY (openssl rand -hex 32) and OPENROUTER_API_KEY
-npm run generate:config   # merges presets + config.user.json + .env into prismd.json
+cp keys.yaml.example ~/.prismd/keys.yaml   # add OPENROUTER_API_KEY-style fields (chmod 600)
+# local gateway token: openssl rand -hex 32, set under the prismd field
+npm run generate:config   # merges presets + config.user.json + keys into prismd.json
 npm run dev               # listens on http://127.0.0.1:8787
 ```
+
+API keys live in `~/.prismd/` (`.env` or `keys.yaml`), never in the repo. Lookup order: OS environment variable (`OPENROUTER_API_KEY`) > `~/.prismd/.env` > `~/.prismd/keys.yaml`. See `.env.example` / `keys.yaml.example`.
 
 Or install the npm package (RC channel):
 
@@ -57,15 +60,15 @@ The profile's `model` is the gateway alias `free-auto` (see `presets/providers.j
 - `presets/providers.json` — built-in provider and free-model defaults plus default aliases, with source/checkedAt provenance; never read at runtime.
 - `config.user.json` — optional user overrides (aliases, policies, server); merged by the generator.
 - `config.schema.json` — JSON Schema (draft-07) validating `prismd.json`.
-- `scripts/generate-config.mjs` — merges presets + user overrides + `.env` into a schema-validated, byte-stable `prismd.json`.
+- `scripts/generate-config.mjs` — merges presets + user overrides + `~/.prismd/` keys into a schema-validated, byte-stable `prismd.json`.
+- `scripts/generate-codex-catalog.mjs` — generates `~/.codex/prismd-models.json` (Codex `model_catalog_json`) from the same metadata, one entry per alias.
 - `src/ingress/` — client protocol entry (Responses only for now).
 - `src/egress/` — upstream protocol passthrough (Responses only for now).
 - `src/providers/` — per-provider request construction (base URL, extra headers).
-- `src/core/router.ts` — alias → ordered candidates resolution (M1 picks the first; filtering is M2).
-- `src/config.ts` — loads/validates `prismd.json` (ajv + loopback host check).
-- `src/auth.ts` — local bearer token check (`auth.localTokenEnv`, default `PRISMD_API_KEY`); 401 never reaches upstream.
-
-Not implemented yet (M2): failover, quota/limits, request timeouts, context-window checks, `/healthz`, `prismd status`, SQLite, pino logging.
+- `src/core/` — alias routing (quota/window/health filtering, soft demotion), passive health state machine, quota accounting, SQLite state store.
+- `src/observability/` — pino structured logging (stderr JSON), request-id, exporter interface.
+- `src/config.ts` — loads/validates `prismd.json` (ajv + loopback host check) and resolves keys from `~/.prismd/`.
+- `src/auth.ts` — local bearer token check (`auth.localTokenField`); 401 never reaches upstream.
 
 ## Scripts
 
@@ -73,4 +76,5 @@ Not implemented yet (M2): failover, quota/limits, request timeouts, context-wind
 - `npm run build` / `npm start` — compile and run from `dist/`
 - `npm run typecheck` — `tsc --noEmit`
 - `npm test` — unit/integration tests (tsx + node:test)
-- `npm run generate:config` — regenerate `prismd.json` from presets + `config.user.json` + `.env`
+- `npm run generate:config` — regenerate `prismd.json` from presets + `config.user.json` + `~/.prismd/` keys
+- `npm run generate:codex-catalog` — regenerate `~/.codex/prismd-models.json`

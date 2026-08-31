@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
+import { loadKeyStore, resolveKey, type KeyStore } from "./keys.js";
 import type { PrismdConfig } from "./types/config.js";
 
 /** Packaged at the repo/package root, next to config.schema.json in dev and dist. */
@@ -50,16 +51,35 @@ export function loadConfig(filePath: string): PrismdConfig {
 }
 
 let cached: PrismdConfig | undefined;
+let cachedKeys: KeyStore | undefined;
 
-/** Get the validated runtime config, loading (once) from PRISMD_CONFIG_PATH or ./prismd.json. */
+/**
+ * Get the validated runtime config, loading (once) from PRISMD_CONFIG_PATH
+ * or ./prismd.json. The ~/.prismd key store snapshot loads once alongside.
+ */
 export function getConfig(): PrismdConfig {
   if (cached) return cached;
   const path = process.env.PRISMD_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
   cached = loadConfig(path);
+  cachedKeys = loadKeyStore();
   return cached;
 }
 
-/** Test-only: drop the cached config so getConfig reloads. */
+/**
+ * Resolve an upstream API key for a provider's apiKeyField
+ * (env var > ~/.prismd/.env > ~/.prismd/keys.yaml).
+ */
+export function resolveProviderApiKey(field: string): string | undefined {
+  return resolveKey(cachedKeys ?? loadKeyStore(), field);
+}
+
+/** Resolve the local gateway token for auth.localTokenField. */
+export function resolveLocalToken(field: string): string | undefined {
+  return resolveKey(cachedKeys ?? loadKeyStore(), field);
+}
+
+/** Test-only: drop the cached config and key store so getConfig reloads. */
 export function resetConfigForTests(): void {
   cached = undefined;
+  cachedKeys = undefined;
 }

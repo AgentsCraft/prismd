@@ -22,9 +22,9 @@
     "auth": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["localTokenEnv"],
+      "required": ["localTokenField"],
       "properties": {
-        "localTokenEnv": { "type": "string", "minLength": 1 }
+        "localTokenField": { "type": "string", "minLength": 1 }
       }
     },
     "providers": {
@@ -62,7 +62,17 @@
         "respectRetryAfter": { "type": "boolean" },
         "quotaSoftLimitRatio": { "type": "number", "minimum": 0, "maximum": 1 },
         "connectTimeoutMs": { "type": "integer", "minimum": 0 },
-        "streamIdleTimeoutMs": { "type": "integer", "minimum": 0 }
+        "streamIdleTimeoutMs": { "type": "integer", "minimum": 0 },
+        "failThreshold": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Consecutive failures before a candidate is marked unhealthy (default 3)."
+        },
+        "cooldownMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unhealthy cooldown duration in ms (default 60000)."
+        }
       }
     }
   },
@@ -70,11 +80,15 @@
     "provider": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "baseUrl", "apiKeyEnv"],
+      "required": ["type", "baseUrl", "apiKeyField"],
       "properties": {
         "type": { "enum": ["responses"] },
         "baseUrl": { "type": "string", "minLength": 1 },
-        "apiKeyEnv": { "type": "string", "minLength": 1 },
+        "apiKeyField": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Key field in ~/.prismd/keys.yaml; env var lookup uses <FIELD>_API_KEY uppercased."
+        },
         "auth": {
           "type": "object",
           "description": "Auth type reserved for M3+ (oauth); phase 1 only uses api_key.",

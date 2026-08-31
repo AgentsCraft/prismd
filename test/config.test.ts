@@ -19,7 +19,7 @@ test("loadConfig loads a valid prismd.json", () => {
   const config = loadConfig(path);
   assert.equal(config.version, 1);
   assert.equal(config.server.host, "127.0.0.1");
-  assert.equal(config.auth.localTokenEnv, "PRISMD_API_KEY");
+  assert.equal(config.auth.localTokenField, "prismd");
   assert.equal(config.providers["openrouter"].baseUrl, "https://openrouter.ai/api/v1");
   assert.deepEqual(config.providers["openrouter"].extraHeaders, {
     "HTTP-Referer": "https://localhost/prismd",

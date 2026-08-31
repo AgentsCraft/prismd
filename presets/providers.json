@@ -4,7 +4,7 @@
     "openrouter": {
       "type": "responses",
       "baseUrl": "https://openrouter.ai/api/v1",
-      "apiKeyEnv": "OPENROUTER_API_KEY",
+      "apiKeyField": "openrouter",
       "auth": {
         "type": "api_key"
       },
@@ -16,7 +16,7 @@
     "groq": {
       "type": "responses",
       "baseUrl": "https://api.groq.com/openai/v1",
-      "apiKeyEnv": "GROQ_API_KEY",
+      "apiKeyField": "groq",
       "auth": {
         "type": "api_key"
       }
