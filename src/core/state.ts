@@ -45,7 +45,9 @@ export class StateStore {
 
   constructor(dbPath: string) {
     this.dbPath = dbPath;
-    mkdirSync(dirname(dbPath), { recursive: true });
+    // 0700 so the directory itself never widens access for the -wal/-shm
+    // sidecar files (chmod 600 below only covers the main database file).
+    mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
     this.db = new DatabaseSync(dbPath);
     // WAL improves concurrent read/write behavior; single file + sidecars.
     this.db.exec("PRAGMA journal_mode = WAL;");
