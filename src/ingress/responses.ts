@@ -59,7 +59,7 @@ export async function responses(c: Context): Promise<Response> {
   if (!routed) {
     return c.json(gatewayError(404, "model_not_found", `model alias "${body.model}" is not defined`), 404);
   }
-  const { selection } = routed;
+  const { selection, candidates } = routed;
 
   if (selection.allWindowExceeded) {
     return c.json(
@@ -70,6 +70,16 @@ export async function responses(c: Context): Promise<Response> {
         { candidates: selection.windowExceeded },
       ),
       422,
+    );
+  }
+  // Defensive boundary: the schema requires >= 1 candidate and the config
+  // generator skips empty aliases, so this path should not occur in
+  // practice — report it as a gateway misconfiguration rather than a
+  // misleading 429 with empty metadata.
+  if (candidates.length === 0) {
+    return c.json(
+      gatewayError(500, "gateway_internal_error", `alias "${body.model}" has no candidates defined`),
+      500,
     );
   }
   if (!selection.selected) {
@@ -218,6 +228,41 @@ export async function responses(c: Context): Promise<Response> {
     code: "gateway_all_candidates_failed",
     message: `all candidates for alias "${body.model}" failed`,
   });
+
+  // Failed attempts still consumed attempts against the daily quotas:
+  // record the final attempt (request_log is keyed by request_id, so one
+  // row per client request) with the gateway's own 502 status, and close
+  // out the request lifecycle for observability.
+  const finalAttempt = attemptStatuses[attemptStatuses.length - 1];
+  getQuota().record({
+    requestId,
+    ts: new Date().toISOString(),
+    alias: body.model,
+    provider: finalAttempt.candidate.provider,
+    model: finalAttempt.candidate.providerModelId,
+    status: 502,
+    failover: failovers,
+    durationMs: Date.now() - startedAt,
+    usage: { inputChars, outputChars: 0 },
+  });
+  exporter.onRequestEnd({
+    requestId,
+    ts: Date.now(),
+    method,
+    path,
+    alias: body.model,
+    provider: finalAttempt.candidate.provider,
+    model: finalAttempt.candidate.providerModelId,
+    status: 502,
+    durationMs: Date.now() - startedAt,
+    usage: {
+      inputTokens: Math.ceil(inputChars / 4),
+      outputTokens: 0,
+      source: "estimated",
+    },
+    failovers,
+  });
+
   return c.json(
     gatewayError(
       502,

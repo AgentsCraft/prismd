@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { app } from "../src/app.js";
 import { resetConfigForTests } from "../src/config.js";
 import { getQuota, resetRuntimeForTests, shutdownRuntime } from "../src/core/runtime.js";
+import { exporter, type RequestEndEvent } from "../src/observability/exporter.js";
 import { makeValidConfig, useTempDataPath } from "./helpers.js";
 import { startMockUpstream, type MockBehavior } from "./mock-upstream.js";
 
@@ -255,7 +256,18 @@ test("all candidates failing returns 502 with per-candidate upstream statuses", 
     }),
   );
   t.after(() => mock.close());
-  await setup(mock.url);
+  const dataPath = await setup(mock.url);
+
+  // Capture request_end events to assert the 502 path closes the lifecycle.
+  const ends: RequestEndEvent[] = [];
+  const originalEnd = exporter.onRequestEnd;
+  exporter.onRequestEnd = (event) => {
+    ends.push(event);
+    originalEnd(event);
+  };
+  t.after(() => {
+    exporter.onRequestEnd = originalEnd;
+  });
 
   const res = await post({ model: "free-auto", input: "hi" });
   assert.equal(res.status, 502);
@@ -269,6 +281,25 @@ test("all candidates failing returns 502 with per-candidate upstream statuses", 
     ],
   );
   assert.equal(mock.requests.length, 2);
+
+  assert.equal(ends.length, 1, "the 502 path must emit request_end");
+  assert.equal(ends[0].status, 502);
+  assert.equal(ends[0].failovers, 2);
+  assert.equal(ends[0].provider, "groq");
+  assert.equal(ends[0].model, "llama-3.3-70b-versatile");
+
+  // The failed request consumes an attempt against the daily quota of the
+  // final candidate.
+  shutdownRuntime();
+  const usage = readTable(dataPath, "usage_daily");
+  assert.equal(usage.length, 1, "the final failed attempt is recorded");
+  assert.equal(usage[0].provider, "groq");
+  assert.equal(usage[0].model, "llama-3.3-70b-versatile");
+  assert.equal(usage[0].requests, 1);
+  assert.ok((usage[0].input_tokens as number) > 0, "the failed attempt consumes input quota");
+  const logs = readTable(dataPath, "request_log");
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].status, 502, "the final attempt carries the gateway 502");
 });
 
 test("all candidates over the context window returns 422 with window sizes", async (t) => {
