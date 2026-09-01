@@ -7,35 +7,34 @@ import { getHealth } from "../core/runtime.js";
 import { getQuota } from "../core/runtime.js";
 import { routeAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
-import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
-import { callUpstream as chatCallUpstream } from "../egress/chat.js";
+import { callRawHttpUpstream } from "../egress/raw.js";
+import {
+  callUpstream as responsesCallUpstream,
+  UpstreamConnectError,
+  type StreamAccounting,
+  type UpstreamResult,
+} from "../egress/responses.js";
 import { exporter } from "../observability/exporter.js";
 import { logger } from "../observability/logger.js";
-import type { ResponsesRequestBody } from "../types/protocol.js";
-
-/**
- * POST /v1/responses ingress with the M2a failover decision tree:
- *
- *   try candidate i (<= maxCandidatesPerRequest)
- *     -> connect failure / connect timeout / failoverOn status (401/403/429/5xx)
- *        -> record health failure, switch to candidate i+1
- *     -> other 4xx (400/404/422) -> passthrough verbatim, no switch
- *     -> 2xx -> relay; stream breaks afterwards are never retried
- *        (SSE error event ends the stream)
- *   all candidates failed -> 502 gateway_all_candidates_failed
- */
 
 const RELAY_HEADERS = ["content-type", "retry-after"] as const;
 
-export async function responses(c: Context): Promise<Response> {
+export interface ChatRequestBody {
+  model: string;
+  messages: Array<Record<string, unknown>>;
+  stream?: boolean;
+  [key: string]: unknown;
+}
+
+export async function chatCompletions(c: Context): Promise<Response> {
   const requestId = c.get("requestId") as string;
   const startedAt = Date.now();
   const method = c.req.method;
   const path = c.req.path;
 
-  let body: ResponsesRequestBody;
+  let body: ChatRequestBody;
   try {
-    body = await c.req.json<ResponsesRequestBody>();
+    body = await c.req.json<ChatRequestBody>();
   } catch {
     return c.json(
       gatewayError(400, "invalid_request_error", "request body must be valid JSON"),
@@ -73,10 +72,6 @@ export async function responses(c: Context): Promise<Response> {
       422,
     );
   }
-  // Defensive boundary: the schema requires >= 1 candidate and the config
-  // generator skips empty aliases, so this path should not occur in
-  // practice — report it as a gateway misconfiguration rather than a
-  // misleading 429 with empty metadata.
   if (candidates.length === 0) {
     return c.json(
       gatewayError(500, "gateway_internal_error", `alias "${body.model}" has no candidates defined`),
@@ -134,38 +129,67 @@ export async function responses(c: Context): Promise<Response> {
       );
     }
 
-    const caller = provider.type === "chat" ? chatCallUpstream : responsesCallUpstream;
+    const options = {
+      connectTimeoutMs: config.policies.connectTimeoutMs,
+      streamIdleTimeoutMs: config.policies.streamIdleTimeoutMs,
+      onFirstToken: (latencyMs: number) =>
+        exporter.onFirstToken({
+          requestId,
+          ts: Date.now(),
+          alias: body.model,
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          latencyMs,
+        }),
+      onChunk: (bytes: number) =>
+        exporter.onChunk({
+          requestId,
+          ts: Date.now(),
+          alias: body.model,
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          bytes,
+        }),
+    };
+
     let result: UpstreamResult;
     try {
-      result = await caller(
-        candidate.provider,
-        provider,
-        candidate.providerModelId,
-        body,
-        apiKey,
-        {
-          connectTimeoutMs: config.policies.connectTimeoutMs,
-          streamIdleTimeoutMs: config.policies.streamIdleTimeoutMs,
-          onFirstToken: (latencyMs) =>
-            exporter.onFirstToken({
-              requestId,
-              ts: Date.now(),
-              alias: body.model,
-              provider: candidate.provider,
-              model: candidate.providerModelId,
-              latencyMs,
-            }),
-          onChunk: (bytes) =>
-            exporter.onChunk({
-              requestId,
-              ts: Date.now(),
-              alias: body.model,
-              provider: candidate.provider,
-              model: candidate.providerModelId,
-              bytes,
-            }),
-        },
-      );
+      if (provider.type === "chat") {
+        // Direct call to Chat upstream
+        const url = `${provider.baseUrl}/chat/completions`;
+        const headers = {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          ...provider.extraHeaders,
+        };
+        const bodyStr = JSON.stringify({
+          ...body,
+          model: candidate.providerModelId,
+        });
+        result = await callRawHttpUpstream(
+          candidate.provider,
+          url,
+          headers,
+          bodyStr,
+          body.stream === true,
+          options,
+        );
+      } else {
+        // Responses upstream
+        result = await responsesCallUpstream(
+          candidate.provider,
+          provider,
+          candidate.providerModelId,
+          {
+            ...body,
+            model: candidate.providerModelId,
+            input: body.messages,
+            stream: body.stream,
+          },
+          apiKey,
+          options,
+        );
+      }
     } catch (err) {
       if (err instanceof UpstreamConnectError) {
         health.recordFailure(candidate.provider, candidate.providerModelId, {});
@@ -201,9 +225,7 @@ export async function responses(c: Context): Promise<Response> {
       });
     }
 
-    // kind === "error": failover or passthrough, decided by status.
     if (!config.policies.failoverOn.includes(String(result.status))) {
-      // Request-class 4xx and any non-listed status: relay verbatim, no switch.
       return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
     }
 
@@ -211,13 +233,11 @@ export async function responses(c: Context): Promise<Response> {
       status: result.status,
       retryAfterMs: result.retryAfterMs,
     });
-    // Free the unused error body so the upstream connection is released.
     void result.response.body?.cancel();
     attemptStatuses.push({ candidate, status: result.status });
     failovers += 1;
   }
 
-  // All attempts failed: 502 with per-candidate upstream status codes.
   const metadata = attemptStatuses.map(({ candidate, status }) => ({
     provider: candidate.provider,
     model: candidate.providerModelId,
@@ -231,10 +251,6 @@ export async function responses(c: Context): Promise<Response> {
     message: `all candidates for alias "${body.model}" failed`,
   });
 
-  // Failed attempts still consumed attempts against the daily quotas:
-  // record the final attempt (request_log is keyed by request_id, so one
-  // row per client request) with the gateway's own 502 status, and close
-  // out the request lifecycle for observability.
   const finalAttempt = attemptStatuses[attemptStatuses.length - 1];
   getQuota().record({
     requestId,
@@ -289,7 +305,7 @@ interface RelayContext {
 
 type OkResult = Extract<UpstreamResult, { kind: "stream" | "json" }>;
 type HttpErrorResult = Extract<UpstreamResult, { kind: "error" }>;
-/** Build the client response for a successful 2xx upstream result. */
+
 function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
   const { result } = ctx;
   const accounting = result.accounting;
@@ -318,9 +334,6 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
         },
       }),
     );
-    // A client disconnect cancels the transform stream without running its
-    // flush; the wrapper guarantees endStream/finalize run exactly once on
-    // every path so graceful shutdown never waits for a dead stream.
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         const reader = relayed.getReader();
@@ -353,7 +366,6 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
   return new Response(result.response.body, { status: result.response.status, headers });
 }
 
-/** Build the client response for a passthrough upstream error (4xx etc.). */
 function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Response {
   const { result } = ctx;
   const headers: Record<string, string> = {};
@@ -373,7 +385,6 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
   return response;
 }
 
-/** Async accounting after the response is (fully or partially) delivered. */
 function finalize(ctx: RelayContext & { status: number }, accounting: StreamAccounting): void {
   const usage = {
     inputTokens: accounting.realUsage?.inputTokens,

@@ -7,35 +7,35 @@ import { getHealth } from "../core/runtime.js";
 import { getQuota } from "../core/runtime.js";
 import { routeAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
-import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
-import { callUpstream as chatCallUpstream } from "../egress/chat.js";
+import { callRawHttpUpstream } from "../egress/raw.js";
+import {
+  callUpstream as responsesCallUpstream,
+  UpstreamConnectError,
+  type StreamAccounting,
+  type UpstreamResult,
+} from "../egress/responses.js";
 import { exporter } from "../observability/exporter.js";
 import { logger } from "../observability/logger.js";
-import type { ResponsesRequestBody } from "../types/protocol.js";
-
-/**
- * POST /v1/responses ingress with the M2a failover decision tree:
- *
- *   try candidate i (<= maxCandidatesPerRequest)
- *     -> connect failure / connect timeout / failoverOn status (401/403/429/5xx)
- *        -> record health failure, switch to candidate i+1
- *     -> other 4xx (400/404/422) -> passthrough verbatim, no switch
- *     -> 2xx -> relay; stream breaks afterwards are never retried
- *        (SSE error event ends the stream)
- *   all candidates failed -> 502 gateway_all_candidates_failed
- */
+import {
+  convertAnthropicToChatRequest,
+  convertChatToAnthropicResponse,
+  ChatToAnthropicStreamTransformer,
+  type AnthropicRequestBody,
+} from "./messages-converter.js";
 
 const RELAY_HEADERS = ["content-type", "retry-after"] as const;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
-export async function responses(c: Context): Promise<Response> {
+export async function messages(c: Context): Promise<Response> {
   const requestId = c.get("requestId") as string;
   const startedAt = Date.now();
   const method = c.req.method;
   const path = c.req.path;
 
-  let body: ResponsesRequestBody;
+  let body: AnthropicRequestBody;
   try {
-    body = await c.req.json<ResponsesRequestBody>();
+    body = await c.req.json<AnthropicRequestBody>();
   } catch {
     return c.json(
       gatewayError(400, "invalid_request_error", "request body must be valid JSON"),
@@ -51,7 +51,18 @@ export async function responses(c: Context): Promise<Response> {
   const health = getHealth();
   const inputChars = JSON.stringify(body).length;
 
-  const routed = routeAlias(config.models, body.model, {
+  // Resolve alias: if exact model alias not found, try fallback to "free-auto" or first configured alias
+  let aliasKey = body.model;
+  if (!config.models[aliasKey]) {
+    if (config.models["free-auto"]) {
+      aliasKey = "free-auto";
+    } else {
+      const firstAlias = Object.keys(config.models)[0];
+      if (firstAlias) aliasKey = firstAlias;
+    }
+  }
+
+  const routed = routeAlias(config.models, aliasKey, {
     inputChars,
     dailyRequests: (provider, model) => quota.getDailyRequests(provider, model),
     isHealthy: (provider, model) => health.isHealthy(provider, model),
@@ -73,10 +84,6 @@ export async function responses(c: Context): Promise<Response> {
       422,
     );
   }
-  // Defensive boundary: the schema requires >= 1 candidate and the config
-  // generator skips empty aliases, so this path should not occur in
-  // practice — report it as a gateway misconfiguration rather than a
-  // misleading 429 with empty metadata.
   if (candidates.length === 0) {
     return c.json(
       gatewayError(500, "gateway_internal_error", `alias "${body.model}" has no candidates defined`),
@@ -134,38 +141,64 @@ export async function responses(c: Context): Promise<Response> {
       );
     }
 
-    const caller = provider.type === "chat" ? chatCallUpstream : responsesCallUpstream;
+    const options = {
+      connectTimeoutMs: config.policies.connectTimeoutMs,
+      streamIdleTimeoutMs: config.policies.streamIdleTimeoutMs,
+      onFirstToken: (latencyMs: number) =>
+        exporter.onFirstToken({
+          requestId,
+          ts: Date.now(),
+          alias: body.model,
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          latencyMs,
+        }),
+      onChunk: (bytes: number) =>
+        exporter.onChunk({
+          requestId,
+          ts: Date.now(),
+          alias: body.model,
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          bytes,
+        }),
+    };
+
+    const chatRequest = convertAnthropicToChatRequest(body, candidate.providerModelId);
+
     let result: UpstreamResult;
     try {
-      result = await caller(
-        candidate.provider,
-        provider,
-        candidate.providerModelId,
-        body,
-        apiKey,
-        {
-          connectTimeoutMs: config.policies.connectTimeoutMs,
-          streamIdleTimeoutMs: config.policies.streamIdleTimeoutMs,
-          onFirstToken: (latencyMs) =>
-            exporter.onFirstToken({
-              requestId,
-              ts: Date.now(),
-              alias: body.model,
-              provider: candidate.provider,
-              model: candidate.providerModelId,
-              latencyMs,
-            }),
-          onChunk: (bytes) =>
-            exporter.onChunk({
-              requestId,
-              ts: Date.now(),
-              alias: body.model,
-              provider: candidate.provider,
-              model: candidate.providerModelId,
-              bytes,
-            }),
-        },
-      );
+      if (provider.type === "chat") {
+        const url = `${provider.baseUrl}/chat/completions`;
+        const headers = {
+          authorization: `Bearer ${apiKey}`,
+          "content-type": "application/json",
+          ...provider.extraHeaders,
+        };
+        const bodyStr = JSON.stringify(chatRequest);
+        result = await callRawHttpUpstream(
+          candidate.provider,
+          url,
+          headers,
+          bodyStr,
+          body.stream === true,
+          options,
+        );
+      } else {
+        result = await responsesCallUpstream(
+          candidate.provider,
+          provider,
+          candidate.providerModelId,
+          {
+            model: candidate.providerModelId,
+            input: chatRequest.messages,
+            stream: body.stream,
+            ...chatRequest,
+          },
+          apiKey,
+          options,
+        );
+      }
     } catch (err) {
       if (err instanceof UpstreamConnectError) {
         health.recordFailure(candidate.provider, candidate.providerModelId, {});
@@ -188,7 +221,7 @@ export async function responses(c: Context): Promise<Response> {
 
     if (result.kind === "stream" || result.kind === "json") {
       health.recordSuccess(candidate.provider, candidate.providerModelId);
-      return relaySuccess({
+      return await relayAnthropicSuccess({
         requestId,
         startedAt,
         method,
@@ -201,9 +234,7 @@ export async function responses(c: Context): Promise<Response> {
       });
     }
 
-    // kind === "error": failover or passthrough, decided by status.
     if (!config.policies.failoverOn.includes(String(result.status))) {
-      // Request-class 4xx and any non-listed status: relay verbatim, no switch.
       return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
     }
 
@@ -211,13 +242,11 @@ export async function responses(c: Context): Promise<Response> {
       status: result.status,
       retryAfterMs: result.retryAfterMs,
     });
-    // Free the unused error body so the upstream connection is released.
     void result.response.body?.cancel();
     attemptStatuses.push({ candidate, status: result.status });
     failovers += 1;
   }
 
-  // All attempts failed: 502 with per-candidate upstream status codes.
   const metadata = attemptStatuses.map(({ candidate, status }) => ({
     provider: candidate.provider,
     model: candidate.providerModelId,
@@ -231,10 +260,6 @@ export async function responses(c: Context): Promise<Response> {
     message: `all candidates for alias "${body.model}" failed`,
   });
 
-  // Failed attempts still consumed attempts against the daily quotas:
-  // record the final attempt (request_log is keyed by request_id, so one
-  // row per client request) with the gateway's own 502 status, and close
-  // out the request lifecycle for observability.
   const finalAttempt = attemptStatuses[attemptStatuses.length - 1];
   getQuota().record({
     requestId,
@@ -289,15 +314,10 @@ interface RelayContext {
 
 type OkResult = Extract<UpstreamResult, { kind: "stream" | "json" }>;
 type HttpErrorResult = Extract<UpstreamResult, { kind: "error" }>;
-/** Build the client response for a successful 2xx upstream result. */
-function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
+
+async function relayAnthropicSuccess(ctx: RelayContext & { result: OkResult }): Promise<Response> {
   const { result } = ctx;
   const accounting = result.accounting;
-  const headers: Record<string, string> = {};
-  for (const name of RELAY_HEADERS) {
-    const value = result.response.headers.get(name);
-    if (value !== null) headers[name] = value;
-  }
 
   if (result.kind === "stream") {
     beginStream();
@@ -308,33 +328,65 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
       endStream();
       finalize({ ...ctx, status: result.response.status }, accounting);
     };
-    const relayed = result.response.body!.pipeThrough(
-      new TransformStream({
-        transform(chunk, controller) {
-          controller.enqueue(chunk);
-        },
-        flush: () => {
-          finish();
-        },
-      }),
-    );
-    // A client disconnect cancels the transform stream without running its
-    // flush; the wrapper guarantees endStream/finalize run exactly once on
-    // every path so graceful shutdown never waits for a dead stream.
-    const body = new ReadableStream<Uint8Array>({
+
+    const reader = result.response.body!.getReader();
+    const transformer = new ChatToAnthropicStreamTransformer(ctx.alias);
+
+    const bodyStream = new ReadableStream<Uint8Array>({
       start(controller) {
-        const reader = relayed.getReader();
         void (async () => {
+          let buffer = "";
           try {
             for (;;) {
               const { done, value } = await reader.read();
-              if (done) {
-                finish();
-                controller.close();
-                return;
+              if (done) break;
+
+              const text = decoder.decode(value, { stream: true });
+              buffer += text;
+
+              const delimiter = /\r?\n\r?\n/g;
+              let lastIndex = 0;
+              let match: RegExpExecArray | null;
+              while ((match = delimiter.exec(buffer)) !== null) {
+                const block = buffer.slice(lastIndex, match.index);
+                lastIndex = match.index + match[0].length;
+                for (const line of block.split("\n")) {
+                  if (line.startsWith("data:")) {
+                    const payload = line.slice(5).trim();
+                    const anthropicEvents = transformer.processDataPayload(payload);
+                    for (const ev of anthropicEvents) {
+                      controller.enqueue(encoder.encode(ev));
+                    }
+                  }
+                }
               }
-              controller.enqueue(value);
+              if (lastIndex > 0) {
+                buffer = buffer.slice(lastIndex);
+              }
             }
+
+            if (buffer.length > 0) {
+              for (const line of buffer.split("\n")) {
+                if (line.startsWith("data:")) {
+                  const payload = line.slice(5).trim();
+                  const anthropicEvents = transformer.processDataPayload(payload);
+                  for (const ev of anthropicEvents) {
+                    controller.enqueue(encoder.encode(ev));
+                  }
+                }
+              }
+            }
+
+            const finishEvents = transformer.finish();
+            for (const ev of finishEvents) {
+              controller.enqueue(encoder.encode(ev));
+            }
+
+            const usage = transformer.getUsage();
+            accounting.realUsage = usage;
+
+            finish();
+            controller.close();
           } catch (err) {
             finish();
             controller.error(err);
@@ -343,17 +395,40 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
       },
       cancel(reason) {
         finish();
-        return relayed.cancel(reason);
+        return reader.cancel(reason);
       },
     });
-    return new Response(body, { status: result.response.status, headers });
+
+    return new Response(bodyStream, {
+      status: result.response.status,
+      headers: { "content-type": "text/event-stream" },
+    });
   }
 
+  // Non-streaming JSON response: convert to Anthropic response JSON
+  const rawText = await result.response.text();
+  let anthropicJsonStr = rawText;
+  try {
+    const rawObj = JSON.parse(rawText) as Record<string, unknown>;
+    const anthropicObj = convertChatToAnthropicResponse(rawObj, ctx.alias);
+    anthropicJsonStr = JSON.stringify(anthropicObj);
+    if (anthropicObj.usage && typeof anthropicObj.usage === "object") {
+      const u = anthropicObj.usage as Record<string, unknown>;
+      accounting.realUsage = {
+        inputTokens: typeof u.input_tokens === "number" ? u.input_tokens : undefined,
+        outputTokens: typeof u.output_tokens === "number" ? u.output_tokens : undefined,
+      };
+    }
+  } catch {
+    /* not json */
+  }
   finalize({ ...ctx, status: result.response.status }, accounting);
-  return new Response(result.response.body, { status: result.response.status, headers });
+  return new Response(anthropicJsonStr, {
+    status: result.response.status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
-/** Build the client response for a passthrough upstream error (4xx etc.). */
 function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Response {
   const { result } = ctx;
   const headers: Record<string, string> = {};
@@ -373,7 +448,6 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
   return response;
 }
 
-/** Async accounting after the response is (fully or partially) delivered. */
 function finalize(ctx: RelayContext & { status: number }, accounting: StreamAccounting): void {
   const usage = {
     inputTokens: accounting.realUsage?.inputTokens,

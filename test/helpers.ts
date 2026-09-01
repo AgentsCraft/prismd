@@ -87,12 +87,14 @@ export function makeValidConfig(overrides: Record<string, unknown> = {}): Record
 }
 
 /**
- * Point the runtime at a fresh temp SQLite file so tests never touch the
- * repo's data/. Call alongside resetRuntimeForTests() when rebuilding.
+ * Point the runtime at a fresh temp SQLite file and clean PRISMD_HOME so tests
+ * never touch the repo's data/ or the host ~/.prismd.
+ * Call alongside resetRuntimeForTests() and resetConfigForTests() when rebuilding.
  */
 export function useTempDataPath(): string {
   const dir = mkdtempSync(join(tmpdir(), "prismd-data-"));
   const path = join(dir, "prismd.sqlite");
   process.env.PRISMD_DATA_PATH = path;
+  process.env.PRISMD_HOME = dir;
   return path;
 }

@@ -61,17 +61,22 @@ export type UpstreamResult =
   | { kind: "json"; response: Response; accounting: StreamAccounting; retryAfterMs?: number }
   | { kind: "error"; status: number; response: Response; retryAfterMs?: number };
 
-/** Split a char stream into complete SSE event blocks ("\n\n" separated). */
+/** Split a char stream into complete SSE event blocks ("\n\n" or "\r\n\r\n" separated). */
 class SseEventSplitter {
   private buffer = "";
 
   push(text: string): string[] {
     this.buffer += text;
     const events: string[] = [];
-    let idx: number;
-    while ((idx = this.buffer.indexOf("\n\n")) !== -1) {
-      events.push(this.buffer.slice(0, idx));
-      this.buffer = this.buffer.slice(idx + 2);
+    const delimiter = /\r?\n\r?\n/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = delimiter.exec(this.buffer)) !== null) {
+      events.push(this.buffer.slice(lastIndex, match.index));
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex > 0) {
+      this.buffer = this.buffer.slice(lastIndex);
     }
     return events;
   }
