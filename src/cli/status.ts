@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { getConfig } from "../config.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
 
-export type SupportedLang = "en" | "zh-CN" | "ja" | "ko" | "de" | "fr" | "es";
+export type SupportedLang = "en" | "zh-CN" | "ja" | "ko" | "de" | "fr" | "es" | "it";
 
 export interface CliTranslations {
   title: string;
@@ -185,6 +185,28 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noUsageToday: "No hay uso registrado para hoy",
     usageFor: "Uso para",
   },
+  it: {
+    title: "Stato prismd",
+    uptime: "Tempo di attività",
+    config: "Configurazione",
+    totalTokens: "Token totali",
+    alias: "ALIAS",
+    provider: "PROVIDER",
+    model: "MODELLO",
+    providerModel: "PROVIDER / MODELLO",
+    status: "STATO",
+    requests: "RICHIESTE",
+    inputTokens: "TOKEN INPUT",
+    outputTokens: "TOKEN OUTPUT",
+    tokensInOut: "TOKEN (IN/OUT)",
+    context: "CONTESTO",
+    tools: "STRUMENTI",
+    health: "SALUTE",
+    offlineWarning: "Il gateway prismd non è in esecuzione (vista offline da SQLite)",
+    noDatabase: "Nessun database trovato in",
+    noUsageToday: "Nessun utilizzo registrato per oggi",
+    usageFor: "Utilizzo per",
+  },
 };
 
 export function detectCliLanguage(env: NodeJS.ProcessEnv = process.env): SupportedLang {
@@ -196,6 +218,7 @@ export function detectCliLanguage(env: NodeJS.ProcessEnv = process.env): Support
   if (lower.startsWith("de")) return "de";
   if (lower.startsWith("fr")) return "fr";
   if (lower.startsWith("es")) return "es";
+  if (lower.startsWith("it")) return "it";
   return "en";
 }
 

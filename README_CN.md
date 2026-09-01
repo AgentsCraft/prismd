@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md)
 
 本地优先的 LLM 网关，聚合多个免费及低额度模型 API（OpenRouter、Groq、Cerebras 等），为各类编码智能体（Claude Code、Codex CLI、OpenCode 等）提供稳定、高可用的统一接口。
 

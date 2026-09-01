@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md)
 
 Passerelle LLM locale agrégeant les API de modèles gratuits et à faible coût (OpenRouter, Groq, Cerebras, etc.) pour les agents de codage (Claude Code, Codex CLI, OpenCode, etc.), offrant une interface unifiée et stable avec routage et basculement (failover) automatiques.
 

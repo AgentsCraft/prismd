@@ -350,6 +350,7 @@ export function renderUiHtml(): string {
         <option value="de">Deutsch</option>
         <option value="fr">Français</option>
         <option value="es">Español</option>
+        <option value="it">Italiano</option>
       </select>
     </div>
   </header>
@@ -525,6 +526,29 @@ export function renderUiHtml(): string {
         resetUsage: 'Restablecer uso',
         resetConfirm: '¿Está seguro de que desea restablecer todos los contadores de uso y registros?',
         resetting: 'Restableciendo...'
+      },
+      it: {
+        uptime: 'Tempo di attività',
+        connecting: 'Connessione',
+        live: 'In diretta (SSE)',
+        polling: 'Polling (5s)',
+        disconnected: 'Disconnesso',
+        active: '★ Attivo',
+        requests: 'Richieste',
+        inputTokens: 'Token di input',
+        outputTokens: 'Token di output',
+        context: 'Contesto',
+        source: 'Origine',
+        tools: 'Strumenti',
+        reasoning: 'Ragionamento',
+        status: 'Stato',
+        last: 'Ultimo errore',
+        cooldown: 'Cooldown',
+        recentEvents: 'Eventi recenti',
+        noEvents: 'Nessun cambio di stato registrato.',
+        resetUsage: 'Ripristina utilizzo',
+        resetConfirm: 'Sei sicuro di voler ripristinare tutti i contatori e i log di utilizzo?',
+        resetting: 'Ripristino in corso...'
       }
     };
 
@@ -539,6 +563,7 @@ export function renderUiHtml(): string {
         if (nav.startsWith('de')) return 'de';
         if (nav.startsWith('fr')) return 'fr';
         if (nav.startsWith('es')) return 'es';
+        if (nav.startsWith('it')) return 'it';
       } catch (e) {}
       return 'en';
     }

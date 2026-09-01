@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md)
 
 コーディングエージェント（Claude Code、Codex CLI、OpenCode 等）向けに、無料および低枠モデル API（OpenRouter、Groq、Cerebras 等）を集約するローカル優先の LLM ゲートウェイです。自動ルーティングとフェイルオーバーを備えた安定した統一インターフェースを提供します。
 

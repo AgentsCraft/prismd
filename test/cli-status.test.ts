@@ -14,13 +14,14 @@ import {
 import { StateStore } from "../src/core/state.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
 
-test("detectCliLanguage matches 7 languages and falls back to en", () => {
+test("detectCliLanguage matches 8 languages and falls back to en", () => {
   assert.equal(detectCliLanguage({ LANG: "zh_CN.UTF-8" }), "zh-CN");
   assert.equal(detectCliLanguage({ LC_ALL: "ja_JP.UTF-8" }), "ja");
   assert.equal(detectCliLanguage({ LC_MESSAGES: "ko_KR.UTF-8" }), "ko");
   assert.equal(detectCliLanguage({ LANG: "de_DE.UTF-8" }), "de");
   assert.equal(detectCliLanguage({ LANG: "fr_FR.UTF-8" }), "fr");
   assert.equal(detectCliLanguage({ LANG: "es_ES.UTF-8" }), "es");
+  assert.equal(detectCliLanguage({ LANG: "it_IT.UTF-8" }), "it");
   assert.equal(detectCliLanguage({ LANG: "en_US.UTF-8" }), "en");
   assert.equal(detectCliLanguage({ LANG: "C" }), "en");
   assert.equal(detectCliLanguage({}), "en");
@@ -125,6 +126,13 @@ test("renderLiveStatus formats model status table in default and specified langu
     assert.ok(logs.includes("Estado prismd"));
     assert.ok(logs.includes("Tiempo de actividad"));
     assert.ok(logs.includes("PROVEEDOR / MODELO"));
+
+    // 8. it
+    logs = "";
+    renderLiveStatus(mockData, "it");
+    assert.ok(logs.includes("Stato prismd"));
+    assert.ok(logs.includes("Tempo di attività"));
+    assert.ok(logs.includes("PROVIDER / MODELLO"));
   } finally {
     console.log = origLog;
   }
