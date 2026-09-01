@@ -224,7 +224,7 @@ PRISMD_API_KEY=<local-token> codex --profile prismd
 All clients share the same aliases (`free-auto`, `free-fast`, `free-code`) and the same local token. Point the client at the gateway and pick the matching protocol:
 
 - **Claude Code** — Anthropic Messages via `ANTHROPIC_BASE_URL=http://127.0.0.1:8787` and `ANTHROPIC_AUTH_TOKEN` (or `x-api-key`) set to your prismd token. Claude model names (`claude-...-sonnet-...` etc.) fall back to your configured aliases automatically. See `examples/claude-code/`.
-- **OpenCode / dsh / Pi** — OpenAI-compatible: set the provider `baseURL` to `http://127.0.0.1:8787/v1` and the API key to your prismd token. If the client supports choosing the wire protocol, prefer `responses` (same-protocol passthrough); `chat` works against Chat-type candidates. See `examples/opencode/`, `examples/dsh/`, `examples/pi/`.
+- **OpenCode / dsh / Pi** — OpenAI-compatible: set the provider `baseURL` to `http://127.0.0.1:8787/v1` and the API key to your prismd token. Both `responses` and `chat` wire protocols are supported with full cross-protocol conversion against all candidates. See `examples/opencode/`, `examples/dsh/`, `examples/pi/`.
 
 > These integrations are code-complete and covered by mock-upstream e2e journeys, but not yet validated against the real clients — config formats were written from docs and may need small adjustments. Report what you find.
 
@@ -271,7 +271,7 @@ prismd provides built-in, zero-dependency endpoints and tools to inspect routing
 
 **After upgrading, candidates disappeared.** The config format changed in M2 (provider keys moved from `apiKeyEnv` to `apiKeyField`). Re-run `npm run generate:config`; keys themselves live in `~/.prismd/` and need no migration.
 
-**Gateway won't start / 500 errors.** `prismd.json` is schema-validated at startup with precise error paths. Custom providers in `config.user.json` need a matching request builder in `src/providers/`; otherwise the gateway errors when it tries to use them.
+**Gateway won't start / 500 errors.** `prismd.json` is schema-validated at startup with precise error paths. Check that provider `baseUrl` and model definitions match the schema. Standard providers use default request builders; custom headers can be defined in `extraHeaders`.
 
 **Reset usage counters.** Stop the gateway and delete `data/prismd.sqlite`.
 
