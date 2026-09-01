@@ -143,4 +143,4 @@ For detailed setup instructions for major free providers (OpenRouter, Groq, Cere
 
 - **Frequent 429s**: Free model pools are congested. Reorder `free-auto` in `config.user.json` to prioritize less congested models, or add additional provider API keys.
 - **Candidates disappeared after upgrade**: Older versions used different config key fields. Run `npm run generate:config` to refresh `prismd.json`.
-- **Reset quota counters**: Stop the gateway and delete `data/prismd.sqlite`.
+- **Reset quota counters**: Click the "Reset usage" button in the Web Dashboard (`http://127.0.0.1:8787/ui`), or stop the gateway and delete `data/prismd.sqlite`.

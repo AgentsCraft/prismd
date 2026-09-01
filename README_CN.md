@@ -143,4 +143,4 @@ PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
 
 - **所有请求均返回 429**：公共免费模型池拥堵，可修改 `config.user.json` 将其他可用候选置顶，或添加更多提供商的 API Key。
 - **升级后候选模型消失**：此前版本升级调整了配置字段。重新执行 `npm run generate:config` 即可刷新配置。
-- **重置用量计数器**：停止网关并删除本地数据库文件 `data/prismd.sqlite` 即可重新计数。
+- **重置用量计数器**：可在 Web 控制台（`http://127.0.0.1:8787/ui`）点击右上角「Reset usage」按钮一键重置，或停止网关后删除本地数据库文件 `data/prismd.sqlite`。
