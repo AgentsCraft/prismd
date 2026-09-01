@@ -190,3 +190,194 @@ test("POST /v1/messages streaming returns Anthropic SSE event stream", async (t)
   assert.ok(text.includes("event: message_delta"));
   assert.ok(text.includes("event: message_stop"));
 });
+
+function startResponsesMock(): Promise<{ server: Server; port: number }> {
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    let raw = "";
+    req.on("data", (chunk: Buffer) => {
+      raw += chunk.toString();
+    });
+    req.on("end", () => {
+      let body: Record<string, unknown> | undefined;
+      try {
+        body = raw ? (JSON.parse(raw) as Record<string, unknown>) : undefined;
+      } catch {
+        body = undefined;
+      }
+
+      if (body?.stream === true) {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write('data: {"type":"response.created","response":{"id":"resp_mock_1"}}\n\n');
+        res.write('data: {"type":"response.output_text.delta","delta":"hello from responses upstream"}\n\n');
+        setTimeout(() => {
+          res.write(
+            'data: {"type":"response.completed","response":{"id":"resp_mock_1","usage":{"input_tokens":8,"output_tokens":4}}}\n\n',
+          );
+          res.write("data: [DONE]\n\n");
+          res.end();
+        }, 10);
+      } else {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            id: "resp_mock_json",
+            object: "response",
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "hello from responses upstream" }],
+              },
+            ],
+            usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12 },
+          }),
+        );
+      }
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      resolve({ server, port: (server.address() as AddressInfo).port });
+    });
+  });
+}
+
+async function setupResponsesGateway(mockPort: number): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "prismd-responses-ingress-"));
+  writeFileSync(
+    join(dir, "prismd.json"),
+    JSON.stringify(
+      makeValidConfig({
+        providers: {
+          openrouter: {
+            type: "responses",
+            baseUrl: `http://127.0.0.1:${mockPort}`,
+            apiKeyField: "openrouter",
+          },
+        },
+        models: {
+          "free-auto": {
+            candidates: [
+              {
+                provider: "openrouter",
+                providerModelId: "openrouter/free-model",
+                contextWindow: 131072,
+                maxOutputTokens: 8192,
+                supportsTools: true,
+                supportsReasoning: false,
+                limits: { dailyRequests: 100, rpm: 30, maxConcurrent: 2 },
+                tags: ["free"],
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  process.env.PRISMD_CONFIG_PATH = join(dir, "prismd.json");
+  process.env["PRISMD_API_KEY"] = "local-token-test";
+  process.env["OPENROUTER_API_KEY"] = "openrouter-key-test";
+  const dataPath = useTempDataPath();
+  resetConfigForTests();
+  resetRuntimeForTests();
+  return dataPath;
+}
+
+test("POST /v1/chat/completions converts and relays responses from Responses upstream", async (t) => {
+  const mock = await startResponsesMock();
+  t.after(() => new Promise((r) => mock.server.close(r)));
+  await setupResponsesGateway(mock.port);
+
+  // Non-streaming
+  const res = await app.request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer local-token-test",
+    },
+    body: JSON.stringify({
+      model: "free-auto",
+      messages: [{ role: "user", content: "test chat to responses" }],
+    }),
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "application/json");
+  const body = (await res.json()) as { choices: Array<{ message: { content: string } }>; usage: { prompt_tokens: number } };
+  assert.equal(body.choices[0].message.content, "hello from responses upstream");
+  assert.equal(body.usage.prompt_tokens, 8);
+
+  // Streaming
+  const streamRes = await app.request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer local-token-test",
+    },
+    body: JSON.stringify({
+      model: "free-auto",
+      messages: [{ role: "user", content: "stream chat to responses" }],
+      stream: true,
+    }),
+  });
+
+  assert.equal(streamRes.status, 200);
+  assert.equal(streamRes.headers.get("content-type"), "text/event-stream");
+  const streamText = await streamRes.text();
+  assert.ok(streamText.includes("hello from responses upstream"));
+  assert.ok(streamText.includes("[DONE]"));
+});
+
+test("POST /v1/messages converts and relays responses from Responses upstream", async (t) => {
+  const mock = await startResponsesMock();
+  t.after(() => new Promise((r) => mock.server.close(r)));
+  await setupResponsesGateway(mock.port);
+
+  // Non-streaming
+  const res = await app.request("/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": "local-token-test",
+    },
+    body: JSON.stringify({
+      model: "claude-3-5-sonnet-20241022",
+      messages: [{ role: "user", content: "test messages to responses" }],
+    }),
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "application/json");
+  const body = (await res.json()) as {
+    type: string;
+    role: string;
+    content: Array<{ type: string; text: string }>;
+  };
+  assert.equal(body.type, "message");
+  assert.equal(body.role, "assistant");
+  assert.equal(body.content[0].text, "hello from responses upstream");
+
+  // Streaming
+  const streamRes = await app.request("/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": "local-token-test",
+    },
+    body: JSON.stringify({
+      model: "free-auto",
+      messages: [{ role: "user", content: "stream messages to responses" }],
+      stream: true,
+    }),
+  });
+
+  assert.equal(streamRes.status, 200);
+  assert.equal(streamRes.headers.get("content-type"), "text/event-stream");
+  const streamText = await streamRes.text();
+  assert.ok(streamText.includes("event: message_start"));
+  assert.ok(streamText.includes("event: content_block_delta"));
+  assert.ok(streamText.includes("hello from responses upstream"));
+  assert.ok(streamText.includes("event: message_stop"));
+});

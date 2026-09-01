@@ -155,3 +155,106 @@ test("旅程 16b：OpenCode (POST /v1/chat/completions) 经网关完成非流式
   const body = (await res.json()) as { choices: Array<{ message: { content: string } }> };
   assert.equal(body.choices[0].message.content, "pong from opencode test");
 });
+
+test("旅程 16c：OpenCode/Claude 客户端经网关调用 Responses 上游，支持跨协议转换与 429 自动 failover", async (t) => {
+  const mockResponses = await startMockUpstream({
+    status: 429,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ error: { message: "rate limit exceeded" } }),
+  });
+  const mockChat = await startMockUpstream({
+    status: 200,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      id: "chatcmpl-failover-ok",
+      object: "chat.completion",
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: "hello after failover to chat" },
+          finish_reason: "stop",
+        },
+      ],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }),
+  });
+
+  t.after(async () => {
+    await mockResponses.close();
+    await mockChat.close();
+  });
+
+  const gateway = await startGateway(
+    makeValidConfig({
+      providers: {
+        openrouter: { type: "responses", baseUrl: mockResponses.url, apiKeyField: "openrouter" },
+        cerebras: { type: "chat", baseUrl: mockChat.url, apiKeyField: "cerebras" },
+      },
+      models: {
+        "free-auto": {
+          candidates: [
+            {
+              provider: "openrouter",
+              providerModelId: "openrouter/free-model",
+              contextWindow: 131072,
+              maxOutputTokens: 8192,
+              supportsTools: true,
+              supportsReasoning: false,
+              limits: { dailyRequests: 100, rpm: 30, maxConcurrent: 2 },
+              tags: ["free"],
+            },
+            {
+              provider: "cerebras",
+              providerModelId: "llama-3.3-70b",
+              contextWindow: 131072,
+              maxOutputTokens: 8192,
+              supportsTools: true,
+              supportsReasoning: false,
+              limits: { dailyRequests: 100, rpm: 30, maxConcurrent: 2 },
+              tags: ["chat"],
+            },
+          ],
+        },
+      },
+    }),
+  );
+  t.after(async () => {
+    await gateway.stop();
+  });
+
+  // OpenCode (chat) hits Responses candidate (429), fails over to Chat candidate (200)
+  const resChat = await fetch(`${gateway.url}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${GATEWAY_TOKEN}`,
+    },
+    body: JSON.stringify({
+      model: "free-auto",
+      messages: [{ role: "user", content: "hello" }],
+    }),
+  });
+
+  assert.equal(resChat.status, 200, logTail(gateway));
+  const chatBody = (await resChat.json()) as { choices: Array<{ message: { content: string } }> };
+  assert.equal(chatBody.choices[0].message.content, "hello after failover to chat");
+  assert.equal(mockResponses.requests.length, 1);
+  assert.equal(mockChat.requests.length, 1);
+
+  // Claude Code (messages) hits Responses candidate (429), fails over to Chat candidate (200)
+  const resMsg = await fetch(`${gateway.url}/v1/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": GATEWAY_TOKEN,
+    },
+    body: JSON.stringify({
+      model: "claude-3-5-sonnet",
+      messages: [{ role: "user", content: "hello" }],
+    }),
+  });
+
+  assert.equal(resMsg.status, 200, logTail(gateway));
+  const msgBody = (await resMsg.json()) as { content: Array<{ text: string }> };
+  assert.equal(msgBody.content[0].text, "hello after failover to chat");
+});

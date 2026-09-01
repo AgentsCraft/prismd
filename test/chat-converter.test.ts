@@ -4,6 +4,9 @@ import {
   convertResponsesToChatRequest,
   convertChatToResponsesResponse,
   ChatToResponsesStreamTransformer,
+  convertChatToResponsesRequest,
+  convertResponsesToChatResponse,
+  ResponsesToChatStreamTransformer,
 } from "../src/egress/chat-converter.js";
 
 test("convertResponsesToChatRequest handles simple string input", () => {
@@ -315,4 +318,217 @@ test("ChatToResponsesStreamTransformer translates streaming multiple tool calls 
   assert.equal(respObj.output[0].arguments, '{"city":"Paris"}');
   assert.equal(respObj.output[1].name, "get_time");
   assert.equal(respObj.output[1].arguments, '{"tz":"UTC"}');
+});
+
+test("convertChatToResponsesRequest converts chat messages, tool calls, and tool outputs", () => {
+  const chatBody = {
+    model: "dummy",
+    messages: [
+      { role: "system", content: "system prompt" },
+      { role: "user", content: "run tool" },
+      {
+        role: "assistant",
+        content: "calling tool",
+        tool_calls: [
+          {
+            id: "call_99",
+            type: "function",
+            function: {
+              name: "calculator",
+              arguments: '{"expr":"2+2"}',
+            },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        tool_call_id: "call_99",
+        content: '{"result":4}',
+      },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "calculator",
+          description: "calc",
+          parameters: { type: "object" },
+        },
+      },
+    ],
+    max_tokens: 2048,
+    temperature: 0.5,
+    stream: true,
+  };
+
+  const req = convertChatToResponsesRequest(chatBody, "openrouter/free-model");
+  assert.equal(req.model, "openrouter/free-model");
+  assert.equal(req.max_output_tokens, 2048);
+  assert.equal(req.temperature, 0.5);
+  assert.equal(req.stream, true);
+
+  assert.deepEqual(req.tools, [
+    {
+      type: "function",
+      name: "calculator",
+      description: "calc",
+      parameters: { type: "object" },
+    },
+  ]);
+
+  const input = req.input as Array<Record<string, unknown>>;
+  assert.equal(input.length, 5);
+  assert.deepEqual(input[0], {
+    type: "message",
+    role: "system",
+    content: [{ type: "input_text", text: "system prompt" }],
+  });
+  assert.deepEqual(input[1], {
+    type: "message",
+    role: "user",
+    content: [{ type: "input_text", text: "run tool" }],
+  });
+  assert.deepEqual(input[2], {
+    type: "message",
+    role: "assistant",
+    content: [{ type: "output_text", text: "calling tool" }],
+  });
+  assert.deepEqual(input[3], {
+    type: "function_call",
+    call_id: "call_99",
+    name: "calculator",
+    arguments: '{"expr":"2+2"}',
+  });
+  assert.deepEqual(input[4], {
+    type: "function_call_output",
+    call_id: "call_99",
+    output: '{"result":4}',
+  });
+});
+
+test("convertResponsesToChatResponse converts Responses JSON to Chat Completions format", () => {
+  const respBody = {
+    id: "resp_12345",
+    created_at: 1788200000,
+    model: "openrouter/free-model",
+    output: [
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Here is your calculation:" }],
+      },
+      {
+        type: "function_call",
+        call_id: "call_calc",
+        name: "calculator",
+        arguments: '{"expr":"1+1"}',
+      },
+    ],
+    usage: {
+      input_tokens: 12,
+      output_tokens: 8,
+      total_tokens: 20,
+    },
+  };
+
+  const chatResp = convertResponsesToChatResponse(respBody, "free-auto");
+  assert.equal(chatResp.id, "chatcmpl-12345");
+  assert.equal(chatResp.object, "chat.completion");
+  assert.equal(chatResp.model, "free-auto");
+  assert.deepEqual(chatResp.usage, {
+    prompt_tokens: 12,
+    completion_tokens: 8,
+    total_tokens: 20,
+  });
+
+  const choices = chatResp.choices as Array<Record<string, unknown>>;
+  assert.equal(choices.length, 1);
+  assert.equal(choices[0].finish_reason, "tool_calls");
+  const msg = choices[0].message as Record<string, unknown>;
+  assert.equal(msg.role, "assistant");
+  assert.equal(msg.content, "Here is your calculation:");
+  assert.deepEqual(msg.tool_calls, [
+    {
+      id: "call_calc",
+      type: "function",
+      function: {
+        name: "calculator",
+        arguments: '{"expr":"1+1"}',
+      },
+    },
+  ]);
+});
+
+test("ResponsesToChatStreamTransformer translates Responses SSE events into Chat SSE stream", () => {
+  const transformer = new ResponsesToChatStreamTransformer("free-auto");
+  const events: string[] = [];
+
+  const chunks = [
+    JSON.stringify({ type: "response.created", response: { id: "resp_str1", model: "openrouter/model" } }),
+    JSON.stringify({ type: "response.output_text.delta", delta: "hello " }),
+    JSON.stringify({ type: "response.output_text.delta", delta: "from responses" }),
+    JSON.stringify({
+      type: "response.completed",
+      response: {
+        id: "resp_str1",
+        usage: { input_tokens: 10, output_tokens: 4 },
+      },
+    }),
+    "[DONE]",
+  ];
+
+  for (const c of chunks) {
+    events.push(...transformer.processDataPayload(c));
+  }
+
+  const parsed = events
+    .filter((e) => !e.includes("[DONE]"))
+    .map((e) => JSON.parse(e.replace(/^data:\s*/, "").trim()) as { choices: Array<{ delta: { content?: string; role?: string }; finish_reason?: string | null }>; usage?: unknown });
+
+  assert.ok(events[events.length - 1].includes("[DONE]"));
+  assert.equal(parsed[0].choices[0].delta.role, "assistant");
+  assert.equal(parsed[1].choices[0].delta.content, "hello ");
+  assert.equal(parsed[2].choices[0].delta.content, "from responses");
+  assert.equal(parsed[3].choices[0].finish_reason, "stop");
+  assert.deepEqual(parsed[3].usage, { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 });
+});
+
+test("ResponsesToChatStreamTransformer translates Responses SSE tool calls into Chat SSE stream", () => {
+  const transformer = new ResponsesToChatStreamTransformer("free-auto");
+  const events: string[] = [];
+
+  const chunks = [
+    JSON.stringify({
+      type: "response.output_item.added",
+      item: { id: "call_01", type: "function_call", name: "query_db" },
+    }),
+    JSON.stringify({
+      type: "response.function_call_arguments.delta",
+      call_id: "call_01",
+      delta: '{"q":',
+    }),
+    JSON.stringify({
+      type: "response.function_call_arguments.delta",
+      call_id: "call_01",
+      delta: '"select 1"}',
+    }),
+    JSON.stringify({
+      type: "response.completed",
+      response: {
+        usage: { input_tokens: 5, output_tokens: 10 },
+      },
+    }),
+    "[DONE]",
+  ];
+
+  for (const c of chunks) {
+    events.push(...transformer.processDataPayload(c));
+  }
+
+  const parsed = events
+    .filter((e) => !e.includes("[DONE]"))
+    .map((e) => JSON.parse(e.replace(/^data:\s*/, "").trim()) as Record<string, unknown>);
+
+  const finishChunk = parsed[parsed.length - 1] as { choices: Array<{ finish_reason: string }> };
+  assert.equal(finishChunk.choices[0].finish_reason, "tool_calls");
 });

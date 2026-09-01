@@ -2,12 +2,14 @@
   "aliases": {
     "free-auto": {
       "candidates": [
-        "poolside/laguna-s-2.1:free",
-        "cohere/north-mini-code:free"
+        "cohere/north-mini-code:free",
+        "llama-3.3-70b",
+        "poolside/laguna-s-2.1:free"
       ]
     },
     "free-fast": {
       "candidates": [
+        "llama3.1-8b",
         "poolside/laguna-xs-2.1:free"
       ]
     },

@@ -1,4 +1,14 @@
 import type { ResponsesRequestBody } from "../types/protocol.js";
+import {
+  SseEventSplitter,
+  dataPayloads,
+  sseErrorEvent,
+  type StreamAccounting,
+  type UpstreamCallOptions,
+} from "./raw.js";
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 export interface ChatMessage {
   role: string;
@@ -736,4 +746,688 @@ export class ChatToResponsesStreamTransformer {
   private formatSse(obj: Record<string, unknown>): string {
     return `data: ${JSON.stringify(obj)}\n\n`;
   }
+}
+
+/**
+ * Convert Chat Completions request body to OpenAI Responses request body.
+ */
+export function convertChatToResponsesRequest(
+  chatBody: Record<string, unknown>,
+  model: string,
+): ResponsesRequestBody {
+  const input: Array<Record<string, unknown>> = [];
+  const rawMessages = Array.isArray(chatBody.messages) ? chatBody.messages : [];
+
+  for (const m of rawMessages) {
+    if (!m || typeof m !== "object") continue;
+    const msg = m as Record<string, unknown>;
+    const role = String(msg.role ?? "user");
+
+    // 1. Tool response message (role: "tool")
+    if (role === "tool") {
+      const callId = String(msg.tool_call_id ?? msg.id ?? "");
+      let output: unknown = msg.content ?? "";
+      if (typeof output !== "string") {
+        output = JSON.stringify(output);
+      }
+      input.push({
+        type: "function_call_output",
+        call_id: callId,
+        output: output as string,
+      });
+      continue;
+    }
+
+    // 2. Assistant message with tool calls
+    if (role === "assistant" && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+      if (typeof msg.content === "string" && msg.content.length > 0) {
+        input.push({
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: msg.content }],
+        });
+      }
+      for (const tc of msg.tool_calls) {
+        if (!tc || typeof tc !== "object") continue;
+        const toolCall = tc as Record<string, unknown>;
+        const fn = (toolCall.function ?? {}) as Record<string, unknown>;
+        const callId = String(toolCall.id ?? "");
+        const name = String(fn.name ?? "");
+        const args = typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {});
+        input.push({
+          type: "function_call",
+          call_id: callId,
+          name,
+          arguments: args,
+        });
+      }
+      continue;
+    }
+
+    // 3. Standard message (system, user, assistant, developer)
+    if (typeof msg.content === "string") {
+      input.push({
+        type: "message",
+        role: role === "developer" ? "developer" : role === "system" ? "system" : role === "assistant" ? "assistant" : "user",
+        content: [{ type: role === "assistant" ? "output_text" : "input_text", text: msg.content }],
+      });
+    } else if (Array.isArray(msg.content)) {
+      input.push({
+        type: "message",
+        role: role === "developer" ? "developer" : role === "system" ? "system" : role === "assistant" ? "assistant" : "user",
+        content: msg.content,
+      });
+    } else {
+      input.push({
+        type: "message",
+        role,
+        content: [{ type: role === "assistant" ? "output_text" : "input_text", text: "" }],
+      });
+    }
+  }
+
+  const responsesRequest: ResponsesRequestBody = {
+    model,
+    input,
+  };
+
+  // Convert tools
+  if (Array.isArray(chatBody.tools) && chatBody.tools.length > 0) {
+    responsesRequest.tools = chatBody.tools.map((t) => {
+      if (!t || typeof t !== "object") return t;
+      const tool = t as Record<string, unknown>;
+      if (tool.function && typeof tool.function === "object") {
+        const fn = tool.function as Record<string, unknown>;
+        return {
+          type: "function",
+          name: fn.name,
+          description: fn.description,
+          parameters: fn.parameters,
+          ...(fn.strict !== undefined ? { strict: fn.strict } : {}),
+        };
+      }
+      return tool;
+    });
+  }
+
+  // Convert tool_choice
+  if (chatBody.tool_choice !== undefined) {
+    responsesRequest.tool_choice = chatBody.tool_choice;
+  }
+
+  // Convert max_tokens -> max_output_tokens
+  if (typeof chatBody.max_tokens === "number") {
+    responsesRequest.max_output_tokens = chatBody.max_tokens;
+  } else if (typeof chatBody.max_output_tokens === "number") {
+    responsesRequest.max_output_tokens = chatBody.max_output_tokens;
+  }
+
+  if (chatBody.stream === true) {
+    responsesRequest.stream = true;
+  }
+
+  const passthroughKeys = [
+    "temperature",
+    "top_p",
+    "frequency_penalty",
+    "presence_penalty",
+    "stop",
+    "seed",
+    "user",
+  ];
+  for (const key of passthroughKeys) {
+    if (chatBody[key] !== undefined) {
+      responsesRequest[key] = chatBody[key];
+    }
+  }
+
+  return responsesRequest;
+}
+
+/**
+ * Convert OpenAI Responses JSON response to Chat Completions JSON response.
+ */
+export function convertResponsesToChatResponse(
+  responsesResponse: Record<string, unknown>,
+  requestedModel: string,
+): Record<string, unknown> {
+  const id = typeof responsesResponse.id === "string" ? responsesResponse.id : `resp_${Date.now()}`;
+  const chatId = id.startsWith("resp_")
+    ? `chatcmpl-${id.slice(5)}`
+    : id.startsWith("chatcmpl-")
+      ? id
+      : `chatcmpl-${id}`;
+  const createdAt =
+    typeof responsesResponse.created_at === "number"
+      ? responsesResponse.created_at
+      : typeof responsesResponse.created === "number"
+        ? responsesResponse.created
+        : Math.floor(Date.now() / 1000);
+
+  const outputs = Array.isArray(responsesResponse.output) ? responsesResponse.output : [];
+  let content = "";
+  const toolCalls: Array<{
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }> = [];
+
+  for (const item of outputs) {
+    if (!item || typeof item !== "object") continue;
+    const raw = item as Record<string, unknown>;
+    if (raw.type === "message" || raw.role === "assistant") {
+      if (typeof raw.content === "string") {
+        content += raw.content;
+      } else if (Array.isArray(raw.content)) {
+        for (const part of raw.content) {
+          if (part && typeof part === "object") {
+            const p = part as Record<string, unknown>;
+            if (typeof p.text === "string") {
+              content += p.text;
+            }
+          }
+        }
+      }
+    } else if (raw.type === "function_call") {
+      const callId = String(raw.call_id ?? raw.id ?? `call_${toolCalls.length}`);
+      const name = String(raw.name ?? "");
+      const args =
+        typeof raw.arguments === "string" ? raw.arguments : JSON.stringify(raw.arguments ?? {});
+      toolCalls.push({
+        id: callId,
+        type: "function",
+        function: {
+          name,
+          arguments: args,
+        },
+      });
+    }
+  }
+
+  const rawUsage = (responsesResponse.usage ?? {}) as Record<string, unknown>;
+  const promptTokens =
+    typeof rawUsage.input_tokens === "number"
+      ? rawUsage.input_tokens
+      : typeof rawUsage.prompt_tokens === "number"
+        ? rawUsage.prompt_tokens
+        : 0;
+  const completionTokens =
+    typeof rawUsage.output_tokens === "number"
+      ? rawUsage.output_tokens
+      : typeof rawUsage.completion_tokens === "number"
+        ? rawUsage.completion_tokens
+        : 0;
+  const totalTokens =
+    typeof rawUsage.total_tokens === "number"
+      ? rawUsage.total_tokens
+      : promptTokens + completionTokens;
+
+  const finishReason = toolCalls.length > 0 ? "tool_calls" : "stop";
+
+  return {
+    id: chatId,
+    object: "chat.completion",
+    created: createdAt,
+    model: requestedModel,
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: toolCalls.length > 0 && content.length === 0 ? null : content,
+          ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        },
+        finish_reason: finishReason,
+      },
+    ],
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: totalTokens,
+    },
+  };
+}
+
+/**
+ * State machine transforming Responses SSE event payloads to Chat Completions SSE events.
+ */
+export class ResponsesToChatStreamTransformer {
+  private chatId: string;
+  private model: string;
+  private createdAt: number;
+  private roleSent = false;
+  private toolCallIndexMap = new Map<string, number>();
+  private nextToolCallIndex = 0;
+  private hasToolCalls = false;
+  private allCompleted = false;
+  private usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+
+  constructor(defaultModel: string) {
+    const rawId = `resp_${Date.now()}`;
+    this.chatId = `chatcmpl-${rawId.slice(5)}`;
+    this.model = defaultModel;
+    this.createdAt = Math.floor(Date.now() / 1000);
+  }
+
+  getUsage(): { inputTokens?: number; outputTokens?: number } | undefined {
+    if (this.usage.inputTokens !== undefined || this.usage.outputTokens !== undefined) {
+      return {
+        inputTokens: this.usage.inputTokens,
+        outputTokens: this.usage.outputTokens,
+      };
+    }
+    return undefined;
+  }
+
+  processDataPayload(payload: string): string[] {
+    const trimmed = payload.trim();
+    if (trimmed === "[DONE]") {
+      return this.finish();
+    }
+    if (trimmed === "" || trimmed.startsWith(":")) {
+      return [];
+    }
+
+    let chunk: Record<string, unknown>;
+    try {
+      chunk = JSON.parse(trimmed) as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+
+    const events: string[] = [];
+
+    // Capture IDs
+    if (typeof chunk.id === "string") {
+      this.chatId = chunk.id.startsWith("resp_")
+        ? `chatcmpl-${chunk.id.slice(5)}`
+        : chunk.id.startsWith("chatcmpl-")
+          ? chunk.id
+          : `chatcmpl-${chunk.id}`;
+    }
+    if (typeof chunk.model === "string") {
+      this.model = chunk.model;
+    }
+    if (typeof chunk.created_at === "number") {
+      this.createdAt = chunk.created_at;
+    }
+
+    // Capture response object if nested
+    const responseObj =
+      chunk.response && typeof chunk.response === "object"
+        ? (chunk.response as Record<string, unknown>)
+        : undefined;
+
+    if (responseObj) {
+      if (typeof responseObj.id === "string") {
+        this.chatId = responseObj.id.startsWith("resp_")
+          ? `chatcmpl-${responseObj.id.slice(5)}`
+          : responseObj.id.startsWith("chatcmpl-")
+            ? responseObj.id
+            : `chatcmpl-${responseObj.id}`;
+      }
+      if (typeof responseObj.model === "string") {
+        this.model = responseObj.model;
+      }
+      if (responseObj.usage && typeof responseObj.usage === "object") {
+        const u = responseObj.usage as Record<string, unknown>;
+        if (typeof u.input_tokens === "number") this.usage.inputTokens = u.input_tokens;
+        if (typeof u.output_tokens === "number") this.usage.outputTokens = u.output_tokens;
+      }
+    }
+
+    if (chunk.usage && typeof chunk.usage === "object") {
+      const u = chunk.usage as Record<string, unknown>;
+      if (typeof u.input_tokens === "number") this.usage.inputTokens = u.input_tokens;
+      if (typeof u.output_tokens === "number") this.usage.outputTokens = u.output_tokens;
+      if (typeof u.prompt_tokens === "number") this.usage.inputTokens = u.prompt_tokens;
+      if (typeof u.completion_tokens === "number") this.usage.outputTokens = u.completion_tokens;
+    }
+
+    const type = String(chunk.type ?? "");
+
+    // 1. Initial role event
+    if (!this.roleSent) {
+      this.roleSent = true;
+      events.push(
+        this.formatSse({
+          id: this.chatId,
+          object: "chat.completion.chunk",
+          created: this.createdAt,
+          model: this.model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: "" },
+              finish_reason: null,
+            },
+          ],
+        }),
+      );
+    }
+
+    // 2. Text delta
+    if (type === "response.text.delta" || type === "response.output_text.delta") {
+      const delta = typeof chunk.delta === "string" ? chunk.delta : "";
+      if (delta.length > 0) {
+        events.push(
+          this.formatSse({
+            id: this.chatId,
+            object: "chat.completion.chunk",
+            created: this.createdAt,
+            model: this.model,
+            choices: [
+              {
+                index: 0,
+                delta: { content: delta },
+                finish_reason: null,
+              },
+            ],
+          }),
+        );
+      }
+    }
+
+    // 3. Tool call added
+    if (type === "response.output_item.added") {
+      const item =
+        chunk.item && typeof chunk.item === "object"
+          ? (chunk.item as Record<string, unknown>)
+          : undefined;
+      if (item && item.type === "function_call") {
+        this.hasToolCalls = true;
+        const callId = String(item.call_id ?? item.id ?? `call_${this.nextToolCallIndex}`);
+        const name = String(item.name ?? "");
+        const tcIndex = this.nextToolCallIndex++;
+        this.toolCallIndexMap.set(callId, tcIndex);
+
+        events.push(
+          this.formatSse({
+            id: this.chatId,
+            object: "chat.completion.chunk",
+            created: this.createdAt,
+            model: this.model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: tcIndex,
+                      id: callId,
+                      type: "function",
+                      function: {
+                        name,
+                        arguments: "",
+                      },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          }),
+        );
+      }
+    }
+
+    // 4. Function call arguments delta
+    if (type === "response.function_call_arguments.delta") {
+      this.hasToolCalls = true;
+      const callId = String(chunk.call_id ?? "");
+      let tcIndex = this.toolCallIndexMap.get(callId);
+      if (tcIndex === undefined) {
+        tcIndex = this.nextToolCallIndex++;
+        this.toolCallIndexMap.set(callId, tcIndex);
+      }
+      const delta = typeof chunk.delta === "string" ? chunk.delta : "";
+      if (delta.length > 0) {
+        events.push(
+          this.formatSse({
+            id: this.chatId,
+            object: "chat.completion.chunk",
+            created: this.createdAt,
+            model: this.model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: tcIndex,
+                      function: {
+                        arguments: delta,
+                      },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          }),
+        );
+      }
+    }
+
+    // 5. Completed
+    if (type === "response.completed") {
+      return [...events, ...this.finish()];
+    }
+
+    return events;
+  }
+
+  finish(): string[] {
+    if (this.allCompleted) return [];
+    this.allCompleted = true;
+
+    const events: string[] = [];
+    if (!this.roleSent) {
+      this.roleSent = true;
+      events.push(
+        this.formatSse({
+          id: this.chatId,
+          object: "chat.completion.chunk",
+          created: this.createdAt,
+          model: this.model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: "" },
+              finish_reason: null,
+            },
+          ],
+        }),
+      );
+    }
+
+    const finishReason = this.hasToolCalls ? "tool_calls" : "stop";
+    const chunkObj: Record<string, unknown> = {
+      id: this.chatId,
+      object: "chat.completion.chunk",
+      created: this.createdAt,
+      model: this.model,
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: finishReason,
+        },
+      ],
+    };
+
+    if (this.usage.inputTokens !== undefined || this.usage.outputTokens !== undefined) {
+      chunkObj.usage = {
+        prompt_tokens: this.usage.inputTokens ?? 0,
+        completion_tokens: this.usage.outputTokens ?? 0,
+        total_tokens: (this.usage.inputTokens ?? 0) + (this.usage.outputTokens ?? 0),
+      };
+    }
+
+    events.push(this.formatSse(chunkObj));
+    events.push("data: [DONE]\n\n");
+    return events;
+  }
+
+  private formatSse(obj: Record<string, unknown>): string {
+    return `data: ${JSON.stringify(obj)}\n\n`;
+  }
+}
+
+export function wrapResponsesStreamToChat(
+  upstream: Response,
+  accounting: StreamAccounting,
+  options: UpstreamCallOptions,
+  startedAtMs: number,
+  model: string,
+): Response {
+  const reader = upstream.body!.getReader();
+  const splitter = new SseEventSplitter();
+  const transformer = new ResponsesToChatStreamTransformer(model);
+  let idleTimer: NodeJS.Timeout | undefined;
+  let firstTokenSent = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      void pump(controller);
+    },
+    cancel() {
+      clearIdle();
+      reader.cancel().catch(() => {});
+    },
+  });
+
+  function clearIdle(): void {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = undefined;
+    }
+  }
+
+  function abort(controller: ReadableStreamDefaultController<Uint8Array>, code: string, message: string): void {
+    clearIdle();
+    accounting.aborted = true;
+    try {
+      controller.enqueue(encoder.encode(sseErrorEvent(code, message)));
+    } catch {
+      /* controller already closed */
+    }
+    try {
+      controller.close();
+    } catch {
+      /* controller already closed */
+    }
+    reader.cancel().catch(() => {});
+  }
+
+  function resetIdle(controller: ReadableStreamDefaultController<Uint8Array>): void {
+    clearIdle();
+    if (options.streamIdleTimeoutMs > 0) {
+      idleTimer = setTimeout(() => {
+        abort(controller, "stream_idle_timeout", `no upstream data for ${options.streamIdleTimeoutMs}ms`);
+      }, options.streamIdleTimeoutMs);
+    }
+  }
+
+  function emitConvertedEvents(controller: ReadableStreamDefaultController<Uint8Array>, events: string[]): void {
+    for (const eventStr of events) {
+      if (!firstTokenSent) {
+        firstTokenSent = true;
+        accounting.firstTokenMs = Date.now() - startedAtMs;
+        options.onFirstToken?.(accounting.firstTokenMs);
+      }
+      const bytes = encoder.encode(eventStr);
+      options.onChunk?.(bytes.byteLength);
+
+      for (const payload of dataPayloads(eventStr.trim())) {
+        accounting.outputChars += payload.length;
+      }
+
+      controller.enqueue(bytes);
+    }
+    const usage = transformer.getUsage();
+    if (usage) {
+      accounting.realUsage = usage;
+    }
+  }
+
+  async function pump(controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> {
+    try {
+      resetIdle(controller);
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        resetIdle(controller);
+        const text = decoder.decode(value, { stream: true });
+        for (const eventBlock of splitter.push(text)) {
+          for (const payload of dataPayloads(eventBlock)) {
+            const convertedEvents = transformer.processDataPayload(payload);
+            emitConvertedEvents(controller, convertedEvents);
+          }
+        }
+      }
+
+      const rest = splitter.end();
+      for (const eventBlock of rest) {
+        for (const payload of dataPayloads(eventBlock)) {
+          const convertedEvents = transformer.processDataPayload(payload);
+          emitConvertedEvents(controller, convertedEvents);
+        }
+      }
+
+      const finishEvents = transformer.finish();
+      emitConvertedEvents(controller, finishEvents);
+
+      clearIdle();
+      controller.close();
+    } catch (err) {
+      abort(controller, "stream_error", `upstream stream interrupted: ${(err as Error).message}`);
+    }
+  }
+
+  return new Response(stream, {
+    status: upstream.status,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+export async function bufferAndConvertResponsesJson(
+  upstream: Response,
+  accounting: StreamAccounting,
+  options: UpstreamCallOptions,
+  startedAtMs: number,
+  model: string,
+): Promise<Response> {
+  const text = await upstream.text();
+  accounting.firstTokenMs = Date.now() - startedAtMs;
+  options.onFirstToken?.(accounting.firstTokenMs);
+
+  let chatBodyStr = text;
+  try {
+    const responsesJson = JSON.parse(text) as Record<string, unknown>;
+    const chatJson = convertResponsesToChatResponse(responsesJson, model);
+    chatBodyStr = JSON.stringify(chatJson);
+
+    const usage = chatJson.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined;
+    if (usage) {
+      accounting.realUsage = {
+        inputTokens: usage.prompt_tokens,
+        outputTokens: usage.completion_tokens,
+      };
+    }
+  } catch {
+    /* not JSON - pass text through */
+  }
+
+  accounting.outputChars = chatBodyStr.length;
+  options.onChunk?.(chatBodyStr.length);
+
+  return new Response(chatBodyStr, {
+    status: upstream.status,
+    headers: { "content-type": "application/json" },
+  });
 }

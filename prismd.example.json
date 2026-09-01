@@ -39,6 +39,23 @@
             "long-context",
             "code"
           ]
+        },
+        {
+          "contextWindow": 131072,
+          "limits": {
+            "dailyRequests": 14400,
+            "maxConcurrent": 2,
+            "rpm": 30
+          },
+          "maxOutputTokens": 8192,
+          "provider": "cerebras",
+          "providerModelId": "llama-3.3-70b",
+          "supportsReasoning": false,
+          "supportsTools": true,
+          "tags": [
+            "fast",
+            "chat"
+          ]
         }
       ],
       "description": "Auto-select a free coding model, with fallback candidates"
@@ -79,6 +96,23 @@
             "free",
             "long-context"
           ]
+        },
+        {
+          "contextWindow": 131072,
+          "limits": {
+            "dailyRequests": 14400,
+            "maxConcurrent": 2,
+            "rpm": 30
+          },
+          "maxOutputTokens": 8192,
+          "provider": "cerebras",
+          "providerModelId": "llama-3.3-70b",
+          "supportsReasoning": false,
+          "supportsTools": true,
+          "tags": [
+            "fast",
+            "chat"
+          ]
         }
       ],
       "description": "Free models tuned for code generation"
@@ -100,6 +134,23 @@
           "tags": [
             "free",
             "long-context"
+          ]
+        },
+        {
+          "contextWindow": 8192,
+          "limits": {
+            "dailyRequests": 14400,
+            "maxConcurrent": 2,
+            "rpm": 30
+          },
+          "maxOutputTokens": 8192,
+          "provider": "cerebras",
+          "providerModelId": "llama3.1-8b",
+          "supportsReasoning": false,
+          "supportsTools": true,
+          "tags": [
+            "fast",
+            "chat"
           ]
         }
       ],
@@ -127,6 +178,14 @@
     "streamIdleTimeoutMs": 300000
   },
   "providers": {
+    "cerebras": {
+      "apiKeyField": "cerebras",
+      "auth": {
+        "type": "api_key"
+      },
+      "baseUrl": "https://api.cerebras.ai/v1",
+      "type": "chat"
+    },
     "groq": {
       "apiKeyField": "groq",
       "auth": {

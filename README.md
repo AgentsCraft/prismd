@@ -1,6 +1,6 @@
 # prismd
 
-Local-first LLM gateway aggregating free/low-quota model APIs (OpenRouter, Groq, ...) for coding agents. One local endpoint, one alias (`free-auto`), and prismd handles the rest: pick a working candidate, avoid exhausted quotas, fail over when an upstream 429s, and tell you what happened.
+Local-first LLM gateway aggregating free/low-quota model APIs (OpenRouter, Groq, Cerebras) for coding agents. One local endpoint, one alias (`free-auto`), and prismd handles the rest: pick a working candidate, avoid exhausted quotas, fail over when an upstream 429s, and tell you what happened. Speaks three protocols (OpenAI Responses, OpenAI Chat Completions, Anthropic Messages) so Codex CLI, Claude Code, OpenCode and friends can all share the same gateway.
 
 ## Support
 
@@ -8,11 +8,14 @@ If prismd saves you time or quota, consider buying the author a coffee:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
 
-## What it does (current status: M2b)
+## What it does (current status: M3/M4 merged, real-world acceptance pending)
 
 | Capability | Behavior |
 | --- | --- |
-| **Alias routing** | `POST /v1/responses` with `"model": "free-auto"` resolves to an ordered candidate list from your config |
+| **Multi-protocol entrypoints** | `POST /v1/responses` (OpenAI Responses, Codex), `POST /v1/chat/completions` (OpenAI Chat, OpenCode/dsh), `POST /v1/messages` (Anthropic Messages, Claude Code) — all share the same aliases, routing, quota and failover |
+| **Protocol conversion** | Chat↔Responses (egress, incl. streaming tool-call events) and Anthropic↔Chat (ingress); same-protocol upstreams pass through untouched |
+| **Claude model fallback** | Claude Code's `claude-*-sonnet/haiku/opus-*` style names resolve to configured aliases through a 9-step fallback chain (date suffix, `-latest`, semantic family, `free-auto`), so Claude Code works with zero config |
+| **Alias routing** | `"model": "free-auto"` resolves to an ordered candidate list from your config |
 | **Candidate filtering** | Hard-excludes candidates that ran out of daily quota, whose context window is too small for the input, or that are unhealthy; then soft-demotes candidates at ≥ 80% daily quota to the back of the queue |
 | **Failover** | On 401/403/429/5xx/connection errors/connect timeouts *before the stream starts*, tries the next candidate (up to `maxCandidatesPerRequest`); request-class 4xx (400/404/422) pass through unchanged; after the stream starts it never retries |
 | **Quota accounting** | Counts requests and tokens (real usage when the upstream reports it, chars/4 estimate otherwise) into a local SQLite store; survives restarts |
@@ -64,13 +67,14 @@ prismd reads API keys from **one** place: the `~/.prismd/` directory. Keys never
 | --- | --- | --- | --- |
 | `openrouter` | `OPENROUTER_API_KEY` | `OPENROUTER_API_KEY=...` | `openrouter: ...` |
 | `groq` | `GROQ_API_KEY` | `GROQ_API_KEY=...` | `groq: ...` |
+| `cerebras` | `CEREBRAS_API_KEY` | `CEREBRAS_API_KEY=...` | `cerebras: ...` |
 | `prismd` (local token) | `PRISMD_API_KEY` | `PRISMD_API_KEY=...` | `prismd: ...` |
 
 - The env var name for a field is the field name uppercased plus `_API_KEY`.
 - Both file formats are optional and can coexist; `.env` is `KEY=value` lines, `keys.yaml` is flat `field: value` lines. Examples ship in `.env.example` / `keys.yaml.example`.
 - `chmod 600` both files. prismd warns at startup if they are world-readable.
 - Keys are read once at startup; change them and restart.
-- The local bearer token (`prismd` field) protects `POST /v1/responses`; every request must send `Authorization: Bearer <token>`. A wrong or missing token gets 401 and never reaches the upstream.
+- The local token (`prismd` field) protects all three POST entrypoints; every request must send `Authorization: Bearer <token>` or `x-api-key: <token>` (Claude Code's default). A wrong or missing token gets 401 and never reaches the upstream.
 
 ## Configuration
 
@@ -127,7 +131,7 @@ Candidates can also be defined inline (e.g. a model not in presets):
 }
 ```
 
-Adding a new provider requires code support (a request builder in `src/providers/` + registration in `src/egress/responses.ts`); a provider that exists in `prismd.json` without one will error.
+Adding a new provider is supported out of the box with standard `baseUrl` endpoints (`/responses` or `/chat/completions`), with optional custom request builders in `src/providers/` for provider-specific headers. All entrypoints (`/v1/responses`, `/v1/chat/completions`, `/v1/messages`) seamlessly convert to and from any provider protocol.
 
 ## Routing: how a request picks a candidate
 
@@ -215,6 +219,15 @@ PRISMD_API_KEY=<local-token> codex --profile prismd
 - The profile's `model` is the gateway alias `free-auto`; `model_catalog_json` gives Codex real metadata (context window etc.) so it stops warning about unknown models. The catalog has one entry per alias with the **minimum** context window across its candidates — a conservative value so a small-window candidate never overflows.
 - Keep Codex retries low: `request_max_retries = 0` (let the gateway do failover — it knows candidate health and quota) and `stream_max_retries = 1` (stream reconnects; the gateway never retries mid-stream, so the two layers don't stack).
 
+## Other clients (Claude Code, OpenCode, dsh, Pi)
+
+All clients share the same aliases (`free-auto`, `free-fast`, `free-code`) and the same local token. Point the client at the gateway and pick the matching protocol:
+
+- **Claude Code** — Anthropic Messages via `ANTHROPIC_BASE_URL=http://127.0.0.1:8787` and `ANTHROPIC_AUTH_TOKEN` (or `x-api-key`) set to your prismd token. Claude model names (`claude-...-sonnet-...` etc.) fall back to your configured aliases automatically. See `examples/claude-code/`.
+- **OpenCode / dsh / Pi** — OpenAI-compatible: set the provider `baseURL` to `http://127.0.0.1:8787/v1` and the API key to your prismd token. Both `responses` and `chat` wire protocols are supported with full cross-protocol conversion against all candidates. See `examples/opencode/`, `examples/dsh/`, `examples/pi/`.
+
+> These integrations are code-complete and covered by mock-upstream e2e journeys, but not yet validated against the real clients — config formats were written from docs and may need small adjustments. Report what you find.
+
 ## Status, Web UI & Discovery
 
 prismd provides built-in, zero-dependency endpoints and tools to inspect routing state, candidate health, and token usage in real time:
@@ -258,7 +271,7 @@ prismd provides built-in, zero-dependency endpoints and tools to inspect routing
 
 **After upgrading, candidates disappeared.** The config format changed in M2 (provider keys moved from `apiKeyEnv` to `apiKeyField`). Re-run `npm run generate:config`; keys themselves live in `~/.prismd/` and need no migration.
 
-**Gateway won't start / 500 errors.** `prismd.json` is schema-validated at startup with precise error paths. Custom providers in `config.user.json` need a matching request builder in `src/providers/`; otherwise the gateway errors when it tries to use them.
+**Gateway won't start / 500 errors.** `prismd.json` is schema-validated at startup with precise error paths. Check that provider `baseUrl` and model definitions match the schema. Standard providers use default request builders; custom headers can be defined in `extraHeaders`.
 
 **Reset usage counters.** Stop the gateway and delete `data/prismd.sqlite`.
 
@@ -270,13 +283,14 @@ prismd provides built-in, zero-dependency endpoints and tools to inspect routing
 - `config.schema.json` — JSON Schema (draft-07) validating `prismd.json`.
 - `scripts/generate-config.mjs` — merges presets + user overrides + `~/.prismd/` keys into a schema-validated, byte-stable `prismd.json`.
 - `scripts/generate-codex-catalog.mjs` — generates `~/.codex/prismd-models.json` (Codex `model_catalog_json`) from the same metadata, one entry per alias.
-- `src/ingress/` — client protocol entry (Responses only for now).
-- `src/egress/` — upstream protocol passthrough (Responses only for now).
+- `examples/` — per-client config samples: `codex/` (profile + catalog), `claude-code/`, `opencode/`, `dsh/`, `pi/` (READMEs).
+- `src/ingress/` — client protocol entrypoints: `responses.ts` (OpenAI Responses), `chat.ts` (OpenAI Chat Completions), `messages.ts` (Anthropic Messages) + `messages-converter.ts`.
+- `src/egress/` — upstream protocol adapters: `responses.ts` (Responses passthrough), `chat.ts` (Chat egress + builder registry), `chat-converter.ts` (Chat↔Responses conversion incl. SSE state machine), `raw.ts` (shared HTTP layer: timeouts, SSE framing, usage extraction).
 - `src/routes/` — unauthenticated status and discovery routes (`/healthz`, `/v1/models`, `/v1/modelstatus`, `/ui`).
 - `src/ui/` — embedded standalone Web UI status page (single-file HTML/CSS/JS).
 - `src/cli/` — CLI commands (`prismd status` terminal table renderer).
-- `src/providers/` — per-provider request construction (base URL, extra headers).
-- `src/core/` — alias routing (quota/window/health filtering, soft demotion), passive health state machine, status event broadcaster, quota accounting, SQLite state store.
+- `src/providers/` — per-provider request construction (base URL, extra headers; openrouter / groq / cerebras).
+- `src/core/` — alias routing (quota/window/health filtering, soft demotion, Claude name fallback), passive health state machine, status event broadcaster, quota accounting, SQLite state store.
 - `src/observability/` — pino structured logging (stderr JSON), request-id, exporter interface.
 - `src/keys.ts` — key resolution from env / `~/.prismd/.env` / `~/.prismd/keys.yaml` (with `PRISMD_HOME` override support).
 - `src/auth.ts` — local bearer token check (`auth.localTokenField`); 401 never reaches upstream.

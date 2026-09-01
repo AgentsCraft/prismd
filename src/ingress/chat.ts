@@ -16,6 +16,11 @@ import {
 } from "../egress/responses.js";
 import { exporter } from "../observability/exporter.js";
 import { logger } from "../observability/logger.js";
+import {
+  convertChatToResponsesRequest,
+  wrapResponsesStreamToChat,
+  bufferAndConvertResponsesJson,
+} from "../egress/chat-converter.js";
 
 const RELAY_HEADERS = ["content-type", "retry-after"] as const;
 
@@ -175,39 +180,65 @@ export async function chatCompletions(c: Context): Promise<Response> {
           options,
         );
       } else {
-        // Responses upstream
-        result = await responsesCallUpstream(
+        // Responses upstream: convert Chat request to Responses request
+        const responsesReq = convertChatToResponsesRequest(body, candidate.providerModelId);
+        const startedAtMs = Date.now();
+        const rawResult = await responsesCallUpstream(
           candidate.provider,
           provider,
           candidate.providerModelId,
-          {
-            ...body,
-            model: candidate.providerModelId,
-            input: body.messages,
-            stream: body.stream,
-          },
+          responsesReq,
           apiKey,
           options,
         );
+
+        if (rawResult.kind === "stream" && rawResult.response.body) {
+          result = {
+            kind: "stream",
+            response: wrapResponsesStreamToChat(
+              rawResult.response,
+              rawResult.accounting,
+              options,
+              startedAtMs,
+              candidate.providerModelId,
+            ),
+            accounting: rawResult.accounting,
+            retryAfterMs: rawResult.retryAfterMs,
+          };
+        } else if (rawResult.kind === "json") {
+          result = {
+            kind: "json",
+            response: await bufferAndConvertResponsesJson(
+              rawResult.response,
+              rawResult.accounting,
+              options,
+              startedAtMs,
+              candidate.providerModelId,
+            ),
+            accounting: rawResult.accounting,
+            retryAfterMs: rawResult.retryAfterMs,
+          };
+        } else {
+          result = rawResult;
+        }
       }
     } catch (err) {
-      if (err instanceof UpstreamConnectError) {
-        health.recordFailure(candidate.provider, candidate.providerModelId, {});
-        logger.warn(
-          {
-            requestId,
-            alias: body.model,
-            provider: candidate.provider,
-            model: candidate.providerModelId,
-            timeout: err.timeout,
-          },
-          "upstream connection failed",
-        );
-        attemptStatuses.push({ candidate, status: null });
-        failovers += 1;
-        continue;
-      }
-      throw err;
+      const isTimeout = err instanceof UpstreamConnectError ? err.timeout : false;
+      health.recordFailure(candidate.provider, candidate.providerModelId, {});
+      logger.warn(
+        {
+          requestId,
+          alias: body.model,
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          timeout: isTimeout,
+          error: (err as Error).message,
+        },
+        "upstream connection failed",
+      );
+      attemptStatuses.push({ candidate, status: null });
+      failovers += 1;
+      continue;
     }
 
     if (result.kind === "stream" || result.kind === "json") {
