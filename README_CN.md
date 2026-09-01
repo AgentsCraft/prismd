@@ -8,7 +8,7 @@
 
 如果 prismd 帮您节省了时间或配额，欢迎请作者喝杯咖啡：
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
 
 ## 核心功能
 

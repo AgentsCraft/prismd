@@ -8,7 +8,7 @@ Local-first LLM gateway aggregating free/low-quota model APIs (OpenRouter, Groq,
 
 If prismd saves you time or quota, consider buying the author a coffee:
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
 
 ## What it does (current status: M3/M4 merged, real-world acceptance pending)
 
