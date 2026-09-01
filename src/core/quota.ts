@@ -274,6 +274,14 @@ export class QuotaManager {
     }
   }
 
+  /** Clear all in-memory accumulators and wipe database usage records. */
+  resetAll(): void {
+    this.pendingUsage.clear();
+    this.flushedUsage.clear();
+    this.pendingLogs.length = 0;
+    this.store.clearAllUsage();
+  }
+
   /** Stop the timer and force a final flush (graceful shutdown). */
   shutdown(): void {
     if (this.closed) return;

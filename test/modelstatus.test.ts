@@ -154,3 +154,32 @@ test("429 cooldown is mapped to rate_limited with lastError '429'", async () => 
   assert.equal(candidate.health.lastError, "429");
   assert.equal(candidate.health.state, "unhealthy");
 });
+
+test("POST /v1/usage/reset resets usage counters and logs", async () => {
+  setup();
+  const quota = getQuota();
+  quota.record({
+    requestId: "req-reset-test",
+    ts: new Date().toISOString(),
+    alias: "free-auto",
+    provider: "openrouter",
+    model: "poolside/laguna-s-2.1:free",
+    status: 200,
+    failover: 0,
+    durationMs: 50,
+    usage: { inputChars: 400, outputChars: 200 },
+  });
+
+  assert.equal(quota.getDailyRequests("openrouter", "poolside/laguna-s-2.1:free"), 1);
+
+  const res = await app.request("/v1/usage/reset", { method: "POST" });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { ok: boolean; message: string };
+  assert.equal(body.ok, true);
+
+  assert.equal(quota.getDailyRequests("openrouter", "poolside/laguna-s-2.1:free"), 0);
+  const snapshot = quota.getUsageSnapshot("openrouter", "poolside/laguna-s-2.1:free");
+  assert.equal(snapshot.requests, 0);
+  assert.equal(snapshot.inputTokens, 0);
+  assert.equal(snapshot.outputTokens, 0);
+});
