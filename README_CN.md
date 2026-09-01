@@ -1,15 +1,19 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
-
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
 本地优先的 LLM 网关，聚合多个免费及低额度模型 API（OpenRouter、Groq、Cerebras 等），为各类编码智能体（Claude Code、Codex CLI、OpenCode 等）提供稳定、高可用的统一接口。
 
 用户只需请求单个本地端点和统一别名（如 `free-auto`），prismd 自动完成：
-- **智能路由与配额防爆**：根据各模型每日配额使用率与上下文窗口自动挑选可用候选，80% 软降权排队。
-- **无缝故障转移（Failover）**：流式建立前遇到 429/401/5xx 或网络超时自动平滑切换至下一候选。
-- **多协议全双工转换**：原生支持 OpenAI Responses、OpenAI Chat Completions 与 Anthropic Messages，客户端无需改动即可跨协议调用。
+- **智能路由与配额保护**：根据输入上下文窗口与每日配额使用情况自动优选候选模型，日配额消耗达到 80% 时软降权至队尾。
+- **无缝故障转移**：在开始流式输出前，遇 429/401/5xx 错误或网络超时自动切换至下一候选模型。
+- **全协议跨端转换**：原生支持 OpenAI Responses、OpenAI Chat Completions 与 Anthropic Messages 协议，任意编码智能体均可无缝接入。
+
+## 支持项目
+
+如果 prismd 帮您节省了时间或配额，欢迎请作者喝杯咖啡：
+
+[![ko-fi](https://storage.ko-fi.com/cdn/kofi2.png)](https://ko-fi.com/keanz21)
 
 ---
 

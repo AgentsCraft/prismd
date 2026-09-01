@@ -1,8 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
-
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
 Local-first LLM gateway aggregating free and low-cost model APIs (OpenRouter, Groq, Cerebras, etc.) for coding agents (Claude Code, Codex CLI, OpenCode, and others), providing a stable, unified interface with automatic routing and failover.
 
@@ -10,6 +8,12 @@ With a single local endpoint and a unified alias (`free-auto`), prismd automatic
 - **Smart Routing & Quota Protection**: Automatically picks available candidates based on context window and daily quota usage; soft-demotes candidates at ≥ 80% quota to the back of the queue.
 - **Seamless Failover**: Before streaming starts, automatically fails over to the next candidate on 429/401/5xx errors or network timeouts.
 - **Multi-Protocol Conversion**: Native support for OpenAI Responses, OpenAI Chat Completions, and Anthropic Messages protocols, allowing any coding agent to connect seamlessly.
+
+## Support
+
+If prismd saves you time or quota, consider buying the author a coffee:
+
+[![ko-fi](https://storage.ko-fi.com/cdn/kofi2.png)](https://ko-fi.com/keanz21)
 
 ---
 
