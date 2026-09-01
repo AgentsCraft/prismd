@@ -8,7 +8,7 @@
 
 prismd가 개발 시간이나 할당량 절약에 도움이 되었다면, 개발자에게 커피 한 잔을 후원해 주세요:
 
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
+[![ko-fi](https://storage.ko-fi.com/cdn/kofi2.png)](https://ko-fi.com/keanz21)
 
 ## 주요 기능
 
