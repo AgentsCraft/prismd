@@ -10,6 +10,8 @@ import { destination, pino } from "pino";
 export const REDACT_PATHS = [
   "authorization",
   "*.authorization",
+  "Authorization",
+  "*.Authorization",
   "apiKey",
   "*.apiKey",
   "api_key",
@@ -24,6 +26,8 @@ export const REDACT_PATHS = [
   "*.authorizationHeader",
   "x-api-key",
   "*.x-api-key",
+  "X-Api-Key",
+  "*.X-Api-Key",
 ];
 
 export const logger = pino(

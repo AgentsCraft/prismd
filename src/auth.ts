@@ -11,7 +11,11 @@ export const auth =
   async (c, next) => {
     const expected = resolveLocalToken(localTokenField);
     const header = c.req.header("authorization") ?? "";
-    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+    const xApiKey = c.req.header("x-api-key") ?? "";
+    let token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+    if (!token && xApiKey) {
+      token = xApiKey;
+    }
     if (!expected || token !== expected) {
       return c.json(
         {
