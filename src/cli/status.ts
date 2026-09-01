@@ -87,7 +87,8 @@ export function renderOfflineStatus(dbPath: string): void {
 
   try {
     const db = new DatabaseSync(dbPath, { open: true, readOnly: true });
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const stmt = db.prepare(
       "SELECT provider, model, requests, input_tokens, output_tokens, source FROM usage_daily WHERE date = ? ORDER BY provider, model",
     );

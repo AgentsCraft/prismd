@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "featurePattern": "feature/[\\w-]+|hotfix/[\\w-]+",
+  "branches": {
+    "integration": ["develop"],
+    "archive": ["main"]
+  }
+}

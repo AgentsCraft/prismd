@@ -35,3 +35,6 @@ Thumbs.db
 .claude/
 .windsurf/
 .gemini/
+.agents/hooks.json
+bin/
+

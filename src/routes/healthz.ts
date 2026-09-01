@@ -4,18 +4,41 @@ import { getHealth } from "../core/runtime.js";
 import type { HealthManager } from "../core/health.js";
 import type { PrismdConfig } from "../types/config.js";
 
-export function buildHealthz(config: PrismdConfig, health: HealthManager): Record<string, unknown> {
-  const candidates: {
-    provider: string;
-    model: string;
-    state: string;
-    consecutiveFailures: number;
-    lastError?: string;
-  }[] = [];
-  const authErrors: { provider: string; model: string; error: string }[] = [];
+export interface HealthzCandidate {
+  provider: string;
+  model: string;
+  state: string;
+  consecutiveFailures: number;
+  lastError?: string;
+}
+
+export interface HealthzAuthError {
+  provider: string;
+  model: string;
+  error: string;
+}
+
+export interface HealthzResponse {
+  status: "ok" | "degraded";
+  uptime: number;
+  timestamp: string;
+  candidates: HealthzCandidate[];
+  authErrors?: HealthzAuthError[];
+}
+
+export function buildHealthz(config: PrismdConfig, health: HealthManager): HealthzResponse {
+  const candidates: HealthzCandidate[] = [];
+  const authErrors: HealthzAuthError[] = [];
+  const seen = new Set<string>();
 
   for (const aliasModel of Object.values(config.models)) {
     for (const candidate of aliasModel.candidates) {
+      const key = `${candidate.provider}\u0000${candidate.providerModelId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // Probe check to refresh expired cooldown state to half-open
+      health.isHealthy(candidate.provider, candidate.providerModelId);
       const h = health.get(candidate.provider, candidate.providerModelId);
       candidates.push({
         provider: candidate.provider,
