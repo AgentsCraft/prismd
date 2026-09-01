@@ -115,7 +115,7 @@ export function tryExtractUsage(payloadOrText: string): { inputTokens?: number; 
 
 /** SSE error event terminating a broken stream. */
 export function sseErrorEvent(code: string, message: string): string {
-  return `data: ${JSON.stringify({ type: "error", error: { message, type: "upstream_error", code } })}\n\n`;
+  return `event: error\ndata: ${JSON.stringify({ type: "error", error: { message, type: "upstream_error", code } })}\n\n`;
 }
 
 /** Parse a Retry-After header (delta-seconds or HTTP-date) into ms. */

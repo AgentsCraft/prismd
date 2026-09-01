@@ -37,6 +37,22 @@ const builders: Record<string, RequestBuilder> = {
   groq: groqCreateRequest,
 };
 
+function defaultResponsesCreateRequest(
+  provider: ProviderConfig,
+  body: ResponsesRequestBody,
+  apiKey: string,
+): UpstreamRequest {
+  return {
+    url: `${provider.baseUrl}/responses`,
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+      ...provider.extraHeaders,
+    },
+    body: JSON.stringify(body),
+  };
+}
+
 /**
  * Call the upstream and return a relay-ready result. The request body keeps
  * the client's shape but the alias in "model" is replaced with the concrete
@@ -50,10 +66,7 @@ export async function callUpstream(
   apiKey: string,
   options: UpstreamCallOptions,
 ): Promise<UpstreamResult> {
-  const builder = builders[providerName];
-  if (!builder) {
-    throw new Error(`no responses egress for provider "${providerName}"`);
-  }
+  const builder = builders[providerName] ?? defaultResponsesCreateRequest;
   const request = builder(provider, { ...body, model: providerModelId }, apiKey);
   return callRawHttpUpstream(
     providerName,

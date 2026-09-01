@@ -167,23 +167,22 @@ export async function responses(c: Context): Promise<Response> {
         },
       );
     } catch (err) {
-      if (err instanceof UpstreamConnectError) {
-        health.recordFailure(candidate.provider, candidate.providerModelId, {});
-        logger.warn(
-          {
-            requestId,
-            alias: body.model,
-            provider: candidate.provider,
-            model: candidate.providerModelId,
-            timeout: err.timeout,
-          },
-          "upstream connection failed",
-        );
-        attemptStatuses.push({ candidate, status: null });
-        failovers += 1;
-        continue;
-      }
-      throw err;
+      const isTimeout = err instanceof UpstreamConnectError ? err.timeout : false;
+      health.recordFailure(candidate.provider, candidate.providerModelId, {});
+      logger.warn(
+        {
+          requestId,
+          alias: body.model,
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          timeout: isTimeout,
+          error: (err as Error).message,
+        },
+        "upstream connection failed",
+      );
+      attemptStatuses.push({ candidate, status: null });
+      failovers += 1;
+      continue;
     }
 
     if (result.kind === "stream" || result.kind === "json") {
