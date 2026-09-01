@@ -82,7 +82,7 @@
       "additionalProperties": false,
       "required": ["type", "baseUrl", "apiKeyField"],
       "properties": {
-        "type": { "enum": ["responses"] },
+        "type": { "enum": ["responses", "chat"] },
         "baseUrl": { "type": "string", "minLength": 1 },
         "apiKeyField": {
           "type": "string",

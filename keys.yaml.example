@@ -12,8 +12,8 @@ prismd: ""
 # Upstream API keys, referenced by apiKeyField in presets/providers.json.
 openrouter: ""
 groq: ""
+cerebras: ""
 
 # Future providers (unused today):
-# cerebras: ""
 # github: ""
 # google: ""

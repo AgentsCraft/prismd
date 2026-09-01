@@ -7,7 +7,8 @@ import { getHealth } from "../core/runtime.js";
 import { getQuota } from "../core/runtime.js";
 import { routeAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
-import { callUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
+import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
+import { callUpstream as chatCallUpstream } from "../egress/chat.js";
 import { exporter } from "../observability/exporter.js";
 import { logger } from "../observability/logger.js";
 import type { ResponsesRequestBody } from "../types/protocol.js";
@@ -133,9 +134,10 @@ export async function responses(c: Context): Promise<Response> {
       );
     }
 
+    const caller = provider.type === "chat" ? chatCallUpstream : responsesCallUpstream;
     let result: UpstreamResult;
     try {
-      result = await callUpstream(
+      result = await caller(
         candidate.provider,
         provider,
         candidate.providerModelId,
