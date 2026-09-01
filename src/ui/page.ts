@@ -87,6 +87,49 @@ export function renderUiHtml(): string {
     .dot-yellow { background-color: var(--yellow); }
     .dot-red { background-color: var(--red); }
 
+    .btn-reset {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      line-height: 1.2;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .btn-reset:hover {
+      color: var(--heading);
+      border-color: #8b949e;
+      background: var(--badge-bg);
+    }
+    .btn-reset:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #lang-select {
+      background: var(--card-bg);
+      color: var(--text-muted);
+      border: 1px solid var(--card-border);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      outline: none;
+      line-height: 1.2;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    #lang-select:hover, #lang-select:focus {
+      color: var(--heading);
+      border-color: #8b949e;
+      background: var(--badge-bg);
+    }
+    #lang-select option {
+      background: var(--card-bg);
+      color: var(--text);
+    }
+
     .alias-section {
       margin-bottom: 28px;
     }
@@ -299,6 +342,15 @@ export function renderUiHtml(): string {
       <span id="uptime-text">uptime: —</span>
       <button id="btn-reset-usage" class="btn-reset" title="Reset all usage counters and request logs">Reset usage</button>
       <span id="conn-status" class="conn-badge conn-poll"><span class="dot dot-yellow"></span> Connecting</span>
+      <select id="lang-select" aria-label="Language">
+        <option value="en">English</option>
+        <option value="zh-CN">简体中文</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+        <option value="de">Deutsch</option>
+        <option value="fr">Français</option>
+        <option value="es">Español</option>
+      </select>
     </div>
   </header>
 
@@ -312,10 +364,196 @@ export function renderUiHtml(): string {
   </section>
 
   <script>
-    const state = {
-      events: [],
-      status: null
+    const TRANSLATIONS = {
+      en: {
+        uptime: 'uptime',
+        connecting: 'Connecting',
+        live: 'Live (SSE)',
+        polling: 'Polling (5s)',
+        disconnected: 'Disconnected',
+        active: '★ Active',
+        requests: 'Requests',
+        inputTokens: 'Input Tokens',
+        outputTokens: 'Output Tokens',
+        context: 'Context',
+        source: 'Source',
+        tools: 'Tools',
+        reasoning: 'Reasoning',
+        status: 'Status',
+        last: 'Last',
+        cooldown: 'Cooldown',
+        recentEvents: 'Recent events',
+        noEvents: 'No state changes recorded yet.',
+        resetUsage: 'Reset usage',
+        resetConfirm: 'Reset all usage counters and request logs?',
+        resetting: 'Resetting...'
+      },
+      'zh-CN': {
+        uptime: '运行时间',
+        connecting: '连接中',
+        live: '实时 (SSE)',
+        polling: '轮询 (5s)',
+        disconnected: '已断开',
+        active: '★ 活跃',
+        requests: '请求数',
+        inputTokens: '输入 Token',
+        outputTokens: '输出 Token',
+        context: '上下文',
+        source: '来源',
+        tools: '工具',
+        reasoning: '推理',
+        status: '状态',
+        last: '最近错误',
+        cooldown: '冷却中',
+        recentEvents: '最近事件',
+        noEvents: '暂无状态变更记录。',
+        resetUsage: '重置用量',
+        resetConfirm: '确定要重置所有用量计数器和请求日志吗？',
+        resetting: '重置中...'
+      },
+      ja: {
+        uptime: '稼働時間',
+        connecting: '接続中',
+        live: 'リアルタイム (SSE)',
+        polling: 'ポーリング (5s)',
+        disconnected: '切断',
+        active: '★ アクティブ',
+        requests: 'リクエスト数',
+        inputTokens: '入力 Token',
+        outputTokens: '出力 Token',
+        context: 'コンテキスト',
+        source: 'ソース',
+        tools: 'ツール',
+        reasoning: '推論',
+        status: 'ステータス',
+        last: '直近エラー',
+        cooldown: 'クールダウン',
+        recentEvents: '最近のイベント',
+        noEvents: '記録された状態変更はまだありません。',
+        resetUsage: '使用量をリセット',
+        resetConfirm: 'すべての使用量カウンターとリクエストログをリセットしますか？',
+        resetting: 'リセット中...'
+      },
+      ko: {
+        uptime: '가동 시간',
+        connecting: '연결 중',
+        live: '실시간 (SSE)',
+        polling: '폴링 (5s)',
+        disconnected: '연결 끊김',
+        active: '★ 활성',
+        requests: '요청 수',
+        inputTokens: '입력 토큰',
+        outputTokens: '출력 토큰',
+        context: '컨텍스트',
+        source: '소스',
+        tools: '도구',
+        reasoning: '추론',
+        status: '상태',
+        last: '최근 오류',
+        cooldown: '쿨다운',
+        recentEvents: '최근 이벤트',
+        noEvents: '기록된 상태 변경이 아직 없습니다.',
+        resetUsage: '사용량 초기화',
+        resetConfirm: '모든 사용량 카운터 및 요청 로그를 초기화하시겠습니까?',
+        resetting: '초기화 중...'
+      },
+      de: {
+        uptime: 'Betriebszeit',
+        connecting: 'Verbinden',
+        live: 'Live (SSE)',
+        polling: 'Polling (5s)',
+        disconnected: 'Getrennt',
+        active: '★ Aktiv',
+        requests: 'Anfragen',
+        inputTokens: 'Eingabe-Tokens',
+        outputTokens: 'Ausgabe-Tokens',
+        context: 'Kontext',
+        source: 'Quelle',
+        tools: 'Tools',
+        reasoning: 'Reasoning',
+        status: 'Status',
+        last: 'Letzter Fehler',
+        cooldown: 'Cooldown',
+        recentEvents: 'Aktuelle Ereignisse',
+        noEvents: 'Noch keine Statusänderungen aufgezeichnet.',
+        resetUsage: 'Nutzung zurücksetzen',
+        resetConfirm: 'Möchten Sie wirklich alle Nutzungszähler und Protokolle zurücksetzen?',
+        resetting: 'Wird zurückgesetzt...'
+      },
+      fr: {
+        uptime: 'Temps de fonctionnement',
+        connecting: 'Connexion',
+        live: 'En direct (SSE)',
+        polling: 'Interrogation (5s)',
+        disconnected: 'Déconnecté',
+        active: '★ Actif',
+        requests: 'Requêtes',
+        inputTokens: 'Tokens d\\'entrée',
+        outputTokens: 'Tokens de sortie',
+        context: 'Contexte',
+        source: 'Source',
+        tools: 'Outils',
+        reasoning: 'Raisonnement',
+        status: 'Statut',
+        last: 'Dernière erreur',
+        cooldown: 'Temps de recharge',
+        recentEvents: 'Événements récents',
+        noEvents: 'Aucun changement d\\'état enregistré pour le moment.',
+        resetUsage: 'Réinitialiser l\\'utilisation',
+        resetConfirm: 'Voulez-vous vraiment réinitialiser tous les compteurs d\\'utilisation et journaux ?',
+        resetting: 'Réinitialisation...'
+      },
+      es: {
+        uptime: 'Tiempo de actividad',
+        connecting: 'Conectando',
+        live: 'En vivo (SSE)',
+        polling: 'Sondeo (5s)',
+        disconnected: 'Desconectado',
+        active: '★ Activo',
+        requests: 'Solicitudes',
+        inputTokens: 'Tokens de entrada',
+        outputTokens: 'Tokens de salida',
+        context: 'Contexto',
+        source: 'Fuente',
+        tools: 'Herramientas',
+        reasoning: 'Razonamiento',
+        status: 'Estado',
+        last: 'Último error',
+        cooldown: 'Enfriamiento',
+        recentEvents: 'Eventos recientes',
+        noEvents: 'Aún no se han registrado cambios de estado.',
+        resetUsage: 'Restablecer uso',
+        resetConfirm: '¿Está seguro de que desea restablecer todos los contadores de uso y registros?',
+        resetting: 'Restableciendo...'
+      }
     };
+
+    function detectLanguage() {
+      try {
+        const stored = localStorage.getItem('prismd_lang');
+        if (stored && TRANSLATIONS[stored]) return stored;
+        const nav = (navigator.language || navigator.userLanguage || '').toLowerCase();
+        if (nav.startsWith('zh')) return 'zh-CN';
+        if (nav.startsWith('ja')) return 'ja';
+        if (nav.startsWith('ko')) return 'ko';
+        if (nav.startsWith('de')) return 'de';
+        if (nav.startsWith('fr')) return 'fr';
+        if (nav.startsWith('es')) return 'es';
+      } catch (e) {}
+      return 'en';
+    }
+
+    const state = {
+      lang: detectLanguage(),
+      events: [],
+      status: null,
+      lastConnStatus: null
+    };
+
+    function t(key) {
+      const dict = TRANSLATIONS[state.lang] || TRANSLATIONS.en;
+      return dict[key] || TRANSLATIONS.en[key] || key;
+    }
 
     function escapeHtml(s) {
       return String(s ?? '').replace(/[&<>"']/g, function(c) {
@@ -341,9 +579,30 @@ export function renderUiHtml(): string {
       return s + 's';
     }
 
+    function updateStaticTexts() {
+      document.documentElement.lang = state.lang;
+      const eventsTitle = document.querySelector('.events-title');
+      if (eventsTitle) eventsTitle.textContent = t('recentEvents');
+      if (state.events.length === 0) {
+        const list = document.getElementById('events-list');
+        if (list) list.innerHTML = '<div style="color: var(--text-muted); padding: 8px;">' + escapeHtml(t('noEvents')) + '</div>';
+      }
+      const resetBtn = document.getElementById('btn-reset-usage');
+      if (resetBtn && !resetBtn.disabled) {
+        resetBtn.textContent = t('resetUsage');
+      }
+      const uptimeEl = document.getElementById('uptime-text');
+      if (uptimeEl) {
+        uptimeEl.textContent = t('uptime') + ': ' + (state.status ? formatUptime(state.status.uptime) : '—');
+      }
+      if (state.lastConnStatus) {
+        setConnectionStatus(state.lastConnStatus);
+      }
+    }
+
     function renderStatus(data) {
       state.status = data;
-      document.getElementById('uptime-text').textContent = 'uptime: ' + formatUptime(data.uptime);
+      document.getElementById('uptime-text').textContent = t('uptime') + ': ' + formatUptime(data.uptime);
 
       const container = document.getElementById('aliases-container');
       container.innerHTML = '';
@@ -382,13 +641,13 @@ export function renderUiHtml(): string {
             else if (ratio >= 0.8) fillClass = 'fill-yellow';
           }
 
-          let healthDetails = 'Status: ' + escapeHtml(c.status);
+          let healthDetails = t('status') + ': ' + escapeHtml(c.status);
           if (c.health.lastError) {
-            healthDetails += ' • Last: ' + escapeHtml(c.health.lastError);
+            healthDetails += ' • ' + t('last') + ': ' + escapeHtml(c.health.lastError);
           }
           if (c.health.cooldownRemainingMs > 0) {
             const secs = Math.ceil(c.health.cooldownRemainingMs / 1000);
-            healthDetails += ' • Cooldown: ' + secs + 's';
+            healthDetails += ' • ' + t('cooldown') + ': ' + secs + 's';
           }
 
           card.innerHTML =
@@ -400,11 +659,11 @@ export function renderUiHtml(): string {
                 '</div>' +
                 '<div class="model-name">' + escapeHtml(c.model) + '</div>' +
               '</div>' +
-              (isActive ? '<span class="active-pill">★ Active</span>' : '') +
+              (isActive ? '<span class="active-pill">' + escapeHtml(t('active')) + '</span>' : '') +
             '</div>' +
             '<div class="quota-block">' +
               '<div class="quota-header">' +
-                '<span>Requests</span>' +
+                '<span>' + escapeHtml(t('requests')) + '</span>' +
                 '<span>' + requestsText + '</span>' +
               '</div>' +
               '<div class="progress-bar-bg">' +
@@ -413,26 +672,26 @@ export function renderUiHtml(): string {
             '</div>' +
             '<div class="stats-grid">' +
               '<div class="stat-item">' +
-                '<span class="stat-label">Input Tokens</span>' +
+                '<span class="stat-label">' + escapeHtml(t('inputTokens')) + '</span>' +
                 '<span class="stat-value">' + formatNumber(c.quota.inputTokens) + '</span>' +
               '</div>' +
               '<div class="stat-item">' +
-                '<span class="stat-label">Output Tokens</span>' +
+                '<span class="stat-label">' + escapeHtml(t('outputTokens')) + '</span>' +
                 '<span class="stat-value">' + formatNumber(c.quota.outputTokens) + '</span>' +
               '</div>' +
               '<div class="stat-item">' +
-                '<span class="stat-label">Context</span>' +
+                '<span class="stat-label">' + escapeHtml(t('context')) + '</span>' +
                 '<span class="stat-value">' + formatNumber(c.contextWindow) + '</span>' +
               '</div>' +
               '<div class="stat-item">' +
-                '<span class="stat-label">Source</span>' +
+                '<span class="stat-label">' + escapeHtml(t('source')) + '</span>' +
                 '<span class="stat-value">' + escapeHtml(c.quota.source) + '</span>' +
               '</div>' +
             '</div>' +
             '<div class="tags-row">' +
-              '<span class="feature-tag ' + (c.supportsTools ? 'feature-yes' : 'feature-no') + '">Tools ' + (c.supportsTools ? '✓' : '✗') + '</span>' +
-              (c.supportsReasoning !== undefined ? '<span class="feature-tag ' + (c.supportsReasoning ? 'feature-yes' : 'feature-no') + '">Reasoning ' + (c.supportsReasoning ? '✓' : '✗') + '</span>' : '') +
-              (c.tags || []).map(function(t) { return '<span class="tag">' + escapeHtml(t) + '</span>'; }).join('') +
+              '<span class="feature-tag ' + (c.supportsTools ? 'feature-yes' : 'feature-no') + '">' + escapeHtml(t('tools')) + ' ' + (c.supportsTools ? '✓' : '✗') + '</span>' +
+              (c.supportsReasoning !== undefined ? '<span class="feature-tag ' + (c.supportsReasoning ? 'feature-yes' : 'feature-no') + '">' + escapeHtml(t('reasoning')) + ' ' + (c.supportsReasoning ? '✓' : '✗') + '</span>' : '') +
+              (c.tags || []).map(function(tTag) { return '<span class="tag">' + escapeHtml(tTag) + '</span>'; }).join('') +
             '</div>' +
             '<div class="health-meta">' + healthDetails + '</div>';
 
@@ -465,18 +724,64 @@ export function renderUiHtml(): string {
     }
 
     function setConnectionStatus(status) {
+      state.lastConnStatus = status;
       const el = document.getElementById('conn-status');
       if (status === 'live') {
         el.className = 'conn-badge conn-live';
-        el.innerHTML = '<span class="dot dot-green"></span> Live (SSE)';
+        el.innerHTML = '<span class="dot dot-green"></span> ' + escapeHtml(t('live'));
       } else if (status === 'poll') {
         el.className = 'conn-badge conn-poll';
-        el.innerHTML = '<span class="dot dot-yellow"></span> Polling (5s)';
+        el.innerHTML = '<span class="dot dot-yellow"></span> ' + escapeHtml(t('polling'));
       } else {
         el.className = 'conn-badge conn-down';
-        el.innerHTML = '<span class="dot dot-red"></span> Disconnected';
+        el.innerHTML = '<span class="dot dot-red"></span> ' + escapeHtml(t('disconnected'));
       }
     }
+
+    // Language switcher event listener
+    const langSelect = document.getElementById('lang-select');
+    if (langSelect) {
+      langSelect.value = state.lang;
+      langSelect.addEventListener('change', function() {
+        state.lang = this.value;
+        try {
+          localStorage.setItem('prismd_lang', state.lang);
+        } catch (e) {}
+        document.documentElement.lang = state.lang;
+        updateStaticTexts();
+        if (state.status) {
+          renderStatus(state.status);
+        }
+      });
+    }
+
+    // Reset usage button event listener
+    const resetBtn = document.getElementById('btn-reset-usage');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() {
+        if (!confirm(t('resetConfirm'))) return;
+        resetBtn.disabled = true;
+        resetBtn.textContent = t('resetting');
+        fetch('/v1/usage/reset', { method: 'POST' })
+          .then(function(r) { return r.json(); })
+          .then(function() {
+            return fetch('/v1/modelstatus').then(function(r) { return r.json(); });
+          })
+          .then(function(data) {
+            renderStatus(data);
+            resetBtn.textContent = t('resetUsage');
+            resetBtn.disabled = false;
+          })
+          .catch(function(err) {
+            alert('Failed to reset: ' + err.message);
+            resetBtn.textContent = t('resetUsage');
+            resetBtn.disabled = false;
+          });
+      });
+    }
+
+    // Initial static text initialization
+    updateStaticTexts();
 
     // Connect SSE
     function startSSE() {
