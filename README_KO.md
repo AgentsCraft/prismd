@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
 코딩 에이전트(Claude Code, Codex CLI, OpenCode 등)를 위해 무료 및 저비용 모델 API(OpenRouter, Groq, Cerebras 등)를 통합하는 로컬 우선 LLM 게이트웨이입니다. 자동 라우팅 및 장애 조치(Failover) 기능을 갖춘 안정적이고 일관된 인터페이스를 제공합니다.
 

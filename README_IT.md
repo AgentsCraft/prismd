@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
 Gateway LLM locale che aggrega API di modelli gratuiti e a basso costo (OpenRouter, Groq, Cerebras, ecc.) per agenti di programmazione (Claude Code, Codex CLI, OpenCode e altri), fornendo un'interfaccia unificata e stabile con routing e failover automatici.
 

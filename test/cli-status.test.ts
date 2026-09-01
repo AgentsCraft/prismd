@@ -14,7 +14,7 @@ import {
 import { StateStore } from "../src/core/state.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
 
-test("detectCliLanguage matches 8 languages and falls back to en", () => {
+test("detectCliLanguage matches 10 languages and falls back to en", () => {
   assert.equal(detectCliLanguage({ LANG: "zh_CN.UTF-8" }), "zh-CN");
   assert.equal(detectCliLanguage({ LC_ALL: "ja_JP.UTF-8" }), "ja");
   assert.equal(detectCliLanguage({ LC_MESSAGES: "ko_KR.UTF-8" }), "ko");
@@ -22,6 +22,8 @@ test("detectCliLanguage matches 8 languages and falls back to en", () => {
   assert.equal(detectCliLanguage({ LANG: "fr_FR.UTF-8" }), "fr");
   assert.equal(detectCliLanguage({ LANG: "es_ES.UTF-8" }), "es");
   assert.equal(detectCliLanguage({ LANG: "it_IT.UTF-8" }), "it");
+  assert.equal(detectCliLanguage({ LANG: "ar_AE.UTF-8" }), "ar");
+  assert.equal(detectCliLanguage({ LANG: "tr_TR.UTF-8" }), "tr");
   assert.equal(detectCliLanguage({ LANG: "en_US.UTF-8" }), "en");
   assert.equal(detectCliLanguage({ LANG: "C" }), "en");
   assert.equal(detectCliLanguage({}), "en");
@@ -133,6 +135,20 @@ test("renderLiveStatus formats model status table in default and specified langu
     assert.ok(logs.includes("Stato prismd"));
     assert.ok(logs.includes("Tempo di attività"));
     assert.ok(logs.includes("PROVIDER / MODELLO"));
+
+    // 9. ar
+    logs = "";
+    renderLiveStatus(mockData, "ar");
+    assert.ok(logs.includes("حالة prismd"));
+    assert.ok(logs.includes("وقت التشغيل"));
+    assert.ok(logs.includes("المزود / النموذج"));
+
+    // 10. tr
+    logs = "";
+    renderLiveStatus(mockData, "tr");
+    assert.ok(logs.includes("prismd Durumu"));
+    assert.ok(logs.includes("Çalışma süresi"));
+    assert.ok(logs.includes("SAĞLAYICI / MODEL"));
   } finally {
     console.log = origLog;
   }

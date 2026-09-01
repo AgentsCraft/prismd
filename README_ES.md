@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
 Pasarela LLM local que agrega APIs de modelos gratuitos y de bajo coste (OpenRouter, Groq, Cerebras, etc.) para agentes de programación (Claude Code, Codex CLI, OpenCode y otros), ofreciendo una interfaz estable y unificada con enrutamiento y conmutación por error (failover) automáticos.
 
