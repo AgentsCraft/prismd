@@ -8,7 +8,7 @@ Passerelle LLM locale agrégeant les API de modèles gratuits ou à faible quota
 
 Si prismd vous fait gagner du temps ou des quotas, vous pouvez offrir un café à l'auteur :
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
 
 ## Fonctionnalités principales
 

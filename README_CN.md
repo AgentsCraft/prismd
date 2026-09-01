@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
 
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
+
 本地优先的 LLM 网关，聚合多个免费及低额度模型 API（OpenRouter、Groq、Cerebras 等），为各类编码智能体（Claude Code、Codex CLI、OpenCode 等）提供稳定、高可用的统一接口。
 
 用户只需请求单个本地端点和统一别名（如 `free-auto`），prismd 自动完成：

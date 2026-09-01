@@ -8,7 +8,7 @@ Pasarela LLM orientada a local que agrega APIs de modelos gratuitos o de baja cu
 
 Si prismd te ayuda a ahorrar tiempo o cuota, considera invitar a un café al autor:
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
 
 ## Características principales
 

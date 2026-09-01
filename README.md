@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
 
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
+
 Local-first LLM gateway aggregating free and low-cost model APIs (OpenRouter, Groq, Cerebras, etc.) for coding agents (Claude Code, Codex CLI, OpenCode, and others), providing a stable, unified interface with automatic routing and failover.
 
 With a single local endpoint and a unified alias (`free-auto`), prismd automatically handles:
