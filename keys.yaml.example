@@ -9,11 +9,10 @@
 # Local gateway auth token; generate with: openssl rand -hex 32
 prismd: ""
 
-# Upstream API keys, referenced by apiKeyField in presets/providers.json.
+# Upstream API keys (fill in keys for the providers you use):
 openrouter: ""
 groq: ""
 cerebras: ""
-
-# Future providers (unused today):
-# github: ""
-# google: ""
+gemini: ""
+nvidia: ""
+github: ""

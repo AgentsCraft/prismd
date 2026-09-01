@@ -96,5 +96,6 @@ export function useTempDataPath(): string {
   const path = join(dir, "prismd.sqlite");
   process.env.PRISMD_DATA_PATH = path;
   process.env.PRISMD_HOME = dir;
+  process.env.PRISMD_CWD = dir;
   return path;
 }

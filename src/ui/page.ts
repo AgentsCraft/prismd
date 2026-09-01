@@ -267,16 +267,37 @@ export function renderUiHtml(): string {
     .event-candidate { color: var(--heading); font-weight: 500; }
     .event-arrow { color: var(--text-muted); }
     .event-reason { color: var(--yellow); }
+
+    .btn-reset {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      line-height: 1.2;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .btn-reset:hover {
+      color: var(--heading);
+      border-color: #8b949e;
+      background: var(--badge-bg);
+    }
+    .btn-reset:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="logo-title">
       <h1>prismd status</h1>
-      <span class="version-badge">M2b</span>
     </div>
     <div class="header-meta">
       <span id="uptime-text">uptime: —</span>
+      <button id="btn-reset-usage" class="btn-reset" title="Reset all usage counters and request logs">Reset usage</button>
       <span id="conn-status" class="conn-badge conn-poll"><span class="dot dot-yellow"></span> Connecting</span>
     </div>
   </header>
@@ -518,6 +539,30 @@ export function renderUiHtml(): string {
       }
       poll();
       setInterval(poll, 5000);
+    }
+
+    const resetBtn = document.getElementById('btn-reset-usage');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() {
+        if (!confirm('Reset all usage counters and request logs?')) return;
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Resetting...';
+        fetch('/v1/usage/reset', { method: 'POST' })
+          .then(function(r) { return r.json(); })
+          .then(function() {
+            return fetch('/v1/modelstatus').then(function(r) { return r.json(); });
+          })
+          .then(function(data) {
+            renderStatus(data);
+            resetBtn.textContent = 'Reset usage';
+            resetBtn.disabled = false;
+          })
+          .catch(function(err) {
+            alert('Failed to reset: ' + err.message);
+            resetBtn.textContent = 'Reset usage';
+            resetBtn.disabled = false;
+          });
+      });
     }
 
     startSSE();

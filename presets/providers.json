@@ -14,7 +14,7 @@
       }
     },
     "groq": {
-      "type": "responses",
+      "type": "chat",
       "baseUrl": "https://api.groq.com/openai/v1",
       "apiKeyField": "groq",
       "auth": {
@@ -25,6 +25,30 @@
       "type": "chat",
       "baseUrl": "https://api.cerebras.ai/v1",
       "apiKeyField": "cerebras",
+      "auth": {
+        "type": "api_key"
+      }
+    },
+    "gemini": {
+      "type": "chat",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "apiKeyField": "gemini",
+      "auth": {
+        "type": "api_key"
+      }
+    },
+    "nvidia": {
+      "type": "chat",
+      "baseUrl": "https://integrate.api.nvidia.com/v1",
+      "apiKeyField": "nvidia",
+      "auth": {
+        "type": "api_key"
+      }
+    },
+    "github": {
+      "type": "chat",
+      "baseUrl": "https://models.inference.ai.azure.com",
+      "apiKeyField": "github",
       "auth": {
         "type": "api_key"
       }
@@ -85,30 +109,138 @@
       "tags": ["fast", "chat"],
       "source": "https://inference-docs.cerebras.ai/models",
       "checkedAt": "2026-09-01"
+    },
+    "llama-3.3-70b-versatile": {
+      "provider": "groq",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 1000, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "groq"],
+      "source": "https://console.groq.com/docs/models",
+      "checkedAt": "2026-09-01"
+    },
+    "llama-3.1-8b-instant": {
+      "provider": "groq",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "groq"],
+      "source": "https://console.groq.com/docs/models",
+      "checkedAt": "2026-09-01"
+    },
+    "gemini-2.0-flash": {
+      "provider": "gemini",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 1500, "rpm": 15, "maxConcurrent": 2 },
+      "tags": ["free", "long-context", "gemini"],
+      "source": "https://ai.google.dev/pricing",
+      "checkedAt": "2026-09-01"
+    },
+    "gemini-2.0-flash-lite": {
+      "provider": "gemini",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 1500, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["free", "fast", "gemini"],
+      "source": "https://ai.google.dev/pricing",
+      "checkedAt": "2026-09-01"
+    },
+    "gemini-1.5-flash": {
+      "provider": "gemini",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 1500, "rpm": 15, "maxConcurrent": 2 },
+      "tags": ["free", "long-context", "gemini"],
+      "source": "https://ai.google.dev/pricing",
+      "checkedAt": "2026-09-01"
+    },
+    "meta/llama-3.3-70b-instruct": {
+      "provider": "nvidia",
+      "contextWindow": 131072,
+      "maxOutputTokens": 4096,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 1000, "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "nvidia", "llama"],
+      "source": "https://build.nvidia.com",
+      "checkedAt": "2026-09-01"
+    },
+    "deepseek-ai/deepseek-r1": {
+      "provider": "nvidia",
+      "contextWindow": 131072,
+      "maxOutputTokens": 4096,
+      "supportsTools": false,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": 500, "rpm": 10, "maxConcurrent": 1 },
+      "tags": ["free", "nvidia", "reasoning"],
+      "source": "https://build.nvidia.com",
+      "checkedAt": "2026-09-01"
+    },
+    "gpt-4o-mini": {
+      "provider": "github",
+      "contextWindow": 128000,
+      "maxOutputTokens": 4096,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 150, "rpm": 15, "maxConcurrent": 1 },
+      "tags": ["free", "github", "openai"],
+      "source": "https://github.com/marketplace/models",
+      "checkedAt": "2026-09-01"
+    },
+    "github/llama-3.3-70b": {
+      "provider": "github",
+      "providerModelId": "meta-llama-3.3-70b-instruct",
+      "contextWindow": 131072,
+      "maxOutputTokens": 4096,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 150, "rpm": 15, "maxConcurrent": 1 },
+      "tags": ["free", "github", "llama"],
+      "source": "https://github.com/marketplace/models",
+      "checkedAt": "2026-09-01"
     }
   },
   "aliases": {
     "free-auto": {
       "description": "Auto-select a free coding model, with fallback candidates",
       "candidates": [
-        "poolside/laguna-s-2.1:free",
+        "gemini-2.0-flash",
+        "llama-3.3-70b",
+        "llama-3.3-70b-versatile",
+        "meta/llama-3.3-70b-instruct",
+        "gpt-4o-mini",
         "cohere/north-mini-code:free",
-        "llama-3.3-70b"
+        "poolside/laguna-s-2.1:free"
       ]
     },
     "free-fast": {
       "description": "Smaller, faster free model",
       "candidates": [
-        "poolside/laguna-xs-2.1:free",
-        "llama3.1-8b"
+        "gemini-2.0-flash-lite",
+        "llama3.1-8b",
+        "llama-3.1-8b-instant",
+        "poolside/laguna-xs-2.1:free"
       ]
     },
     "free-code": {
       "description": "Free models tuned for code generation",
       "candidates": [
+        "gemini-2.0-flash",
         "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free",
-        "llama-3.3-70b"
+        "llama-3.3-70b",
+        "llama-3.3-70b-versatile",
+        "poolside/laguna-s-2.1:free"
       ]
     }
   }

@@ -202,6 +202,23 @@ export class StateStore {
     this.db.prepare("DELETE FROM request_log WHERE ts < ?").run(cutoff);
   }
 
+  /** Clear all usage tables (usage_daily and request_log). */
+  clearAllUsage(): void {
+    this.db.exec("BEGIN");
+    try {
+      this.db.exec("DELETE FROM usage_daily;");
+      this.db.exec("DELETE FROM request_log;");
+      this.db.exec("COMMIT;");
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK;");
+      } catch {
+        /* connection error; ignore */
+      }
+      throw err;
+    }
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;

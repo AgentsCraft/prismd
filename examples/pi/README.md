@@ -1,9 +1,9 @@
-# Pi 接入 prismd
- 
-Pi 支持通过标准 OpenAI Completions 接口配置自定义 provider。
- 
+# Pi Agent 接入 prismd
+
+Pi Agent 支持通过标准 OpenAI Completions 接口配置自定义提供商。
+
 ## 配置示例 (`~/.pi/config.json`)
- 
+
 ```json
 {
   "provider": {
@@ -15,9 +15,9 @@ Pi 支持通过标准 OpenAI Completions 接口配置自定义 provider。
   }
 }
 ```
- 
+
 ## 运行
- 
+
 ```bash
 pi run
 ```

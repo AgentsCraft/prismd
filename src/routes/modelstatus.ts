@@ -166,6 +166,19 @@ modelstatusRoute.get("/v1/modelstatus", (c) => {
   return c.json(status, 200);
 });
 
+modelstatusRoute.post("/v1/usage/reset", (c) => {
+  getQuota().resetAll();
+  statusBroadcaster.emit("candidate_changed", {
+    provider: "all",
+    model: "all",
+    from: "any",
+    to: "reset",
+    reason: "usage_reset",
+    at: new Date().toISOString(),
+  });
+  return c.json({ ok: true, message: "Usage counters and request logs reset successfully" }, 200);
+});
+
 modelstatusRoute.get("/v1/modelstatus/stream", async (c) => {
   return streamSSE(c, async (stream) => {
     // 1. Initial snapshot
