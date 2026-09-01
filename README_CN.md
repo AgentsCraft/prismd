@@ -108,6 +108,8 @@ PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
 ```
 运行 `npm run generate:config`（若通过 npm 全局安装，运行 `node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>`）以应用更新。
 
+各主流提供商（OpenRouter、Groq、Cerebras、Google Gemini、NVIDIA NIM、GitHub Models 等）的详细配置说明，详见 [免费模型提供商配置指南](docs/providers/README.md)。
+
 ---
 
 ## 状态监控与可观测性

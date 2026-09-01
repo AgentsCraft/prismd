@@ -108,6 +108,8 @@ Override candidate priorities or add custom models in `config.user.json`, then r
 ```
 Run `npm run generate:config` (or `node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>`) to apply changes.
 
+For detailed setup instructions for major free providers (OpenRouter, Groq, Cerebras, Google Gemini, NVIDIA NIM, GitHub Models, etc.), see the [Provider Configuration Guides](docs/providers/README.md).
+
 ---
 
 ## Status & Observability
