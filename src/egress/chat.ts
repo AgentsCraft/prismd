@@ -13,10 +13,13 @@ import {
 import {
   UpstreamConnectError,
   parseRetryAfter,
+  SseEventSplitter,
+  dataPayloads,
+  sseErrorEvent,
   type StreamAccounting,
   type UpstreamCallOptions,
   type UpstreamResult,
-} from "./responses.js";
+} from "./raw.js";
 
 type RequestBuilder = (
   provider: ProviderConfig,
@@ -43,45 +46,6 @@ function defaultChatCreateRequest(
     },
     body: JSON.stringify(chatBody),
   };
-}
-
-/** Split an incoming text stream into SSE event blocks ("\n\n" or "\r\n\r\n" separated). */
-class SseEventSplitter {
-  private buffer = "";
-
-  push(text: string): string[] {
-    this.buffer += text;
-    const events: string[] = [];
-    const delimiter = /\r?\n\r?\n/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = delimiter.exec(this.buffer)) !== null) {
-      events.push(this.buffer.slice(lastIndex, match.index));
-      lastIndex = match.index + match[0].length;
-    }
-    if (lastIndex > 0) {
-      this.buffer = this.buffer.slice(lastIndex);
-    }
-    return events;
-  }
-
-  end(): string[] {
-    if (this.buffer === "") return [];
-    const rest = this.buffer;
-    this.buffer = "";
-    return [rest];
-  }
-}
-
-function dataPayloads(event: string): string[] {
-  return event
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => (line[5] === " " ? line.slice(6) : line.slice(5)));
-}
-
-function sseErrorEvent(code: string, message: string): string {
-  return `data: ${JSON.stringify({ type: "error", error: { message, type: "upstream_error", code } })}\n\n`;
 }
 
 const encoder = new TextEncoder();

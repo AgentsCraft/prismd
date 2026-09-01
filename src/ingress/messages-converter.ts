@@ -344,7 +344,7 @@ export class ChatToAnthropicStreamTransformer {
     if (typeof chunk.id === "string") {
       this.messageId = chunk.id.startsWith("msg_") ? chunk.id : `msg_${chunk.id}`;
     }
-    if (typeof chunk.model === "string") this.model = chunk.model;
+    if (!this.model && typeof chunk.model === "string") this.model = chunk.model;
 
     if (chunk.usage && typeof chunk.usage === "object") {
       const u = chunk.usage as Record<string, unknown>;
