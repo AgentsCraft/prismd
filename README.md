@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
 
 Local-first LLM gateway aggregating free/low-quota model APIs (OpenRouter, Groq, Cerebras) for coding agents. One local endpoint, one alias (`free-auto`), and prismd handles the rest: pick a working candidate, avoid exhausted quotas, fail over when an upstream 429s, and tell you what happened. Speaks three protocols (OpenAI Responses, OpenAI Chat Completions, Anthropic Messages) so Codex CLI, Claude Code, OpenCode and friends can all share the same gateway.
 

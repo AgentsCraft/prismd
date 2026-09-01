@@ -1,6 +1,6 @@
 # prismd
 
-[English](README.md) | [简体中文](README_CN.md)
+[English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md)
 
 本地优先的 LLM 网关，聚合多个免费/低额度模型 API（OpenRouter、Groq、Cerebras 等），为编码智能体（Coding Agents）提供稳定、可切换的统一接口。单个本地端点，单个别名（`free-auto`），其余一切由 prismd 自动处理：挑选可用候选模型、规避耗尽配额、在上游返回 429 时无缝故障转移（Failover），并实时呈现网关状态。原生支持三种主流协议（OpenAI Responses、OpenAI Chat Completions、Anthropic Messages），Codex CLI、Claude Code、OpenCode 等客户端均可无缝接入同一个网关。
 
