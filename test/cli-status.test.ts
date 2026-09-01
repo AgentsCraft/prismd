@@ -1,13 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fetchLiveStatus, renderLiveStatus, renderOfflineStatus } from "../src/cli/status.js";
+import {
+  detectCliLanguage,
+  fetchLiveStatus,
+  renderLiveStatus,
+  renderOfflineStatus,
+  stringWidth,
+  padEndWidth,
+} from "../src/cli/status.js";
 import { StateStore } from "../src/core/state.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
 
-test("renderLiveStatus formats model status table without throwing", () => {
+test("detectCliLanguage matches 7 languages and falls back to en", () => {
+  assert.equal(detectCliLanguage({ LANG: "zh_CN.UTF-8" }), "zh-CN");
+  assert.equal(detectCliLanguage({ LC_ALL: "ja_JP.UTF-8" }), "ja");
+  assert.equal(detectCliLanguage({ LC_MESSAGES: "ko_KR.UTF-8" }), "ko");
+  assert.equal(detectCliLanguage({ LANG: "de_DE.UTF-8" }), "de");
+  assert.equal(detectCliLanguage({ LANG: "fr_FR.UTF-8" }), "fr");
+  assert.equal(detectCliLanguage({ LANG: "es_ES.UTF-8" }), "es");
+  assert.equal(detectCliLanguage({ LANG: "en_US.UTF-8" }), "en");
+  assert.equal(detectCliLanguage({ LANG: "C" }), "en");
+  assert.equal(detectCliLanguage({}), "en");
+});
+
+test("stringWidth and padEndWidth handle CJK characters correctly", () => {
+  assert.equal(stringWidth("hello"), 5);
+  assert.equal(stringWidth("状态"), 4);
+  assert.equal(stringWidth("ステータス"), 10);
+  assert.equal(stringWidth("상태"), 4);
+
+  const paddedZh = padEndWidth("状态", 10);
+  assert.equal(stringWidth(paddedZh), 10);
+});
+
+test("renderLiveStatus formats model status table in default and specified languages", () => {
   const mockData: ModelStatusResponse = {
     timestamp: new Date().toISOString(),
     uptime: 3600,
@@ -47,16 +76,61 @@ test("renderLiveStatus formats model status table without throwing", () => {
     logs += args.join(" ") + "\n";
   };
   try {
-    renderLiveStatus(mockData);
+    // 1. Default (en)
+    renderLiveStatus(mockData, "en");
     assert.ok(logs.includes("prismd status"));
     assert.ok(logs.includes("free-auto"));
     assert.ok(logs.includes("openrouter/poolside/laguna-s-2.1:free"));
+    assert.ok(logs.includes("Total Tokens: 12.0k"));
+
+    // 2. zh-CN
+    logs = "";
+    renderLiveStatus(mockData, "zh-CN");
+    assert.ok(logs.includes("prismd 状态"));
+    assert.ok(logs.includes("运行时间"));
+    assert.ok(logs.includes("提供方 / 模型"));
+    assert.ok(logs.includes("总 Token: 12.0k"));
+
+    // 3. ja
+    logs = "";
+    renderLiveStatus(mockData, "ja");
+    assert.ok(logs.includes("prismd ステータス"));
+    assert.ok(logs.includes("稼働時間"));
+    assert.ok(logs.includes("プロバイダー / モデル"));
+
+    // 4. ko
+    logs = "";
+    renderLiveStatus(mockData, "ko");
+    assert.ok(logs.includes("prismd 상태"));
+    assert.ok(logs.includes("가동 시간"));
+    assert.ok(logs.includes("제공자 / 모델"));
+
+    // 5. de
+    logs = "";
+    renderLiveStatus(mockData, "de");
+    assert.ok(logs.includes("prismd Status"));
+    assert.ok(logs.includes("Betriebszeit"));
+    assert.ok(logs.includes("ANBIETER / MODELL"));
+
+    // 6. fr
+    logs = "";
+    renderLiveStatus(mockData, "fr");
+    assert.ok(logs.includes("Statut prismd"));
+    assert.ok(logs.includes("Temps de fonctionnement"));
+    assert.ok(logs.includes("FOURNISSEUR / MODÈLE"));
+
+    // 7. es
+    logs = "";
+    renderLiveStatus(mockData, "es");
+    assert.ok(logs.includes("Estado prismd"));
+    assert.ok(logs.includes("Tiempo de actividad"));
+    assert.ok(logs.includes("PROVEEDOR / MODELO"));
   } finally {
     console.log = origLog;
   }
 });
 
-test("renderOfflineStatus reads from SQLite database", () => {
+test("renderOfflineStatus reads from SQLite database with localization", () => {
   const dir = mkdtempSync(join(tmpdir(), "prismd-cli-"));
   const dbPath = join(dir, "prismd.sqlite");
   const store = new StateStore(dbPath);
@@ -83,10 +157,15 @@ test("renderOfflineStatus reads from SQLite database", () => {
     logs += args.join(" ") + "\n";
   };
   try {
-    renderOfflineStatus(dbPath);
+    renderOfflineStatus(dbPath, "en");
     assert.ok(logs.includes("prismd gateway is not running"));
     assert.ok(logs.includes("openrouter/test-model"));
     assert.ok(logs.includes("5"));
+
+    logs = "";
+    renderOfflineStatus(dbPath, "zh-CN");
+    assert.ok(logs.includes("prismd 网关未运行"));
+    assert.ok(logs.includes("提供方 / 模型"));
   } finally {
     console.log = origLog;
   }

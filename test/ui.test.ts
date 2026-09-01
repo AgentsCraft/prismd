@@ -20,3 +20,27 @@ test("renderUiHtml generates standalone HTML with zero external script tags", ()
   assert.ok(!html.includes('href="http'));
   assert.ok(html.includes("EventSource"));
 });
+
+test("renderUiHtml contains 7-language selector and complete dictionary", () => {
+  const html = renderUiHtml();
+  assert.ok(html.includes('<select id="lang-select"'));
+  assert.ok(html.includes('value="en">English'));
+  assert.ok(html.includes('value="zh-CN">简体中文'));
+  assert.ok(html.includes('value="ja">日本語'));
+  assert.ok(html.includes('value="ko">한국어'));
+  assert.ok(html.includes('value="de">Deutsch'));
+  assert.ok(html.includes('value="fr">Français'));
+  assert.ok(html.includes('value="es">Español'));
+
+  // Dictionary validation
+  assert.ok(html.includes("TRANSLATIONS"));
+  assert.ok(html.includes("localStorage.getItem('prismd_lang')"));
+  assert.ok(html.includes("navigator.language"));
+  assert.ok(html.includes("resetUsage"));
+  assert.ok(html.includes("resetConfirm"));
+  assert.ok(html.includes("resetting"));
+  assert.ok(html.includes("inputTokens"));
+  assert.ok(html.includes("outputTokens"));
+  assert.ok(html.includes("recentEvents"));
+  assert.ok(html.includes("noEvents"));
+});
