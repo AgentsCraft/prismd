@@ -14,7 +14,7 @@ export interface AuthConfig {
 export type ProviderAuthType = "api_key" | "oauth" | "none";
 
 export interface ProviderConfig {
-  type: "responses";
+  type: "responses" | "chat";
   baseUrl: string;
   /** Key field in ~/.prismd/keys.yaml; env var lookup uses <FIELD>_API_KEY uppercased. */
   apiKeyField: string;

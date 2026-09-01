@@ -20,6 +20,14 @@
       "auth": {
         "type": "api_key"
       }
+    },
+    "cerebras": {
+      "type": "chat",
+      "baseUrl": "https://api.cerebras.ai/v1",
+      "apiKeyField": "cerebras",
+      "auth": {
+        "type": "api_key"
+      }
     }
   },
   "models": {
@@ -55,6 +63,28 @@
       "tags": ["free", "long-context", "code"],
       "source": "https://openrouter.ai/api/v1/models",
       "checkedAt": "2026-08-30"
+    },
+    "llama-3.3-70b": {
+      "provider": "cerebras",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "chat"],
+      "source": "https://inference-docs.cerebras.ai/models",
+      "checkedAt": "2026-09-01"
+    },
+    "llama3.1-8b": {
+      "provider": "cerebras",
+      "contextWindow": 8192,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "chat"],
+      "source": "https://inference-docs.cerebras.ai/models",
+      "checkedAt": "2026-09-01"
     }
   },
   "aliases": {
@@ -62,20 +92,23 @@
       "description": "Auto-select a free coding model, with fallback candidates",
       "candidates": [
         "poolside/laguna-s-2.1:free",
-        "cohere/north-mini-code:free"
+        "cohere/north-mini-code:free",
+        "llama-3.3-70b"
       ]
     },
     "free-fast": {
       "description": "Smaller, faster free model",
       "candidates": [
-        "poolside/laguna-xs-2.1:free"
+        "poolside/laguna-xs-2.1:free",
+        "llama3.1-8b"
       ]
     },
     "free-code": {
       "description": "Free models tuned for code generation",
       "candidates": [
         "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free"
+        "poolside/laguna-s-2.1:free",
+        "llama-3.3-70b"
       ]
     }
   }

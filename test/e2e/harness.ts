@@ -43,6 +43,8 @@ export interface StartGatewayOptions {
   dataPath?: string;
   /** Keep the temp dir after stop() so dataPath survives; caller cleans up. */
   keepDir?: boolean;
+  /** Extra environment variables passed to the child process. */
+  env?: Record<string, string>;
 }
 
 export function sleep(ms: number): Promise<void> {
@@ -95,7 +97,9 @@ export async function startGateway(
         PRISMD_API_KEY: GATEWAY_TOKEN,
         OPENROUTER_API_KEY: "e2e-upstream-key",
         GROQ_API_KEY: "e2e-upstream-key",
+        CEREBRAS_API_KEY: "e2e-upstream-key",
         PRISMD_LOG_LEVEL: "warn",
+        ...(options.env ?? {}),
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
