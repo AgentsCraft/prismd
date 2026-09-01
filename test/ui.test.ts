@@ -21,7 +21,7 @@ test("renderUiHtml generates standalone HTML with zero external script tags", ()
   assert.ok(html.includes("EventSource"));
 });
 
-test("renderUiHtml contains 7-language selector and complete dictionary", () => {
+test("renderUiHtml contains 10-language selector and complete dictionary", () => {
   const html = renderUiHtml();
   assert.ok(html.includes('<select id="lang-select"'));
   assert.ok(html.includes('value="en">English'));
@@ -31,6 +31,9 @@ test("renderUiHtml contains 7-language selector and complete dictionary", () => 
   assert.ok(html.includes('value="de">Deutsch'));
   assert.ok(html.includes('value="fr">Français'));
   assert.ok(html.includes('value="es">Español'));
+  assert.ok(html.includes('value="it">Italiano'));
+  assert.ok(html.includes('value="ar">العربية'));
+  assert.ok(html.includes('value="tr">Türkçe'));
 
   // Dictionary validation
   assert.ok(html.includes("TRANSLATIONS"));

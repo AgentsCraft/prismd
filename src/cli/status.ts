@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { getConfig } from "../config.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
 
-export type SupportedLang = "en" | "zh-CN" | "ja" | "ko" | "de" | "fr" | "es";
+export type SupportedLang = "en" | "zh-CN" | "ja" | "ko" | "de" | "fr" | "es" | "it" | "ar" | "tr";
 
 export interface CliTranslations {
   title: string;
@@ -185,6 +185,72 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noUsageToday: "No hay uso registrado para hoy",
     usageFor: "Uso para",
   },
+  it: {
+    title: "Stato prismd",
+    uptime: "Tempo di attività",
+    config: "Configurazione",
+    totalTokens: "Token totali",
+    alias: "ALIAS",
+    provider: "PROVIDER",
+    model: "MODELLO",
+    providerModel: "PROVIDER / MODELLO",
+    status: "STATO",
+    requests: "RICHIESTE",
+    inputTokens: "TOKEN INPUT",
+    outputTokens: "TOKEN OUTPUT",
+    tokensInOut: "TOKEN (IN/OUT)",
+    context: "CONTESTO",
+    tools: "STRUMENTI",
+    health: "SALUTE",
+    offlineWarning: "Il gateway prismd non è in esecuzione (vista offline da SQLite)",
+    noDatabase: "Nessun database trovato in",
+    noUsageToday: "Nessun utilizzo registrato per oggi",
+    usageFor: "Utilizzo per",
+  },
+  ar: {
+    title: "حالة prismd",
+    uptime: "وقت التشغيل",
+    config: "الإعدادات",
+    totalTokens: "إجمالي الرموز",
+    alias: "الاسم المستعار",
+    provider: "المزود",
+    model: "النموذج",
+    providerModel: "المزود / النموذج",
+    status: "الحالة",
+    requests: "الطلبات",
+    inputTokens: "رموز الإدخال",
+    outputTokens: "رموز الإخراج",
+    tokensInOut: "الرموز (إدخال/إخراج)",
+    context: "السياق",
+    tools: "الأدوات",
+    health: "الصحة",
+    offlineWarning: "بوابة prismd لا تعمل (عرض غير متصل من SQLite)",
+    noDatabase: "لم يتم العثور على قاعدة بيانات في",
+    noUsageToday: "لا يوجد استخدام مسجل لليوم",
+    usageFor: "الاستخدام لـ",
+  },
+  tr: {
+    title: "prismd Durumu",
+    uptime: "Çalışma süresi",
+    config: "Yapılandırma",
+    totalTokens: "Toplam Belirteç",
+    alias: "TAKMA AD",
+    provider: "SAĞLAYICI",
+    model: "MODEL",
+    providerModel: "SAĞLAYICI / MODEL",
+    status: "DURUM",
+    requests: "İSTEKLER",
+    inputTokens: "GİRDİ BELİRTEÇLERİ",
+    outputTokens: "ÇIKTI BELİRTEÇLERİ",
+    tokensInOut: "BELİRTEÇLER (GİR/ÇIK)",
+    context: "BAĞLAM",
+    tools: "ARAÇLAR",
+    health: "SAĞLIK",
+    offlineWarning: "prismd ağ geçidi çalışmıyor (SQLite üzerinden çevrimdışı görünüm)",
+    noDatabase: "Belirtilen konumda veritabanı bulunamadı:",
+    noUsageToday: "Bugün için kayıtlı kullanım yok",
+    usageFor: "Kullanım:",
+  },
 };
 
 export function detectCliLanguage(env: NodeJS.ProcessEnv = process.env): SupportedLang {
@@ -196,6 +262,9 @@ export function detectCliLanguage(env: NodeJS.ProcessEnv = process.env): Support
   if (lower.startsWith("de")) return "de";
   if (lower.startsWith("fr")) return "fr";
   if (lower.startsWith("es")) return "es";
+  if (lower.startsWith("it")) return "it";
+  if (lower.startsWith("ar")) return "ar";
+  if (lower.startsWith("tr")) return "tr";
   return "en";
 }
 

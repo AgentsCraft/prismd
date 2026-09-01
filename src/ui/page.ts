@@ -350,6 +350,9 @@ export function renderUiHtml(): string {
         <option value="de">Deutsch</option>
         <option value="fr">Français</option>
         <option value="es">Español</option>
+        <option value="it">Italiano</option>
+        <option value="ar">العربية</option>
+        <option value="tr">Türkçe</option>
       </select>
     </div>
   </header>
@@ -525,6 +528,75 @@ export function renderUiHtml(): string {
         resetUsage: 'Restablecer uso',
         resetConfirm: '¿Está seguro de que desea restablecer todos los contadores de uso y registros?',
         resetting: 'Restableciendo...'
+      },
+      it: {
+        uptime: 'Tempo di attività',
+        connecting: 'Connessione',
+        live: 'In diretta (SSE)',
+        polling: 'Polling (5s)',
+        disconnected: 'Disconnesso',
+        active: '★ Attivo',
+        requests: 'Richieste',
+        inputTokens: 'Token di input',
+        outputTokens: 'Token di output',
+        context: 'Contesto',
+        source: 'Origine',
+        tools: 'Strumenti',
+        reasoning: 'Ragionamento',
+        status: 'Stato',
+        last: 'Ultimo errore',
+        cooldown: 'Cooldown',
+        recentEvents: 'Eventi recenti',
+        noEvents: 'Nessun cambio di stato registrato.',
+        resetUsage: 'Ripristina utilizzo',
+        resetConfirm: 'Sei sicuro di voler ripristinare tutti i contatori e i log di utilizzo?',
+        resetting: 'Ripristino in corso...'
+      },
+      ar: {
+        uptime: 'وقت التشغيل',
+        connecting: 'جارٍ الاتصال',
+        live: 'مباشر (SSE)',
+        polling: 'استقصاء (5 ثوانٍ)',
+        disconnected: 'غير متصل',
+        active: '★ نشط',
+        requests: 'الطلبات',
+        inputTokens: 'رموز الإدخال',
+        outputTokens: 'رموز الإخراج',
+        context: 'السياق',
+        source: 'المصدر',
+        tools: 'الأدوات',
+        reasoning: 'الاستنتاج',
+        status: 'الحالة',
+        last: 'آخر خطأ',
+        cooldown: 'فترة التهدئة',
+        recentEvents: 'الأحداث الأخيرة',
+        noEvents: 'لم يتم تسجيل أي تغييرات في الحالة بعد.',
+        resetUsage: 'إعادة تعيين الاستخدام',
+        resetConfirm: 'هل أنت متأكد من رغبتك في إعادة تعيين جميع عدادات وسجلات الاستخدام؟',
+        resetting: 'جارٍ إعادة التعيين...'
+      },
+      tr: {
+        uptime: 'Çalışma süresi',
+        connecting: 'Bağlanıyor',
+        live: 'Canlı (SSE)',
+        polling: 'Yoklama (5 sn)',
+        disconnected: 'Bağlantı kesildi',
+        active: '★ Aktif',
+        requests: 'İstekler',
+        inputTokens: 'Girdi Belirteçleri',
+        outputTokens: 'Çıktı Belirteçleri',
+        context: 'Bağlam',
+        source: 'Kaynak',
+        tools: 'Araçlar',
+        reasoning: 'Akıl Yürütme',
+        status: 'Durum',
+        last: 'Son Hata',
+        cooldown: 'Bekleme Süresi',
+        recentEvents: 'Son Olaylar',
+        noEvents: 'Henüz kaydedilmiş durum değişikliği yok.',
+        resetUsage: 'Kullanımı Sıfırla',
+        resetConfirm: 'Tüm kullanım sayaçlarını ve günlükleri sıfırlamak istediğinizden emin misiniz?',
+        resetting: 'Sıfırlanıyor...'
       }
     };
 
@@ -539,6 +611,9 @@ export function renderUiHtml(): string {
         if (nav.startsWith('de')) return 'de';
         if (nav.startsWith('fr')) return 'fr';
         if (nav.startsWith('es')) return 'es';
+        if (nav.startsWith('it')) return 'it';
+        if (nav.startsWith('ar')) return 'ar';
+        if (nav.startsWith('tr')) return 'tr';
       } catch (e) {}
       return 'en';
     }
