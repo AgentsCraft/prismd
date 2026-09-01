@@ -72,11 +72,16 @@ npm run generate:codex-catalog    # Generates ~/.codex/prismd-models.json
 PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
 ```
 
-### 3. OpenCode / OpenAI-Compatible Clients
-In your client configuration (e.g. `~/.config/opencode/config.json`), configure an OpenAI-compatible provider:
-- **Base URL**: `http://127.0.0.1:8787/v1`
-- **API Key**: `<your-prismd-local-token>`
-- **Model**: `free-auto` (or `free-fast`, `free-code`)
+### 3. Cursor
+Configure a custom OpenAI endpoint in Cursor:
+- **Settings** → **Models** → enable **OpenAI API Key**, enter `<your-prismd-local-token>`.
+- Check **Override OpenAI Base URL**, enter `http://127.0.0.1:8787/v1`.
+- Add and enable models: `free-auto`, `free-fast`, `free-code`. See [Cursor Setup](examples/cursor/README.md).
+
+### 4. OpenCode / DeepSeek Harness (dsh) / Pi Agent
+- **OpenCode**: Configure provider `baseUrl: "http://127.0.0.1:8787/v1"` in `~/.config/opencode/config.json`. See [OpenCode Setup](examples/opencode/README.md).
+- **DeepSeek Harness (dsh)**: Configure `base_url = "http://127.0.0.1:8787/v1"` in `~/.dsh/config.toml`. See [dsh Setup](examples/dsh/README.md).
+- **Pi Agent**: Configure `endpoint: "http://127.0.0.1:8787/v1"` in `~/.pi/config.json`. See [Pi Setup](examples/pi/README.md).
 
 ---
 

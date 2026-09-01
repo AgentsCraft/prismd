@@ -72,11 +72,16 @@ npm run generate:codex-catalog    # 生成 ~/.codex/prismd-models.json
 PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
 ```
 
-### 3. OpenCode / OpenAI 兼容客户端
-在配置文件（如 `~/.config/opencode/config.json`）中添加本地 OpenAI 兼容提供商：
-- **Base URL**: `http://127.0.0.1:8787/v1`
-- **API Key**: `<your-prismd-local-token>`
-- **Model**: `free-auto`（或 `free-fast`、`free-code`）
+### 3. Cursor
+在 Cursor 设置中开启自定义 OpenAI 端点：
+- **Settings** → **Models** → 开启 **OpenAI API Key**，填入 `<your-prismd-local-token>`。
+- 勾选 **Override OpenAI Base URL**，填入 `http://127.0.0.1:8787/v1`。
+- 新增模型并启用：`free-auto`、`free-fast`、`free-code`。详见 [Cursor 接入说明](examples/cursor/README.md)。
+
+### 4. OpenCode / DeepSeek Harness (dsh) / Pi Agent
+- **OpenCode**：在 `~/.config/opencode/config.json` 中配置 provider `baseUrl: "http://127.0.0.1:8787/v1"`，详见 [OpenCode 说明](examples/opencode/README.md)。
+- **DeepSeek Harness (dsh)**：在 `~/.dsh/config.toml` 中配置 `base_url = "http://127.0.0.1:8787/v1"`，详见 [dsh 说明](examples/dsh/README.md)。
+- **Pi Agent**：在 `~/.pi/config.json` 中配置 `endpoint: "http://127.0.0.1:8787/v1"`，详见 [Pi 说明](examples/pi/README.md)。
 
 ---
 
