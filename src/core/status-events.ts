@@ -53,17 +53,7 @@ export class StatusBroadcaster extends EventEmitter {
     const currentRatio = used / limit;
     this.lastQuotaRatios.set(key, currentRatio);
 
-    if (prevRatio < softLimitRatio && currentRatio >= softLimitRatio) {
-      this.emit("candidate_changed", {
-        provider,
-        model,
-        field: "quota.dailyRequests",
-        from: `${Math.floor(prevRatio * 100)}%`,
-        to: `${Math.floor(currentRatio * 100)}%`,
-        reason: "soft_limit",
-        at: new Date().toISOString(),
-      });
-    } else if (prevRatio < 1.0 && currentRatio >= 1.0) {
+    if (prevRatio < 1.0 && currentRatio >= 1.0) {
       this.emit("candidate_changed", {
         provider,
         model,
@@ -71,6 +61,16 @@ export class StatusBroadcaster extends EventEmitter {
         from: `${Math.floor(prevRatio * 100)}%`,
         to: "100%",
         reason: "quota_exhausted",
+        at: new Date().toISOString(),
+      });
+    } else if (prevRatio < softLimitRatio && currentRatio >= softLimitRatio) {
+      this.emit("candidate_changed", {
+        provider,
+        model,
+        field: "quota.dailyRequests",
+        from: `${Math.floor(prevRatio * 100)}%`,
+        to: `${Math.floor(currentRatio * 100)}%`,
+        reason: "soft_limit",
         at: new Date().toISOString(),
       });
     }
