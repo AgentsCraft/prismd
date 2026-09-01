@@ -25,8 +25,6 @@ writeFileSync(
           apiKeyField: "openrouter",
         },
       },
-      // Single candidate: failover has nowhere to go, so the outcome is
-      // deterministic (502) without touching a second provider.
       models: {
         "free-auto": {
           candidates: [
@@ -53,9 +51,10 @@ useTempDataPath();
 resetConfigForTests();
 resetRuntimeForTests();
 
-function post(authorization?: string): Promise<Response> {
+function post(options?: { authorization?: string; xApiKey?: string }): Promise<Response> {
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (authorization !== undefined) headers["authorization"] = authorization;
+  if (options?.authorization !== undefined) headers["authorization"] = options.authorization;
+  if (options?.xApiKey !== undefined) headers["x-api-key"] = options.xApiKey;
   return app.request("/v1/responses", {
     method: "POST",
     headers,
@@ -64,6 +63,7 @@ function post(authorization?: string): Promise<Response> {
 }
 
 test("missing token is rejected with 401 before any upstream call", async () => {
+  resetRuntimeForTests();
   const res = await post();
   assert.equal(res.status, 401);
   const body = (await res.json()) as { error: { code: string } };
@@ -71,14 +71,48 @@ test("missing token is rejected with 401 before any upstream call", async () => 
 });
 
 test("wrong token is rejected with 401", async () => {
-  const res = await post("Bearer wrong-token");
+  resetRuntimeForTests();
+  const res = await post({ authorization: "Bearer wrong-token" });
   assert.equal(res.status, 401);
   const body = (await res.json()) as { error: { code: string } };
   assert.equal(body.error.code, "invalid_api_key");
 });
 
-test("correct token passes auth and reaches the egress (502: upstream unreachable)", async () => {
-  const res = await post("Bearer test-token");
+test("correct Bearer token passes auth and reaches egress (502: upstream unreachable)", async () => {
+  resetRuntimeForTests();
+  const res = await post({ authorization: "Bearer test-token" });
+  assert.equal(res.status, 502);
+  const body = (await res.json()) as { error: { code: string } };
+  assert.equal(body.error.code, "gateway_all_candidates_failed");
+});
+
+test("correct lowercase bearer token passes auth", async () => {
+  resetRuntimeForTests();
+  const res = await post({ authorization: "bearer test-token" });
+  assert.equal(res.status, 502);
+  const body = (await res.json()) as { error: { code: string } };
+  assert.equal(body.error.code, "gateway_all_candidates_failed");
+});
+
+test("correct x-api-key header passes auth seamlessly (Anthropic SDK / Claude Code)", async () => {
+  resetRuntimeForTests();
+  const res = await post({ xApiKey: "test-token" });
+  assert.equal(res.status, 502);
+  const body = (await res.json()) as { error: { code: string } };
+  assert.equal(body.error.code, "gateway_all_candidates_failed");
+});
+
+test("wrong x-api-key header is rejected with 401", async () => {
+  resetRuntimeForTests();
+  const res = await post({ xApiKey: "wrong-api-key" });
+  assert.equal(res.status, 401);
+  const body = (await res.json()) as { error: { code: string } };
+  assert.equal(body.error.code, "invalid_api_key");
+});
+
+test("valid x-api-key with empty or invalid authorization still passes auth", async () => {
+  resetRuntimeForTests();
+  const res = await post({ authorization: "Bearer wrong", xApiKey: "test-token" });
   assert.equal(res.status, 502);
   const body = (await res.json()) as { error: { code: string } };
   assert.equal(body.error.code, "gateway_all_candidates_failed");
