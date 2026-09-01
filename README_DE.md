@@ -8,7 +8,7 @@ Lokales LLM-Gateway zur Aggregation von kostenlosen APIs und APIs mit geringem K
 
 Wenn prismd Ihnen Zeit oder Kontingente spart, können Sie dem Autor gerne einen Kaffee spendieren:
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/keanz21)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=flat&logo=ko-fi&logoColor=white)](https://ko-fi.com/keanz21)
 
 ## Funktionsumfang
 
