@@ -173,10 +173,11 @@ function expandCandidates(entries, modelCatalog, alias, warn) {
   return candidates;
 }
 
-/** Key sources in priority order: env vars > ~/.prismd/.env > ~/.prismd/keys.yaml. */
+/** Key sources in priority order: env vars > ./.env > ~/.prismd/.env > ~/.prismd/keys.yaml. */
 function resolveKeyValue(keys, field) {
   const envVar = `${field.toUpperCase()}_API_KEY`;
   if (keys.env[envVar]) return keys.env[envVar];
+  if (keys.localEnvFile && keys.localEnvFile[envVar]) return keys.localEnvFile[envVar];
   if (keys.envFile[envVar]) return keys.envFile[envVar];
   if (keys.yaml[field]) return keys.yaml[field];
   return undefined;
@@ -206,10 +207,15 @@ function warnOnLoosePermissions(filePath, warn) {
 
 /**
  * Load the key sources: live OS env vars plus a one-shot snapshot of
- * ~/.prismd/.env and ~/.prismd/keys.yaml. `overrides` supplies test values.
+ * ./.env, ~/.prismd/.env and ~/.prismd/keys.yaml. `overrides` supplies test values.
  */
-function loadKeys({ env, homeDir, warn = () => {} } = {}) {
-  const keys = { env: { ...process.env, ...(env ?? {}) }, envFile: {}, yaml: {} };
+function loadKeys({ env, homeDir, rootDir, warn = () => {} } = {}) {
+  const keys = { env: { ...process.env, ...(env ?? {}) }, localEnvFile: {}, envFile: {}, yaml: {} };
+  const localEnvPath = join(rootDir ?? process.cwd(), '.env');
+  if (existsSync(localEnvPath)) {
+    warnOnLoosePermissions(localEnvPath, warn);
+    keys.localEnvFile = parseEnvFile(readFileSync(localEnvPath, 'utf8'));
+  }
   const dir = join(homeDir ?? homedir(), '.prismd');
   const envPath = join(dir, '.env');
   if (existsSync(envPath)) {
@@ -253,7 +259,7 @@ export function buildConfig({ presets, userConfig = {}, keys, warn = () => {} })
         const envVar = `${providerDef.apiKeyField.toUpperCase()}_API_KEY`;
         warn(
           `warning: skipping candidate "${candidate.providerModelId}" for alias "${alias}": ` +
-            `key "${providerDef.apiKeyField}" not found (${envVar} / ~/.prismd/.env / ~/.prismd/keys.yaml)`,
+            `key "${providerDef.apiKeyField}" not found (${envVar} / .env / ~/.prismd/.env / ~/.prismd/keys.yaml)`,
         );
         return false;
       }
@@ -295,13 +301,13 @@ export function generate(rootDir, { env, homeDir, warn = () => {} } = {}) {
   const userPath = join(rootDir, 'config.user.json');
   if (existsSync(userPath)) userConfig = readJson(userPath);
 
-  const keys = loadKeys({ env, homeDir, warn });
+  const keys = loadKeys({ env, homeDir, rootDir, warn });
 
   const config = buildConfig({ presets, userConfig, keys, warn });
   if (Object.keys(config.models).length === 0) {
     warn(
       'warning: no aliases generated — configure at least one API key ' +
-        '(env vars, ~/.prismd/.env or ~/.prismd/keys.yaml)',
+        '(env vars, .env, ~/.prismd/.env or ~/.prismd/keys.yaml)',
     );
   }
   const schema = readJson(join(rootDir, 'config.schema.json'));

@@ -36,7 +36,7 @@ prismd
 git clone https://github.com/AgentsCraft/prismd.git
 cd prismd
 npm install
-cp keys.yaml.example ~/.prismd/keys.yaml   # 填入 API Key 并 chmod 600
+cp .env.example .env                       # 填入 API Key 并 chmod 600
 npm run generate:config                    # 合并预设与密钥生成运行时配置 prismd.json
 npm run dev                                # 启动本地服务
 ```
@@ -83,10 +83,10 @@ PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
 ## 密钥与配置管理
 
 ### 密钥管理
-密钥仅存放在本地 `~/.prismd/` 目录中，绝对不会提交至 git 或写入公开配置。读取优先级如下：
-1. **环境变量**：`OPENROUTER_API_KEY`、`GROQ_API_KEY`、`CEREBRAS_API_KEY`、`PRISMD_API_KEY`
-2. **环境文件**：`~/.prismd/.env`
-3. **YAML 配置文件**：`~/.prismd/keys.yaml`（权限建议设置为 `chmod 600`）
+密钥可直接存放在工程根目录 `.env` 或全局目录 `~/.prismd/` 中，读取优先级如下（高到低）：
+1. **系统环境变量**：`OPENROUTER_API_KEY`、`GROQ_API_KEY`、`GEMINI_API_KEY` 等
+2. **当前工程目录**：`./.env`（复制自 `.env.example`）
+3. **全局用户目录**：`~/.prismd/.env` 或 `~/.prismd/keys.yaml`（权限建议设置为 `chmod 600`）
 
 ### 自定义候选模型与排序
 可在 `config.user.json` 中自定义别名优先级或新增模型，随后执行 `npm run generate:config`：

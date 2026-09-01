@@ -36,7 +36,7 @@ prismd
 git clone https://github.com/AgentsCraft/prismd.git
 cd prismd
 npm install
-cp keys.yaml.example ~/.prismd/keys.yaml   # Fill in API keys, chmod 600
+cp .env.example .env                       # Fill in API keys, chmod 600
 npm run generate:config                    # Merge presets and keys to generate prismd.json
 npm run dev                                # Start development server
 ```
@@ -83,10 +83,10 @@ In your client configuration (e.g. `~/.config/opencode/config.json`), configure 
 ## Keys & Configuration
 
 ### Key Management
-Keys live exclusively in `~/.prismd/` and are never committed to git or written to public configs. Lookup order:
-1. **Environment Variables**: `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `PRISMD_API_KEY`
-2. **Env File**: `~/.prismd/.env`
-3. **YAML File**: `~/.prismd/keys.yaml` (recommended permission: `chmod 600`)
+Keys can be configured in the project root `.env` or in the global `~/.prismd/` directory. Lookup order (highest to lowest):
+1. **Environment Variables**: `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, etc.
+2. **Current Project Directory**: `./.env` (copy from `.env.example`)
+3. **Global User Directory**: `~/.prismd/.env` or `~/.prismd/keys.yaml` (recommended permission: `chmod 600`)
 
 ### Customizing Candidates & Ordering
 Override candidate priorities or add custom models in `config.user.json`, then regenerate the config:

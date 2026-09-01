@@ -14,6 +14,8 @@ import { join } from "node:path";
 import { logger } from "./observability/logger.js";
 
 export interface KeyStore {
+  /** Parsed ./.env */
+  localEnvFile: Record<string, string>;
   /** Parsed ~/.prismd/.env */
   envFile: Record<string, string>;
   /** Parsed ~/.prismd/keys.yaml */
@@ -89,10 +91,24 @@ function warnOnLoosePermissions(filePath: string): void {
 }
 
 /**
- * Load ~/.prismd/.env and ~/.prismd/keys.yaml once. Missing files are fine.
+ * Load ./.env, ~/.prismd/.env and ~/.prismd/keys.yaml once. Missing files are fine.
  * Defaults to PRISMD_HOME (if set) or homedir().
  */
-export function loadKeyStore(homeDir: string = process.env.PRISMD_HOME ?? homedir()): KeyStore {
+export function loadKeyStore(
+  homeDir: string = process.env.PRISMD_HOME ?? homedir(),
+  cwd: string = process.env.PRISMD_CWD ?? process.cwd(),
+): KeyStore {
+  let localEnvFile: Record<string, string> = {};
+  const localEnvPath = join(cwd, ".env");
+  if (existsSync(localEnvPath)) {
+    warnOnLoosePermissions(localEnvPath);
+    try {
+      localEnvFile = parseEnvFile(readFileSync(localEnvPath, "utf8"));
+    } catch {
+      localEnvFile = {};
+    }
+  }
+
   const dir = join(homeDir, ".prismd");
   let envFile: Record<string, string> = {};
   let yaml: Record<string, string> = {};
@@ -114,21 +130,23 @@ export function loadKeyStore(homeDir: string = process.env.PRISMD_HOME ?? homedi
       yaml = {};
     }
   }
-  return { envFile, yaml };
+  return { localEnvFile, envFile, yaml };
 }
 
 /**
  * Resolve a key by field name. Returns undefined when nothing is set.
- * Priority: env var (FIELD_API_KEY) > ~/.prismd/.env > ~/.prismd/keys.yaml.
+ * Priority: env var (FIELD_API_KEY) > ./.env > ~/.prismd/.env > ~/.prismd/keys.yaml.
  * The env tier is read live; the file tiers come from the startup snapshot.
  */
 export function resolveKey(store: KeyStore, field: string): string | undefined {
   const envVar = envVarFor(field);
   const fromEnv = process.env[envVar];
   if (fromEnv !== undefined && fromEnv !== "") return fromEnv;
-  const fromEnvFile = store.envFile[envVar];
+  const fromLocalEnv = store.localEnvFile?.[envVar];
+  if (fromLocalEnv !== undefined && fromLocalEnv !== "") return fromLocalEnv;
+  const fromEnvFile = store.envFile?.[envVar];
   if (fromEnvFile !== undefined && fromEnvFile !== "") return fromEnvFile;
-  const fromYaml = store.yaml[field];
+  const fromYaml = store.yaml?.[field];
   if (fromYaml !== undefined && fromYaml !== "") return fromYaml;
   return undefined;
 }
