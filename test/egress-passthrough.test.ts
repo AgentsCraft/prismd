@@ -219,3 +219,58 @@ test("SSE 'data:' lines without a space are still accounted as output", async (t
     db.close();
   }
 });
+
+test("custom responses provider without built-in builder uses defaultResponsesCreateRequest", async (t) => {
+  const mock = await startMock();
+  t.after(() => new Promise((r) => mock.server.close(r)));
+
+  const dir = mkdtempSync(join(tmpdir(), "prismd-custom-egress-"));
+  writeFileSync(
+    join(dir, "prismd.json"),
+    JSON.stringify(
+      makeValidConfig({
+        providers: {
+          "custom-llm": {
+            type: "responses",
+            baseUrl: `http://127.0.0.1:${mock.port}`,
+            apiKeyField: "custom_llm",
+            extraHeaders: { "X-Custom-Header": "custom-val" },
+          },
+        },
+        models: {
+          "free-auto": {
+            candidates: [
+              {
+                provider: "custom-llm",
+                providerModelId: "custom-model-v1",
+                contextWindow: 131072,
+                maxOutputTokens: 8192,
+                supportsTools: true,
+                supportsReasoning: false,
+                limits: { dailyRequests: 100, rpm: 30, maxConcurrent: 2 },
+                tags: ["free"],
+              },
+            ],
+          },
+        },
+      }),
+    ),
+  );
+  process.env.PRISMD_CONFIG_PATH = join(dir, "prismd.json");
+  process.env["PRISMD_API_KEY"] = "test-token";
+  process.env["CUSTOM_LLM_API_KEY"] = "custom-key";
+  useTempDataPath();
+  resetConfigForTests();
+  resetRuntimeForTests();
+
+  const res = await post({ model: "free-auto", input: "test custom provider" });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { id: string };
+  assert.equal(body.id, "mock-resp");
+
+  const captured = mock.captured();
+  assert.ok(captured);
+  assert.equal(captured.headers["x-custom-header"], "custom-val");
+  assert.equal(captured.headers["authorization"], "Bearer custom-key");
+  assert.equal(captured.body?.model, "custom-model-v1");
+});

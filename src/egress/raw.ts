@@ -2,17 +2,49 @@
  * Raw HTTP upstream caller with connection timeout, stream-idle timeout,
  * and StreamAccounting. Shared across all ingress protocol adapters.
  */
-import {
-  UpstreamConnectError,
-  parseRetryAfter,
-  type StreamAccounting,
-  type UpstreamCallOptions,
-  type UpstreamResult,
-} from "./responses.js";
+
+/** Connection failure or connect-timeout while reaching the upstream. */
+export class UpstreamConnectError extends Error {
+  readonly timeout: boolean;
+
+  constructor(message: string, timeout: boolean) {
+    super(message);
+    this.name = "UpstreamConnectError";
+    this.timeout = timeout;
+  }
+}
+
+/** Mutable per-attempt accounting, filled while the body streams. */
+export interface StreamAccounting {
+  /** Ms from request start to first body chunk (0 before first chunk). */
+  firstTokenMs: number;
+  /** Accumulated SSE `data:` payload characters (output estimate input). */
+  outputChars: number;
+  /** Real usage reported by the upstream (response.completed / JSON body / SSE usage). */
+  realUsage?: { inputTokens?: number; outputTokens?: number };
+  /** True when the stream ended abnormally (idle timeout or mid-stream error). */
+  aborted: boolean;
+}
+
+export interface UpstreamCallOptions {
+  connectTimeoutMs: number;
+  streamIdleTimeoutMs: number;
+  /** Called once when the first body chunk arrives (first-token latency). */
+  onFirstToken?: (latencyMs: number) => void;
+  /** Called per relayed chunk (bytes), for exporter.onChunk. */
+  onChunk?: (bytes: number) => void;
+}
+
+export type UpstreamResult =
+  | { kind: "stream"; response: Response; accounting: StreamAccounting; retryAfterMs?: number }
+  | { kind: "json"; response: Response; accounting: StreamAccounting; retryAfterMs?: number }
+  | { kind: "error"; status: number; response: Response; retryAfterMs?: number };
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
-class SseEventSplitter {
+/** Split an incoming text stream into complete SSE event blocks ("\n\n" or "\r\n\r\n" separated). */
+export class SseEventSplitter {
   private buffer = "";
 
   push(text: string): string[] {
@@ -39,26 +71,41 @@ class SseEventSplitter {
   }
 }
 
-function dataPayloads(event: string): string[] {
+/** Extract all payload data from lines starting with "data:" in an SSE event. */
+export function dataPayloads(event: string): string[] {
   return event
     .split("\n")
     .filter((line) => line.startsWith("data:"))
     .map((line) => (line[5] === " " ? line.slice(6) : line.slice(5)));
 }
 
-function tryExtractUsage(payload: string): { inputTokens?: number; outputTokens?: number } | undefined {
+/** Try to extract token usage from a JSON payload or text body across diverse provider formats. */
+export function tryExtractUsage(payloadOrText: string): { inputTokens?: number; outputTokens?: number } | undefined {
   try {
-    const obj = JSON.parse(payload) as {
-      usage?: { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
-    };
-    if (obj?.usage) {
-      const u = obj.usage;
-      const input = typeof u.input_tokens === "number" ? u.input_tokens : u.prompt_tokens;
-      const output = typeof u.output_tokens === "number" ? u.output_tokens : u.completion_tokens;
-      return {
-        inputTokens: typeof input === "number" ? input : undefined,
-        outputTokens: typeof output === "number" ? output : undefined,
-      };
+    const obj = JSON.parse(payloadOrText) as Record<string, unknown>;
+    if (!obj || typeof obj !== "object") return undefined;
+
+    // Check obj.usage or nested usage (obj.response.usage, obj.message.usage)
+    const u = (obj.usage ??
+      (obj.response as Record<string, unknown> | undefined)?.usage ??
+      (obj.message as Record<string, unknown> | undefined)?.usage) as Record<string, unknown> | undefined;
+
+    if (u && typeof u === "object") {
+      const input =
+        typeof u.input_tokens === "number"
+          ? u.input_tokens
+          : typeof u.prompt_tokens === "number"
+            ? u.prompt_tokens
+            : undefined;
+      const output =
+        typeof u.output_tokens === "number"
+          ? u.output_tokens
+          : typeof u.completion_tokens === "number"
+            ? u.completion_tokens
+            : undefined;
+      if (input !== undefined || output !== undefined) {
+        return { inputTokens: input, outputTokens: output };
+      }
     }
   } catch {
     /* ignore non-json */
@@ -66,10 +113,33 @@ function tryExtractUsage(payload: string): { inputTokens?: number; outputTokens?
   return undefined;
 }
 
-function sseErrorEvent(code: string, message: string): string {
-  return `data: ${JSON.stringify({ type: "error", error: { message, type: "upstream_error", code } })}\n\n`;
+/** SSE error event terminating a broken stream. */
+export function sseErrorEvent(code: string, message: string): string {
+  return `event: error\ndata: ${JSON.stringify({ type: "error", error: { message, type: "upstream_error", code } })}\n\n`;
 }
 
+/** Parse a Retry-After header (delta-seconds or HTTP-date) into ms. */
+export function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.startsWith("-")) return undefined;
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number.parseInt(trimmed, 10);
+    if (seconds >= 0) return seconds * 1000;
+    return undefined;
+  }
+  if (!/[a-zA-Z]/.test(trimmed)) return undefined;
+  const date = Date.parse(trimmed);
+  if (!Number.isNaN(date)) {
+    return Math.max(0, date - Date.now());
+  }
+  return undefined;
+}
+
+/**
+ * Wrap an upstream SSE body with stream-idle timeout, first token latency tracking,
+ * real-time usage extraction, and mid-stream error handling.
+ */
 function wrapRawStream(
   upstream: Response,
   accounting: StreamAccounting,
@@ -141,7 +211,7 @@ function wrapRawStream(
         options.onChunk?.(value.byteLength);
 
         if (isSse) {
-          const text = new TextDecoder().decode(value);
+          const text = decoder.decode(value, { stream: true });
           for (const event of splitter.push(text)) {
             for (const payload of dataPayloads(event)) {
               accounting.outputChars += payload.length;
@@ -190,6 +260,7 @@ function wrapRawStream(
   });
 }
 
+/** Buffer a non-streaming JSON body and capture usage + output chars. */
 async function bufferRawJson(
   upstream: Response,
   accounting: StreamAccounting,
@@ -213,6 +284,10 @@ async function bufferRawJson(
   });
 }
 
+/**
+ * Execute raw HTTP upstream call with connection timeout, stream idle timeout,
+ * and unified StreamAccounting.
+ */
 export async function callRawHttpUpstream(
   providerName: string,
   url: string,

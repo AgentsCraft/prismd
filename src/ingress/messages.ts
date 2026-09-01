@@ -5,9 +5,13 @@ import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth } from "../core/runtime.js";
 import { getQuota } from "../core/runtime.js";
-import { routeAlias } from "../core/router.js";
+import { routeAlias, resolveClaudeModelAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
-import { callRawHttpUpstream } from "../egress/raw.js";
+import {
+  callRawHttpUpstream,
+  SseEventSplitter,
+  dataPayloads,
+} from "../egress/raw.js";
 import {
   callUpstream as responsesCallUpstream,
   UpstreamConnectError,
@@ -16,6 +20,11 @@ import {
 } from "../egress/responses.js";
 import { exporter } from "../observability/exporter.js";
 import { logger } from "../observability/logger.js";
+import {
+  convertChatToResponsesRequest,
+  wrapResponsesStreamToChat,
+  bufferAndConvertResponsesJson,
+} from "../egress/chat-converter.js";
 import {
   convertAnthropicToChatRequest,
   convertChatToAnthropicResponse,
@@ -51,16 +60,8 @@ export async function messages(c: Context): Promise<Response> {
   const health = getHealth();
   const inputChars = JSON.stringify(body).length;
 
-  // Resolve alias: if exact model alias not found, try fallback to "free-auto" or first configured alias
-  let aliasKey = body.model;
-  if (!config.models[aliasKey]) {
-    if (config.models["free-auto"]) {
-      aliasKey = "free-auto";
-    } else {
-      const firstAlias = Object.keys(config.models)[0];
-      if (firstAlias) aliasKey = firstAlias;
-    }
-  }
+  // Resolve alias: automatic fallback for Claude Code / Anthropic model names
+  const aliasKey = resolveClaudeModelAlias(config.models, body.model);
 
   const routed = routeAlias(config.models, aliasKey, {
     inputChars,
@@ -185,38 +186,64 @@ export async function messages(c: Context): Promise<Response> {
           options,
         );
       } else {
-        result = await responsesCallUpstream(
+        const responsesReq = convertChatToResponsesRequest(chatRequest, candidate.providerModelId);
+        const startedAtMs = Date.now();
+        const rawResult = await responsesCallUpstream(
           candidate.provider,
           provider,
           candidate.providerModelId,
-          {
-            model: candidate.providerModelId,
-            input: chatRequest.messages,
-            stream: body.stream,
-            ...chatRequest,
-          },
+          responsesReq,
           apiKey,
           options,
         );
+
+        if (rawResult.kind === "stream" && rawResult.response.body) {
+          result = {
+            kind: "stream",
+            response: wrapResponsesStreamToChat(
+              rawResult.response,
+              rawResult.accounting,
+              options,
+              startedAtMs,
+              candidate.providerModelId,
+            ),
+            accounting: rawResult.accounting,
+            retryAfterMs: rawResult.retryAfterMs,
+          };
+        } else if (rawResult.kind === "json") {
+          result = {
+            kind: "json",
+            response: await bufferAndConvertResponsesJson(
+              rawResult.response,
+              rawResult.accounting,
+              options,
+              startedAtMs,
+              candidate.providerModelId,
+            ),
+            accounting: rawResult.accounting,
+            retryAfterMs: rawResult.retryAfterMs,
+          };
+        } else {
+          result = rawResult;
+        }
       }
     } catch (err) {
-      if (err instanceof UpstreamConnectError) {
-        health.recordFailure(candidate.provider, candidate.providerModelId, {});
-        logger.warn(
-          {
-            requestId,
-            alias: body.model,
-            provider: candidate.provider,
-            model: candidate.providerModelId,
-            timeout: err.timeout,
-          },
-          "upstream connection failed",
-        );
-        attemptStatuses.push({ candidate, status: null });
-        failovers += 1;
-        continue;
-      }
-      throw err;
+      const isTimeout = err instanceof UpstreamConnectError ? err.timeout : false;
+      health.recordFailure(candidate.provider, candidate.providerModelId, {});
+      logger.warn(
+        {
+          requestId,
+          alias: body.model,
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          timeout: isTimeout,
+          error: (err as Error).message,
+        },
+        "upstream connection failed",
+      );
+      attemptStatuses.push({ candidate, status: null });
+      failovers += 1;
+      continue;
     }
 
     if (result.kind === "stream" || result.kind === "json") {
@@ -331,48 +358,32 @@ async function relayAnthropicSuccess(ctx: RelayContext & { result: OkResult }): 
 
     const reader = result.response.body!.getReader();
     const transformer = new ChatToAnthropicStreamTransformer(ctx.alias);
+    const splitter = new SseEventSplitter();
 
     const bodyStream = new ReadableStream<Uint8Array>({
       start(controller) {
         void (async () => {
-          let buffer = "";
           try {
             for (;;) {
               const { done, value } = await reader.read();
               if (done) break;
 
               const text = decoder.decode(value, { stream: true });
-              buffer += text;
-
-              const delimiter = /\r?\n\r?\n/g;
-              let lastIndex = 0;
-              let match: RegExpExecArray | null;
-              while ((match = delimiter.exec(buffer)) !== null) {
-                const block = buffer.slice(lastIndex, match.index);
-                lastIndex = match.index + match[0].length;
-                for (const line of block.split("\n")) {
-                  if (line.startsWith("data:")) {
-                    const payload = line.slice(5).trim();
-                    const anthropicEvents = transformer.processDataPayload(payload);
-                    for (const ev of anthropicEvents) {
-                      controller.enqueue(encoder.encode(ev));
-                    }
-                  }
-                }
-              }
-              if (lastIndex > 0) {
-                buffer = buffer.slice(lastIndex);
-              }
-            }
-
-            if (buffer.length > 0) {
-              for (const line of buffer.split("\n")) {
-                if (line.startsWith("data:")) {
-                  const payload = line.slice(5).trim();
+              for (const event of splitter.push(text)) {
+                for (const payload of dataPayloads(event)) {
                   const anthropicEvents = transformer.processDataPayload(payload);
                   for (const ev of anthropicEvents) {
                     controller.enqueue(encoder.encode(ev));
                   }
+                }
+              }
+            }
+
+            for (const event of splitter.end()) {
+              for (const payload of dataPayloads(event)) {
+                const anthropicEvents = transformer.processDataPayload(payload);
+                for (const ev of anthropicEvents) {
+                  controller.enqueue(encoder.encode(ev));
                 }
               }
             }
@@ -383,7 +394,12 @@ async function relayAnthropicSuccess(ctx: RelayContext & { result: OkResult }): 
             }
 
             const usage = transformer.getUsage();
-            accounting.realUsage = usage;
+            if (usage && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
+              accounting.realUsage = {
+                inputTokens: usage.inputTokens || accounting.realUsage?.inputTokens,
+                outputTokens: usage.outputTokens || accounting.realUsage?.outputTokens,
+              };
+            }
 
             finish();
             controller.close();
