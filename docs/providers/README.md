@@ -12,6 +12,7 @@ prismd 支持接入任何提供免费额度或低成本 API 的模型服务商�
 | **Google Gemini** | Google AI Studio 免费层（15 RPM / 1000 RPD），大上下文窗口 | `chat`（OpenAI 兼容端点） | `gemini-2.0-flash`<br>`gemini-1.5-flash` | [查看配置](gemini.md) |
 | **NVIDIA NIM** | 开发者免费体验点数，提供大量开源前沿模型直接推理 | `chat`（OpenAI 兼容端点） | `meta/llama-3.3-70b-instruct`<br>`deepseek-ai/deepseek-r1` | [查看配置](nvidia.md) |
 | **GitHub Models** | GitHub 账号自带免费调用限额（按分钟/日速率限制） | `chat`（Azure/OpenAI 兼容） | `gpt-4o`<br>`meta-llama-3.3-70b-instruct` | [查看配置](github-models.md) |
+| **AMD (ROCm / Cloud)** | Developer Cloud 算力点数 / 本地 ROCm 硬件推理（Ollama / vLLM） | `chat`（OpenAI 兼容端点） | `llama3.3`<br>`deepseek-r1` | [查看配置](amd.md) |
 
 ---
 
