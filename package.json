@@ -11,6 +11,25 @@
     "type": "git",
     "url": "git+https://github.com/AgentsCraft/prismd.git"
   },
+  "homepage": "https://github.com/AgentsCraft/prismd#readme",
+  "bugs": {
+    "url": "https://github.com/AgentsCraft/prismd/issues"
+  },
+  "keywords": [
+    "llm",
+    "gateway",
+    "ai-gateway",
+    "coding-agents",
+    "claude-code",
+    "codex",
+    "opencode",
+    "openrouter",
+    "groq",
+    "cerebras",
+    "failover",
+    "anthropic",
+    "openai"
+  ],
   "publishConfig": {
     "access": "public"
   },
