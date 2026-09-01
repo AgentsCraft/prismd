@@ -41,16 +41,21 @@ npm run generate:config                    # merges presets + config.user.json +
 npm run dev                                # listens on http://127.0.0.1:8787
 ```
 
-Or install the RC channel package:
+### Or install via npm
 
 ```bash
+# Stable release (recommended)
+npm install -g @prismd/prismd
+
+# Or RC preview channel
 npm install -g @agentscraft/prismd
+
 export OPENROUTER_API_KEY=<your-key>
 export PRISMD_API_KEY=<local-token>        # generate: openssl rand -hex 32
 prismd                                     # listens on http://127.0.0.1:8787
 ```
 
-The runtime reads exactly one file: `prismd.json` (override the path with `PRISMD_CONFIG_PATH`). From the installed package, generate it with `node node_modules/@agentscraft/prismd/scripts/generate-config.mjs --root <dir>`.
+The runtime reads exactly one file: `prismd.json` (override the path with `PRISMD_CONFIG_PATH`). From the installed package, generate it with `node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>` (replace package name with `@agentscraft/prismd` if using the RC channel).
 
 Smoke test:
 

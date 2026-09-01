@@ -41,16 +41,21 @@ npm run generate:config                    # 合并 presets + config.user.json +
 npm run dev                                # 启动服务，监听 http://127.0.0.1:8787
 ```
 
-### 或安装 RC 预览包
+### 或通过 npm 安装
 
 ```bash
+# 正式版本（推荐）
+npm install -g @prismd/prismd
+
+# 或 RC 预览通道
 npm install -g @agentscraft/prismd
+
 export OPENROUTER_API_KEY=<your-key>
 export PRISMD_API_KEY=<local-token>        # 生成指令：openssl rand -hex 32
 prismd                                     # 启动服务，监听 http://127.0.0.1:8787
 ```
 
-网关运行时仅读取一个文件：`prismd.json`（可通过环境变量 `PRISMD_CONFIG_PATH` 自定义路径）。通过已安装的 npm 包生成配置：`node node_modules/@agentscraft/prismd/scripts/generate-config.mjs --root <dir>`。
+网关运行时仅读取一个文件：`prismd.json`（可通过环境变量 `PRISMD_CONFIG_PATH` 自定义路径）。通过已安装的 npm 包生成配置：`node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>`（若使用 RC 通道，请将包名替换为 `@agentscraft/prismd`）。
 
 ### 冒烟测试
 
