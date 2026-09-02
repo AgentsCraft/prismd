@@ -4,27 +4,19 @@
 
 **بوابة LLM محلية عالية التوافر** تجمع بين واجهات برمجة التطبيقات المجانية والمنخفضة التكلفة (OpenRouter و Groq و Cerebras و Google Gemini و NVIDIA NIM و GitHub Models وغيرها) ونماذج LLM المحلية (Ollama). توفر واجهة موحدة ومستقرة وغير منقطعة لوكلاء البرمجة (Claude Code و Codex CLI و Cursor و OpenCode و Aider وغيرها).
 
-```mermaid
-flowchart LR
-    subgraph Clients["وكلاء البرمجة (Clients)"]
-        CC["Claude Code<br/>(Anthropic Messages)"]
-        CX["Codex CLI<br/>(OpenAI Responses)"]
-        CU["Cursor / OpenCode<br/>(Chat Completions)"]
-    end
-
-    subgraph Gateway["prismd (127.0.0.1:8787)"]
-        Router["توجيه ذكي (free-auto)<br/>ترجيح الحصص / فحص السياق / تجاوز الفشل 429"]
-        KeyPool["مجمع المفاتيح المتعددة (Key Pool)<br/>قاطع الدائرة لكل مفتاح / Round-Robin"]
-    end
-
-    subgraph Upstreams["المزودون (Providers)"]
-        Cloud["واجهات مجانية سحابية<br/>OpenRouter / Groq / Cerebras / Gemini..."]
-        Local["احتياطي محلي دون اتصال<br/>Ollama (qwen2.5-coder / deepseek-r1)"]
-    end
-
-    Clients --> Gateway
-    Gateway --> Cloud
-    Cloud -. "الكل 429 / دون اتصال" .-> Local
+```text
+┌────────────────────────────────┐       ┌─────────────────────────────────────┐       ┌─────────────────────────────────────┐
+│    Coding Agents (Clients)     │       │        prismd Gateway (Local)       │       │         Model Providers (Upstream)  │
+│                                │       │          127.0.0.1:8787             │       │                                     │
+│  Claude Code  (Messages API)   ├──────►│  [Protocol Converter]               ├──────►│  Cloud Free APIs                    │
+│  Codex CLI    (Responses API)  ├──────►│    • Messages ↔ Responses ↔ Chat    │       │    • OpenRouter / Groq / Cerebras   │
+│  Cursor / dsh (Chat API)       ├──────►│  [Smart Router (free-auto)]         │       │    • Google Gemini / NVIDIA NIM     │
+│  OpenCode / Pi / Aider         ├──────►│    • Quota-Weighted & Context Check │       │    • GitHub Models / AMD            │
+│                                │       │  [Key Pool & Circuit Breaker]       │       │                                     │
+│                                │       │    • Multi-Key Round-Robin / 429    │  all  │  Local Offline Fallback             │
+│                                │       │    • Zero-Downtime Auto Fallback    ├──────►│    • Ollama (qwen2.5-coder / r1)    │
+│                                │       │                                     │  429  │    • LM Studio (local GGUF models)  │
+└────────────────────────────────┘       └─────────────────────────────────────┘       └─────────────────────────────────────┘
 ```
 
 ---

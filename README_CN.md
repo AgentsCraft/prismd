@@ -4,27 +4,19 @@
 
 **本地优先的 LLM 高可用网关**，聚合全球免费/低额度模型 API（OpenRouter、Groq、Cerebras、Gemini、NVIDIA、GitHub 等）与本地 Local LLM（Ollama），为各类编码智能体（Claude Code、Codex CLI、Cursor、OpenCode、Aider 等）提供永不中断、稳定可切换的统一接口。
 
-```mermaid
-flowchart LR
-    subgraph Clients["编码智能体 (Clients)"]
-        CC["Claude Code<br/>(Anthropic Messages)"]
-        CX["Codex CLI<br/>(OpenAI Responses)"]
-        CU["Cursor / OpenCode<br/>(Chat Completions)"]
-    end
-
-    subgraph Gateway["prismd (127.0.0.1:8787)"]
-        Router["智能路由 (free-auto)<br/>配额加权 / 上下文检查 / 429 故障转移"]
-        KeyPool["多 Key 轮询池 (Key Pool)<br/>单 Key 熔断 / 负载均衡"]
-    end
-
-    subgraph Upstreams["上游提供商 (Providers)"]
-        Cloud["云端免费 API<br/>OpenRouter / Groq / Cerebras / Gemini..."]
-        Local["本地离线兜底<br/>Ollama (qwen2.5-coder / deepseek-r1)"]
-    end
-
-    Clients --> Gateway
-    Gateway --> Cloud
-    Cloud -. "全部 429 / 断网" .-> Local
+```text
+┌────────────────────────────────┐       ┌─────────────────────────────────────┐       ┌─────────────────────────────────────┐
+│       编码智能体 (Clients)      │       │        prismd 本地高可用网关         │       │          上游模型服务商 (Providers)  │
+│                                │       │          127.0.0.1:8787             │       │                                     │
+│  Claude Code  (Messages 协议)  ├──────►│  [全协议透明转换 (Converter)]        ├──────►│  云端免费 / 低额度 API              │
+│  Codex CLI    (Responses 协议) ├──────►│    • Messages ↔ Responses ↔ Chat    │       │    • OpenRouter / Groq / Cerebras   │
+│  Cursor / dsh (Chat 协议)      ├──────►│  [智能路由队列 (free-auto)]         │       │    • Google Gemini / NVIDIA NIM     │
+│  OpenCode / Pi / Aider         ├──────►│    • 配额加权 / 上下文检查 / 429 熔断 │       │    • GitHub Models / AMD            │
+│                                │       │  [多 Key 轮询池 (Key Pool)]         │       │                                     │
+│                                │       │    • 单 Key 冷却隔离 / 负载均衡     │  全限 │  本地离线兜底 (Zero-Downtime)       │
+│                                │       │    • 本地零宕机自动回退             ├──────►│    • Ollama (qwen2.5-coder / r1)    │
+│                                │       │                                     │  流/断│    • LM Studio (本地 GGUF 模型)      │
+└────────────────────────────────┘       └─────────────────────────────────────┘       └─────────────────────────────────────┘
 ```
 
 ---
