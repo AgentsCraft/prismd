@@ -169,11 +169,13 @@ export async function chatCompletions(c: Context): Promise<Response> {
         if (provider.type === "chat") {
           // Direct call to Chat upstream
           const url = `${provider.baseUrl}/chat/completions`;
-          const headers = {
-            authorization: `Bearer ${apiKey}`,
+          const headers: Record<string, string> = {
             "content-type": "application/json",
             ...provider.extraHeaders,
           };
+          if (provider.auth?.type !== "none" && apiKey && apiKey !== "none") {
+            headers.authorization = `Bearer ${apiKey}`;
+          }
           const bodyStr = JSON.stringify({
             ...body,
             model: candidate.providerModelId,

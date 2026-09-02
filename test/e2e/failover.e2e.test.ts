@@ -210,3 +210,137 @@ test("旅程 5b：全部候选挂起返回 502，metadata 附各候选连接错�
   ]);
   assert.equal(mock.requests.length, 1);
 });
+
+test("旅程 12：多 Key 轮询与单 Key 429 熔断隔离，同 Provider 换 Key 成功返回", async (t) => {
+  const mock = await startMockUpstream((captured) => {
+    const auth = captured.headers?.authorization;
+    if (auth === "Bearer key-1") {
+      return {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "5" },
+        body: JSON.stringify({ error: { message: "rate limited on key 1" } }),
+      };
+    }
+    if (auth === "Bearer key-2") {
+      return {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "key-2-ok" }),
+      };
+    }
+    return { status: 500, body: "unexpected key" };
+  });
+  t.after(() => mock.close());
+
+  const gateway = await startGateway(
+    makeValidConfig({
+      providers: {
+        openrouter: { type: "responses", baseUrl: mock.url, apiKeyField: "openrouter" },
+      },
+      models: {
+        "free-auto": {
+          candidates: [
+            {
+              provider: "openrouter",
+              providerModelId: C1,
+              contextWindow: 262144,
+              maxOutputTokens: 32768,
+              supportsTools: true,
+              supportsReasoning: true,
+              limits: { dailyRequests: 50, rpm: 20, maxConcurrent: 2 },
+              tags: ["free"],
+            },
+          ],
+        },
+      },
+    }),
+    {
+      env: {
+        OPENROUTER_API_KEY: "key-1,key-2",
+      },
+    },
+  );
+  t.after(async () => {
+    await gateway.stop();
+  });
+
+  const res = await postResponses(gateway.url, { model: "free-auto", input: "hi" });
+  assert.equal(res.status, 200, logTail(gateway));
+  const data = (await res.json()) as { id: string };
+  assert.equal(data.id, "key-2-ok");
+  assert.equal(mock.requests.length, 2);
+  assert.equal(mock.requests[0].headers?.authorization, "Bearer key-1");
+  assert.equal(mock.requests[1].headers?.authorization, "Bearer key-2");
+});
+
+test("旅程 13：云端候选全部 429 时无缝离线兜底至本地 Ollama", async (t) => {
+  const mock = await startMockUpstream((captured) => {
+    if (captured.body?.model === C1) {
+      return {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "5" },
+        body: JSON.stringify({ error: { message: "cloud 429" } }),
+      };
+    }
+    if (captured.body?.model === "qwen2.5-coder:7b") {
+      return {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: "ollama-ok",
+          choices: [{ message: { content: "local offline code response" } }],
+        }),
+      };
+    }
+    return { status: 500, body: "unexpected model" };
+  });
+  t.after(() => mock.close());
+
+  const gateway = await startGateway(
+    makeValidConfig({
+      providers: {
+        openrouter: { type: "responses", baseUrl: mock.url, apiKeyField: "openrouter" },
+        ollama: { type: "chat", baseUrl: mock.url, apiKeyField: "ollama", auth: { type: "none" } },
+      },
+      models: {
+        "free-auto": {
+          candidates: [
+            {
+              provider: "openrouter",
+              providerModelId: C1,
+              contextWindow: 262144,
+              maxOutputTokens: 32768,
+              supportsTools: true,
+              supportsReasoning: true,
+              limits: { dailyRequests: 50, rpm: 20, maxConcurrent: 2 },
+              tags: ["free"],
+            },
+            {
+              provider: "ollama",
+              providerModelId: "qwen2.5-coder:7b",
+              contextWindow: 32768,
+              maxOutputTokens: 8192,
+              supportsTools: true,
+              supportsReasoning: false,
+              limits: { dailyRequests: null, rpm: 0, maxConcurrent: 4 },
+              tags: ["local", "offline"],
+            },
+          ],
+        },
+      },
+    }),
+  );
+  t.after(async () => {
+    await gateway.stop();
+  });
+
+  const res = await postResponses(gateway.url, { model: "free-auto", input: "generate function" });
+  assert.equal(res.status, 200, logTail(gateway));
+  const data = (await res.json()) as { id: string };
+  assert.equal(data.id, "ollama-ok");
+  assert.equal(mock.requests.length, 2);
+  assert.equal(mock.requests[0].body?.model, C1);
+  assert.equal(mock.requests[1].body?.model, "qwen2.5-coder:7b");
+  assert.equal(mock.requests[1].headers?.authorization, undefined);
+});
+

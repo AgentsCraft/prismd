@@ -10,13 +10,16 @@ export function createRequest(
   body: ResponsesRequestBody,
   apiKey: string,
 ): UpstreamRequest {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...provider.extraHeaders,
+  };
+  if (provider.auth?.type !== "none" && apiKey && apiKey !== "none") {
+    headers.authorization = `Bearer ${apiKey}`;
+  }
   return {
     url: `${provider.baseUrl}/responses`,
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-      ...provider.extraHeaders,
-    },
+    headers,
     body: JSON.stringify(body),
   };
 }

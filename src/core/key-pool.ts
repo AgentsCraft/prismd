@@ -59,6 +59,7 @@ export class KeyPool extends EventEmitter {
     const keyResolver = this.options.keyResolver;
     if (this.options.providerResolver) {
       const def = this.options.providerResolver(provider);
+      if (def?.auth?.type === "none") return ["none"];
       if (!def?.apiKeyField) return [];
       return keyResolver ? keyResolver(def.apiKeyField) : resolveProviderApiKeys(def.apiKeyField);
     }
@@ -66,6 +67,7 @@ export class KeyPool extends EventEmitter {
       try {
         const config = getConfig();
         const def = config.providers[provider];
+        if (def?.auth?.type === "none") return ["none"];
         if (!def?.apiKeyField) return [];
         return keyResolver(def.apiKeyField);
       } catch {
@@ -76,6 +78,7 @@ export class KeyPool extends EventEmitter {
     try {
       const config = getConfig();
       const def = config.providers[provider];
+      if (def?.auth?.type === "none") return ["none"];
       if (!def?.apiKeyField) return [];
       return resolveProviderApiKeys(def.apiKeyField);
     } catch {

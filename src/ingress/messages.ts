@@ -177,11 +177,13 @@ export async function messages(c: Context): Promise<Response> {
       try {
         if (provider.type === "chat") {
           const url = `${provider.baseUrl}/chat/completions`;
-          const headers = {
-            authorization: `Bearer ${apiKey}`,
+          const headers: Record<string, string> = {
             "content-type": "application/json",
             ...provider.extraHeaders,
           };
+          if (provider.auth?.type !== "none" && apiKey && apiKey !== "none") {
+            headers.authorization = `Bearer ${apiKey}`;
+          }
           const bodyStr = JSON.stringify(chatRequest);
           result = await callRawHttpUpstream(
             candidate.provider,

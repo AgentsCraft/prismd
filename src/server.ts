@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { serve, type ServerType } from "@hono/node-server";
 import { app } from "./app.js";
-import { getConfig } from "./config.js";
+import { getConfig, reloadConfig } from "./config.js";
 import { waitForStreams } from "./core/drain.js";
 import { getQuota, shutdownRuntime } from "./core/runtime.js";
 import { logger } from "./observability/logger.js";
@@ -51,3 +51,13 @@ function shutdown(signal: string): void {
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+process.on("SIGHUP", () => {
+  logger.info("received SIGHUP, reloading configuration");
+  try {
+    const newConfig = reloadConfig();
+    logger.info({ models: Object.keys(newConfig.models) }, "configuration reloaded successfully");
+  } catch (err) {
+    logger.error({ error: (err as Error).message }, "failed to reload configuration; keeping active config");
+  }
+});

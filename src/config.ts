@@ -66,6 +66,19 @@ export function getConfig(): PrismdConfig {
 }
 
 /**
+ * Atomically reload and validate config and keys in-place without restart.
+ * Keeps previous configuration if loading or validation fails.
+ */
+export function reloadConfig(filePath?: string): PrismdConfig {
+  const path = filePath ?? process.env.PRISMD_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
+  const newConfig = loadConfig(path);
+  const newKeys = loadKeyStore();
+  cached = newConfig;
+  cachedKeys = newKeys;
+  return newConfig;
+}
+
+/**
  * Resolve an upstream API key for a provider's apiKeyField
  * (env var > ~/.prismd/.env > ~/.prismd/keys.yaml).
  */
