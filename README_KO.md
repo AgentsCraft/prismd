@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### 2단계: API Key 설정
 
-`~/.prismd/keys.yaml` 또는 `./.env` 파일에 API Key를 설정합니다:
+`~/.prismd/keys.yaml` 또는 `./.env` 파일에 무료 API Key를 설정합니다 (하나 이상 설정 가능, 미설정 제공자는 자동 건너뜀):
 
 ```yaml
 # ~/.prismd/keys.yaml (권장 권한: chmod 600)
-prismd: "my-local-secret"       # 로컬 보호 토큰
+prismd: "my-local-secret"       # 로컬 보호 토큰 (클라이언트 연결용)
 
-# 단일 Key 또는 다중 Key 풀 설정:
+# 클라우드 제공자 (단일 Key 또는 다중 Key 라운드로빈 풀 지원):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # 다중 Key 라운드 로빈
+  - "gsk_key1_xxxx"             # 다중 Key 라운드로빈 & 격리 냉각
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # GitHub Models 개인 액세스 토큰
+amd: "amd_token_xxxx"           # 선택: AMD Developer Cloud 토큰
+
+# 로컬 오프라인 폴백:
+# ollama: Key 설정 불필요 (http://127.0.0.1:11434/v1 로 자동 라우팅)
 ```
 
 게이트웨이 실행:
@@ -83,14 +89,21 @@ prismd
 # 또는 소스 모드: npm run generate:config && npm run dev
 ```
 
+> 📖 **제공자별 설정 가이드**: [모델 제공자 연동 총괄 가이드](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md))를 참조하세요.
+
 ### 3단계: 에이전트 클라이언트 설정
 
-| 클라이언트 | 빠른 설정 |
-|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` ([Codex 설정 안내](examples/codex/README.md)) |
-| **Cursor** | Settings → Models → OpenAI API Key 활성화 (`my-local-secret` 입력)<br>**Override OpenAI Base URL** 체크: `http://127.0.0.1:8787/v1`<br>모델 추가: `free-auto` |
-| **OpenCode** | `~/.config/opencode/config.json`에서 `baseUrl: "http://127.0.0.1:8787/v1"` 설정 ([OpenCode 설정 안내](examples/opencode/README.md)) |
+| 클라이언트 | 빠른 설정 | 가이드 |
+|---|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [가이드](examples/claude-code/README.md) |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [가이드](examples/codex/README.md) |
+| **Cursor** | Settings → Models → OpenAI API Key 활성화 (`my-local-secret` 입력)<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>모델 추가: `free-auto` | [가이드](examples/cursor/README.md) |
+| **OpenCode** | `~/.config/opencode/config.json`에서 `baseUrl: "http://127.0.0.1:8787/v1"` 설정 | [가이드](examples/opencode/README.md) |
+| **DeepSeek Harness (dsh)** | `~/.dsh/config.toml`에서 `base_url = "http://127.0.0.1:8787/v1"` 설정<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [가이드](examples/dsh/README.md) |
+| **Pi Agent** | `~/.pi/config.json`에서 `endpoint: "http://127.0.0.1:8787/v1"` 설정<br>`pi run` | [가이드](examples/pi/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [가이드](examples/aider/README.md) |
+
+> 📖 **전체 문서**: [클라이언트 연동 가이드 및 프로토콜 상세](docs/clients/README.md)를 참조하세요.
 
 ---
 
@@ -102,17 +115,26 @@ prismd
 - **`free-fast`**: 초고속 경량 모델 큐 (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: 코드 생성 특화 모델 큐.
 
-### 2. 다중 Key 풀과 서킷 브레이커
+### 2. 다중 Key 풀과 서킷 브레이커 (Key Pool)
 
-`.env` 또는 `keys.yaml`에 다중 Key를 등록:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+모든 클라우드 제공자(Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models 등)에서 다중 Key 라운드로빈 요청 분배와 단일 Key 격리 냉각을 지원합니다:
+
+- **`~/.prismd/keys.yaml` 형식** (목록 또는 인라인 배열):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **작동 방식**: 라운드 로빈 방식으로 요청을 분산합니다. `gsk_key1`이 429를 반환하면 해당 Key만 쿨다운에 들어가고, 이후 요청은 즉시 `gsk_key2`로 분배됩니다.
+- **`.env` 또는 환경 변수** (쉼표로 구분):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **작동 방식**: 라운드로빈 방식으로 정상 Key들에 요청을 분산합니다. 특정 Key(예: `gsk_key1`)가 429 속도 제한 오류를 받으면 해당 Key만 냉각 기간(`Retry-After` 준수)에 들어가며, 후속 요청은 즉시 다음 정상 Key(`gsk_key2`) 또는 다음 후보 모델로 자동 전환됩니다.
 
 ### 3. 로컬 Ollama 오프라인 대체
 

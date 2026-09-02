@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### Étape 2 : Configuration des Clés API
 
-Renseignez vos clés dans `~/.prismd/keys.yaml` ou `./.env` :
+Renseignez vos clés dans `~/.prismd/keys.yaml` ou `./.env` (configurez-en une ou plusieurs ; les fournisseurs non configurés sont ignorés) :
 
 ```yaml
 # ~/.prismd/keys.yaml (permissions recommandées : chmod 600)
-prismd: "mon-secret-local"      # Jeton de protection local
+prismd: "mon-secret-local"      # Jeton de protection local (utilisé par les clients)
 
-# Clé unique ou pool multi-clés :
+# Fournisseurs Cloud (clé unique ou pool multi-clés pour rotation automatique) :
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # Rotation round-robin multi-clés
+  - "gsk_key1_xxxx"             # Pool multi-clés & isolation de refroidissement
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # Jeton d'accès personnel GitHub Models
+amd: "amd_token_xxxx"           # Optionnel : Jeton AMD Developer Cloud
+
+# Repli local hors-ligne :
+# ollama: Aucune clé requise (route automatiquement vers http://127.0.0.1:11434/v1)
 ```
 
 Lancer la passerelle :
@@ -83,14 +89,21 @@ prismd
 # Ou en mode source : npm run generate:config && npm run dev
 ```
 
+> 📖 **Guides des fournisseurs** : Consultez le [Guide des fournisseurs de modèles](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)) pour l'obtention des clés et la configuration.
+
 ### Étape 3 : Configurer votre Agent
 
-| Client | Configuration Rapide |
-|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="mon-secret-local"`<br>`claude` |
-| **Codex CLI** | `PRISMD_API_KEY=mon-secret-local codex --profile prismd` ([Guide Codex](examples/codex/README.md)) |
-| **Cursor** | Settings → Models → Activer OpenAI API Key (`mon-secret-local`)<br>Cocher **Override OpenAI Base URL** : `http://127.0.0.1:8787/v1`<br>Ajouter le modèle : `free-auto` |
-| **OpenCode** | Définir `baseUrl: "http://127.0.0.1:8787/v1"` dans `~/.config/opencode/config.json` ([Guide OpenCode](examples/opencode/README.md)) |
+| Client | Configuration Rapide | Guide |
+|---|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="mon-secret-local"`<br>`claude` | [Guide](examples/claude-code/README.md) |
+| **Codex CLI** | `PRISMD_API_KEY=mon-secret-local codex --profile prismd` | [Guide](examples/codex/README.md) |
+| **Cursor** | Settings → Models → Activer OpenAI API Key (`mon-secret-local`)<br>**Override OpenAI Base URL** : `http://127.0.0.1:8787/v1`<br>Ajouter le modèle : `free-auto` | [Guide](examples/cursor/README.md) |
+| **OpenCode** | Définir `baseUrl: "http://127.0.0.1:8787/v1"` dans `~/.config/opencode/config.json` | [Guide](examples/opencode/README.md) |
+| **DeepSeek Harness (dsh)** | Définir `base_url = "http://127.0.0.1:8787/v1"` dans `~/.dsh/config.toml`<br>`PRISMD_API_KEY=mon-secret-local dsh --model prismd:free-auto` | [Guide](examples/dsh/README.md) |
+| **Pi Agent** | Définir `endpoint: "http://127.0.0.1:8787/v1"` dans `~/.pi/config.json`<br>`pi run` | [Guide](examples/pi/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="mon-secret-local"` `aider --model openai/free-auto` | [Guide](examples/aider/README.md) |
+
+> 📖 **Documentation complète** : Voir le [Guide d'intégration des clients](docs/clients/README.md) pour les détails sur les protocoles et configurations.
 
 ---
 
@@ -102,17 +115,26 @@ prismd
 - **`free-fast`** : Modèles ultra-rapides et légers (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`** : File de modèles spécialisés dans la génération de code.
 
-### 2. Multi-Clés et Disjoncteur Automatique
+### 2. Multi-Clés et Disjoncteur Automatique (Key Pool)
 
-Configurez plusieurs clés dans `.env` ou `keys.yaml` :
-- **`.env`** : `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`** :
+Tous les fournisseurs Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models, etc.) prennent en charge la configuration multi-clés pour la répartition round-robin et l'isolation des erreurs :
+
+- **Format `~/.prismd/keys.yaml`** (liste YAML ou tableau en ligne) :
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **Fonctionnement** : Répartition round-robin. Lorsqu'une clé reçoit une erreur 429, seule cette clé entre en période de refroidissement (`Retry-After`), et les requêtes suivantes passent immédiatement à la clé suivante.
+- **Format `.env` ou variables d'environnement** (séparées par des virgules) :
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **Fonctionnement** : Les requêtes sont réparties en round-robin entre les clés saines. Lorsqu'une clé (ex. `gsk_key1`) reçoit une erreur 429, seule cette clé est isolée en refroidissement (`Retry-After`), et les requêtes suivantes basculent immédiatement sur `gsk_key2` ou le candidat suivant.
 
 ### 3. Repli Local Ollama Hors-Ligne
 

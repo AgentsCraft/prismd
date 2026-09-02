@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### 2. Adım: API Anahtarlarını Yapılandırma
 
-Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin:
+Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır):
 
 ```yaml
 # ~/.prismd/keys.yaml (önerilen izin: chmod 600)
-prismd: "yerel-gizli-token"     # Yerel koruma belirteci
+prismd: "yerel-gizli-token"     # Yerel koruma belirteci (istemciler tarafından kullanılır)
 
-# Tekli veya çoklu anahtar havuzu:
+# Bulut Sağlayıcıları (round-robin için tek anahtar veya çoklu anahtar havuzunu destekler):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # Çoklu anahtar round-robin
+  - "gsk_key1_xxxx"             # Çoklu anahtar havuzu ve soğutma izolasyonu
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # GitHub Models kişisel erişim belirteci
+amd: "amd_token_xxxx"           # İsteğe bağlı: AMD Developer Cloud belirteci
+
+# Yerel Çevrimdışı Yedek:
+# ollama: Anahtar gerekmez (http://127.0.0.1:11434/v1 adresine otomatik yönlendirilir)
 ```
 
 Ağ geçidini başlatın:
@@ -83,14 +89,21 @@ prismd
 # Veya kaynak modunda: npm run generate:config && npm run dev
 ```
 
+> 📖 **Sağlayıcı Yapılandırma Kılavuzları**: Anahtar alma ve model listesi detayları için [Model Sağlayıcı Entegrasyon Kılavuzu](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)) sayfasına bakın.
+
 ### 3. Adım: Ajanınızı Yapılandırın
 
-| İstemci | Hızlı Kurulum |
-|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="yerel-gizli-token"`<br>`claude` |
-| **Codex CLI** | `PRISMD_API_KEY=yerel-gizli-token codex --profile prismd` ([Codex Kılavuzu](examples/codex/README.md)) |
-| **Cursor** | Settings → Models → OpenAI API Key etkinleştirin (`yerel-gizli-token`)<br>**Override OpenAI Base URL** işaretleyin: `http://127.0.0.1:8787/v1`<br>Model ekleyin: `free-auto` |
-| **OpenCode** | `~/.config/opencode/config.json` dosyasında `baseUrl: "http://127.0.0.1:8787/v1"` ayarlayın ([OpenCode Kılavuzu](examples/opencode/README.md)) |
+| İstemci | Hızlı Kurulum | Kılavuz |
+|---|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="yerel-gizli-token"`<br>`claude` | [Kılavuz](examples/claude-code/README.md) |
+| **Codex CLI** | `PRISMD_API_KEY=yerel-gizli-token codex --profile prismd` | [Kılavuz](examples/codex/README.md) |
+| **Cursor** | Settings → Models → OpenAI API Key etkinleştirin (`yerel-gizli-token`)<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Model ekleyin: `free-auto` | [Kılavuz](examples/cursor/README.md) |
+| **OpenCode** | `~/.config/opencode/config.json` dosyasında `baseUrl: "http://127.0.0.1:8787/v1"` ayarlayın | [Kılavuz](examples/opencode/README.md) |
+| **DeepSeek Harness (dsh)** | `~/.dsh/config.toml` dosyasında `base_url = "http://127.0.0.1:8787/v1"` ayarlayın<br>`PRISMD_API_KEY=yerel-gizli-token dsh --model prismd:free-auto` | [Kılavuz](examples/dsh/README.md) |
+| **Pi Agent** | `~/.pi/config.json` dosyasında `endpoint: "http://127.0.0.1:8787/v1"` ayarlayın<br>`pi run` | [Kılavuz](examples/pi/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="yerel-gizli-token"` `aider --model openai/free-auto` | [Kılavuz](examples/aider/README.md) |
+
+> 📖 **Tam Belgeler**: Protokol ve gelişmiş yapılandırma detayları için [İstemci Entegrasyon Kılavuzu](docs/clients/README.md) sayfasına bakın.
 
 ---
 
@@ -102,17 +115,26 @@ prismd
 - **`free-fast`**: Ultra hızlı ve hafif model kuyruğu (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: Kod üretimi için özelleşmiş model kuyruğu.
 
-### 2. Çoklu Anahtar ve Hata İzolasyonu
+### 2. Çoklu Anahtar ve Hata İzolasyonu (Key Pool)
 
-`.env` veya `keys.yaml` dosyasında birden fazla anahtar tanımlayın:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+Tüm bulut sağlayıcıları (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models vb.) otomatik round-robin dağıtımı ve tek anahtar arıza izolasyonu için çoklu anahtar yapılandırmasını destekler:
+
+- **`~/.prismd/keys.yaml` formatı** (YAML listesi veya satır içi dizi):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **Çalışma Mantığı**: İstekler round-robin ile dağıtılır. `gsk_key1` 429 hatası aldığında yalnızca o anahtar bekletmeye alınır (`Retry-After`), sonraki istekler hemen `gsk_key2` anahtarına yönlendirilir.
+- **`.env` veya Ortam Değişkenleri** (virgülle ayrılmış):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **Çalışma Mantığı**: İstekler sağlıklı anahtarlar arasında Round-Robin ile paylaştırılır. Bir anahtar (örn. `gsk_key1`) 429 hız sınırı hatası aldığında yalnızca o anahtar soğuma süresine (`Retry-After`) alınır, sonraki istekler hemen sonraki anahtara (`gsk_key2`) veya yedek modele aktarılır.
 
 ### 3. Yerel Ollama Çevrimdışı Yedek
 

@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### الخطوة 2: تكوين مفاتيح API
 
-أضف مفاتيحك في `~/.prismd/keys.yaml` أو في ملف `./.env`:
+أضف مفاتيحك في `~/.prismd/keys.yaml` أو في ملف `./.env` (يمكنك تكوين مزود واحد أو أكثر؛ يتم تجاوز المزودين غير المحددين تلقائيًا):
 
 ```yaml
 # ~/.prismd/keys.yaml (الأذونات الموصى بها: chmod 600)
-prismd: "my-local-secret"       # رمز الحماية المحلي
+prismd: "my-local-secret"       # رمز الحماية المحلي (يستخدمه العملاء)
 
-# مفتاح مفرد أو مجمع مفاتيح متعددة:
+# مزودو الخدمات السحابية (يدعم المفتاح المفرد أو مجمع المفاتيح المتعددة للتوزيع بالتناوب):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # توزيع بالتناوب لمفاتيح متعددة
+  - "gsk_key1_xxxx"             # مجمع مفاتيح متعددة وعزل فترة التبريد
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # رمز الوصول الشخصي لنماذج GitHub Models
+amd: "amd_token_xxxx"           # اختياري: رمز AMD Developer Cloud
+
+# التراجع المحلي دون اتصال:
+# ollama: لا يتطلب مفاتيح (توجيه تلقائي إلى http://127.0.0.1:11434/v1)
 ```
 
 تشغيل البوابة:
@@ -83,14 +89,21 @@ prismd
 # أو من المصدر: npm run generate:config && npm run dev
 ```
 
+> 📖 **أدلة إعداد المزودين**: راجع [أدلة تكامل مزودي النماذج](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)) لمعرفة خطوات الحصول على المفاتيح وقوائم النماذج.
+
 ### الخطوة 3: إعداد الوكيل الخاص بك
 
-| العميل | الإعداد السريع |
-|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` ([دليل Codex](examples/codex/README.md)) |
-| **Cursor** | Settings → Models → تفعيل OpenAI API Key (أدخل `my-local-secret`)<br>تحديد **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>إضافة النموذج: `free-auto` |
-| **OpenCode** | اضبط `baseUrl: "http://127.0.0.1:8787/v1"` في `~/.config/opencode/config.json` ([دليل OpenCode](examples/opencode/README.md)) |
+| العميل | الإعداد السريع | الدليل |
+|---|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [الدليل](examples/claude-code/README.md) |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [الدليل](examples/codex/README.md) |
+| **Cursor** | Settings → Models → تفعيل OpenAI API Key (`my-local-secret`)<br>تحديد **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>إضافة النموذج: `free-auto` | [الدليل](examples/cursor/README.md) |
+| **OpenCode** | اضبط `baseUrl: "http://127.0.0.1:8787/v1"` في `~/.config/opencode/config.json` | [الدليل](examples/opencode/README.md) |
+| **DeepSeek Harness (dsh)** | اضبط `base_url = "http://127.0.0.1:8787/v1"` في `~/.dsh/config.toml`<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [الدليل](examples/dsh/README.md) |
+| **Pi Agent** | اضبط `endpoint: "http://127.0.0.1:8787/v1"` في `~/.pi/config.json`<br>`pi run` | [الدليل](examples/pi/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [الدليل](examples/aider/README.md) |
+
+> 📖 **التوثيق الكامل**: راجع [دليل تكامل العملاء](docs/clients/README.md) للحصول على تفاصيل البروتوكولات والإعدادات المتقدمة.
 
 ---
 
@@ -102,17 +115,26 @@ prismd
 - **`free-fast`**: نماذج فائقة السرعة وخفيفة الوزن (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: طابور نماذج مخصصة لتوليد الأكواد البرمجية.
 
-### 2. مجمع المفاتيح المتعددة وعزل الأعطال
+### 2. مجمع المفاتيح المتعددة وعزل الأعطال (Key Pool)
 
-قم بتهيئة مفاتيح متعددة في `.env` أو `keys.yaml`:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+تدعم جميع المزودين السحابيين (Groq و Cerebras و Google Gemini و OpenRouter و NVIDIA NIM و GitHub Models وغيرها) تكوين مفاتيح متعددة للتوزيع التلقائي بالتناوب وعزل الأعطال:
+
+- **تنسيق `~/.prismd/keys.yaml`** (قائمة أو مصفوفة مدمجة):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **آلية العمل**: توزيع الطلبات بنظام Round-Robin. عند تلقي خطأ 429 على مفتاح معين، يدخل ذلك المفتاح فقط فترة تهدئة (`Retry-After`)، وتتحول الطلبات التالية فورًا إلى المفتاح التالي.
+- **تنسيق `.env` أو متغيرات البيئة** (مفصولة بفواصل):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **آلية العمل**: يتم توزيع الطلبات عبر مفاتيح صالحة باستخدام Round-Robin. عندما يتلقى مفتاح معين (مثل `gsk_key1`) خطأ 429، يدخل ذلك المفتاح فقط في فترة التهدئة (`Retry-After`)، بينما تتحول الطلبات اللاحقة فورًا إلى المفتاح التالي (`gsk_key2`) أو النموذج البديل.
 
 ### 3. احتياطي محلي دون اتصال عبر Ollama
 

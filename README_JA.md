@@ -60,37 +60,50 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### ステップ 2: API キーの設定
-
-`~/.prismd/keys.yaml` または `./.env` に API キーを設定します：
-
+### ステップ 2: API Key の設定
+ 
+`~/.prismd/keys.yaml` または `./.env` に無料 API Key を設定します（1 つ以上設定可能。未設定のプロバイダーは自動的にスキップされます）：
+ 
 ```yaml
-# ~/.prismd/keys.yaml（推奨権限: chmod 600）
-prismd: "my-local-secret"       # ローカル保護トークン
-
-# 単一 Key またはマルチ Key 設定：
+# ~/.prismd/keys.yaml (推奨権限 chmod 600)
+prismd: "my-local-secret"       # ローカル保護トークン（クライアント接続用）
+ 
+# クラウドプロバイダー（単一キーまたは複数キーのラウンドロビンプールに対応）：
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # 複数 Key のラウンドロビン
+  - "gsk_key1_xxxx"             # 複数キー自動ラウンドロビン＆冷却隔離
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # GitHub Models 個人アクセストークン
+amd: "amd_token_xxxx"           # オプション: AMD Developer Cloud
+ 
+# ローカルオフラインフォールバック:
+# ollama: キー設定不要（http://127.0.0.1:11434/v1 へ自動ルーティング）
 ```
-
+ 
 ゲートウェイを起動：
 ```bash
 prismd
 # またはソースから: npm run generate:config && npm run dev
 ```
 
+> 📖 **各プロバイダー設定ガイド**: [モデルプロバイダー設定一覧](docs/providers/README.md)（[OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)）を参照してください。
+
 ### ステップ 3: エージェントの設定
 
-| クライアント | クイック設定 |
-|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd`（詳細は [Codex 設定](examples/codex/README.md)） |
-| **Cursor** | Settings → Models → OpenAI API Key 有効化（`my-local-secret` を入力）<br>**Override OpenAI Base URL** にチェック: `http://127.0.0.1:8787/v1`<br>モデル追加: `free-auto` |
-| **OpenCode** | `~/.config/opencode/config.json` で `baseUrl: "http://127.0.0.1:8787/v1"` を設定（詳細は [OpenCode 設定](examples/opencode/README.md)） |
+| クライアント | クイック設定 | ガイド |
+|---|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [ガイド](examples/claude-code/README.md) |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [ガイド](examples/codex/README.md) |
+| **Cursor** | Settings → Models → OpenAI API Key 有効化（`my-local-secret`）<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>モデル追加: `free-auto` | [ガイド](examples/cursor/README.md) |
+| **OpenCode** | `~/.config/opencode/config.json` で `baseUrl: "http://127.0.0.1:8787/v1"` を設定 | [ガイド](examples/opencode/README.md) |
+| **DeepSeek Harness (dsh)** | `~/.dsh/config.toml` で `base_url = "http://127.0.0.1:8787/v1"` を設定<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [ガイド](examples/dsh/README.md) |
+| **Pi Agent** | `~/.pi/config.json` で `endpoint: "http://127.0.0.1:8787/v1"` を設定<br>`pi run` | [ガイド](examples/pi/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [ガイド](examples/aider/README.md) |
+
+> 📖 **詳細ドキュメント**: [クライアント接続ガイド・プロトコル一覧](docs/clients/README.md) を参照してください。
 
 ---
 
@@ -102,17 +115,26 @@ prismd
 - **`free-fast`**：高速・軽量モデルキュー（Gemini Flash Lite / Llama 3.1 8b）。
 - **`free-code`**：コード生成特化モデルキュー。
 
-### 2. マルチ Key プールと単一 Key 障害隔離
+### 2. マルチ Key プールと単一 Key 障害隔離 (Key Pool)
 
-`.env` または `keys.yaml` で複数 Key を設定：
-- **`.env`**：`GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**：
+すべてのクラウドプロバイダー（Groq、Cerebras、Google Gemini、OpenRouter、NVIDIA NIM、GitHub Models 等）で複数 Key の自動ラウンドロビンと単一 Key の障害隔離に対応しています：
+
+- **`~/.prismd/keys.yaml` 形式**（リストまたはインライン配列）：
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **動作原理**：ラウンドロビン方式でリクエストを分散。`gsk_key1` が 429 を返した場合、その Key のみを冷却期間（`Retry-After` を遵守）に移行させ、後続リクエストは即座に `gsk_key2` へ割り振られます。
+- **`.env` または環境変数**（カンマ区切り）：
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **動作原理**：ラウンドロビン方式でリクエストを分散。特定の Key（例: `gsk_key1`）が 429 エラーとなった場合、その Key のみを冷却期間（`Retry-After` を遵守）に隔離し、後続リクエストは即座に健全な Key（`gsk_key2`）または次の候補へ自動切り替えされます。
 
 ### 3. ローカル Ollama オフラインフォールバック
 
