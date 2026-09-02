@@ -121,6 +121,41 @@ test("429 switches to the next candidate and relays the stream", async (t) => {
   assert.equal(mock.requests[1].body?.model, "llama-3.3-70b-versatile");
 });
 
+test("single provider multi-key 429 switches to next key on the same candidate", async (t) => {
+  const mock = await startMockUpstream((captured) => {
+    const auth = captured.headers?.authorization;
+    if (auth === "Bearer key-1") {
+      return {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "5" },
+        body: JSON.stringify({ error: { message: "rate limited on key 1" } }),
+      };
+    }
+    if (auth === "Bearer key-2") {
+      return SSE_OK;
+    }
+    return { status: 500, body: "unexpected key" };
+  });
+  t.after(() => mock.close());
+
+  await setup(mock.url);
+  process.env["OPENROUTER_API_KEY"] = "key-1,key-2";
+  resetConfigForTests();
+  resetRuntimeForTests();
+
+  const res = await post({ model: "free-auto", input: "hi", stream: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/event-stream");
+  const text = await res.text();
+  assert.ok(text.includes('"response.completed"'));
+  assert.equal(mock.requests.length, 2);
+  // Both attempts targeted the first candidate (poolside/laguna-s-2.1:free) with different keys
+  assert.equal(mock.requests[0].body?.model, "poolside/laguna-s-2.1:free");
+  assert.equal(mock.requests[0].headers?.authorization, "Bearer key-1");
+  assert.equal(mock.requests[1].body?.model, "poolside/laguna-s-2.1:free");
+  assert.equal(mock.requests[1].headers?.authorization, "Bearer key-2");
+});
+
 test("5xx switches to the next candidate", async (t) => {
   const mock = await startMockUpstream(
     byModel({

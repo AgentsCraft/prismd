@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
-import { loadKeyStore, resolveKey, type KeyStore } from "./keys.js";
+import { loadKeyStore, resolveKey, resolveKeys, type KeyStore } from "./keys.js";
 import type { PrismdConfig } from "./types/config.js";
 
 /** Packaged at the repo/package root, next to config.schema.json in dev and dist. */
@@ -71,6 +71,13 @@ export function getConfig(): PrismdConfig {
  */
 export function resolveProviderApiKey(field: string): string | undefined {
   return resolveKey(cachedKeys ?? loadKeyStore(), field);
+}
+
+/**
+ * Resolve all upstream API keys for a provider's apiKeyField.
+ */
+export function resolveProviderApiKeys(field: string): string[] {
+  return resolveKeys(cachedKeys ?? loadKeyStore(), field);
 }
 
 /** Resolve the local gateway token for auth.localTokenField. */
