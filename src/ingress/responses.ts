@@ -3,7 +3,7 @@ import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
-import { routeAlias } from "../core/router.js";
+import { routeAlias, shouldFailover } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
 import { callUpstream as chatCallUpstream } from "../egress/chat.js";
@@ -206,7 +206,7 @@ export async function responses(c: Context): Promise<Response> {
       }
 
       // kind === "error": failover or passthrough, decided by status.
-      if (!config.policies.failoverOn.includes(String(result.status))) {
+      if (!shouldFailover(result.status, config.policies.failoverOn)) {
         // Request-class 4xx and any non-listed status: relay verbatim, no switch.
         return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
       }
