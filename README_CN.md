@@ -175,7 +175,7 @@ prismd 通过多维评估管道，对每次请求动态决策最优候选模型�
   }
 }
 ```
-运行 `npm run generate:config` 即可完成配置编译合并。
+运行 `prismd generate`（源码模式运行 `npm run generate:config`）即可完成配置编译合并。
 
 ### 6. 运行时配置热重载 (`SIGHUP`)
 
@@ -193,18 +193,18 @@ kill -HUP $(pgrep -f "prismd")
   - 各候选模型实时健康状态（`healthy` / `rate_limited` / `cooldown`）
   - 每日配额进度条与 Token 消耗统计
   - 支持 10 种语言界面切换与「一键重置用量（Reset usage）」
-- **CLI 终端状态表**：
+- **CLI 终端状态与管理**：
   ```bash
-  prismd status
+  prismd status      # 终端输出各候选模型的彩色状态矩阵
+  prismd generate    # 重新编译生成 ~/.prismd/prismd.json
   ```
-  直接在终端输出各候选模型的彩色状态矩阵。
 
 ---
 
 ## 常见问题排查
 
 - **Q: 为什么提示 `missing API key for provider`？**
-  - 请检查 `~/.prismd/keys.yaml` 或 `.env` 中是否配置了对应提供方的 Key，配置后运行 `npm run generate:config`（源码模式）更新配置。
+  - 请检查 `~/.prismd/keys.yaml` 或 `.env` 中是否配置了对应提供方的 Key，配置后运行 `prismd generate`（或源码模式下运行 `npm run generate:config`）更新配置。
 - **Q: 云端模型频繁 429 怎么办？**
   - 为该提供方配置多个账号 Key 开启轮询，或者本地启动 `ollama run qwen2.5-coder:7b` 开启本地离线兜底。
 - **Q: 如何重置当天的调用配额记录？**

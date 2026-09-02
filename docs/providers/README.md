@@ -23,4 +23,4 @@ prismd 支持接入任何提供免费额度或低成本 API 的模型服务商�
 1. **获取提供商 API Key**：访问对应平台注册并生成 API Key。
 2. **存入本地密钥库**：写入 `~/.prismd/keys.yaml`（或设置 `export <PROVIDER>_API_KEY=...`）。
 3. **在 `config.user.json` 中声明 Provider 与模型**（内置 Provider 如 openrouter/groq/cerebras 无需额外声明）。
-4. **重新生成配置**：运行 `npm run generate:config`（全局安装请运行 `node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>`）。
+4. **重新生成配置**：运行 `prismd generate`（源码模式运行 `npm run generate:config`）。
