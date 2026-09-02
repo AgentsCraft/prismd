@@ -101,11 +101,17 @@ prismd
 
 ## Funzionalità nel Dettaglio
 
-### 1. Alias Predefiniti
+### 1. Routing Intelligente e Failover Automatico
 
-- **`free-auto`**: Modello di programmazione generale. Priorità a Gemini 2.0 Flash / Llama 3.3 70b; fallback automatico su Ollama locale `qwen2.5-coder:7b`.
-- **`free-fast`**: Modelli ultra-rapidi e leggeri (Gemini Flash Lite / Llama 3.1 8b).
-- **`free-code`**: Coda di modelli dedicati alla generazione di codice.
+prismd seleziona dinamicamente il candidato ottimale per ciascuna richiesta tramite una pipeline di valutazione:
+
+- **Verifica della finestra di contesto (Context Window Check)**: Stima preventiva dei token di input; esclude i modelli con contesto insufficiente per evitare errori 400 Context Overflow.
+- **Limiti morbidi di quota (Quota-Weighted Soft Limit)**: Al raggiungimento dell'80% della quota giornaliera (`quotaSoftLimitRatio`), il modello viene retrocesso in coda per preservare le risorse residue.
+- **Failover senza interruzioni (Zero-Crash Failover)**: In caso di errore 429 di rate limit o 5xx, prismd passa istantaneamente al modello candidato successivo nella coda.
+- **Alias Predefiniti**:
+  - `free-auto`: Coda principale di programmazione (priorità Gemini 2.0 Flash / Llama 3.3 70B, fallback su Ollama `qwen2.5-coder:7b`).
+  - `free-fast`: Coda ultra-rapida e leggera (Gemini Flash Lite / Llama 3.1 8B).
+  - `free-code`: Coda specializzata nella generazione e nei test del codice.
 
 ### 2. Multi-Key e Isolamento Errori (Key Pool)
 
@@ -128,18 +134,52 @@ Tutti i provider Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, G
   ```
 - **Funzionamento**: Le richieste vengono distribuite tramite Round-Robin tra le chiavi integre. Quando una chiave (es. `gsk_key1`) riceve un errore 429, solo quella chiave viene isolata in cooldown (`Retry-After`), e le richieste successive passano immediatamente a `gsk_key2` o al candidato successivo.
 
-### 3. Fallback Locale Ollama Offline
+### 3. Fallback Locale LLM Offline Senza Interruzioni (Ollama & LM Studio)
 
-- Provider `ollama` integrato (`http://127.0.0.1:11434/v1`, nessuna chiave richiesta).
-- Quando Ollama è in esecuzione localmente:
+In caso di esaurimento quote cloud o disconnessione di rete, prismd instrada automaticamente il traffico ai backend locali:
+
+- **Ollama**: Provider integrato zero configurazione (`http://127.0.0.1:11434/v1`):
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- In caso di esaurimento quote cloud o disconnessione, prismd reindirizza automaticamente al modello locale.
+- **LM Studio**: Server locale compatibile OpenAI (`http://127.0.0.1:1234/v1`) con modelli GGUF. Consulta la [Guida a LM Studio](docs/providers/lmstudio.md).
+- I task degli agenti continuano senza arresti anomali.
 
-### 4. Ricaricamento Dinamico a Caldo (SIGHUP)
+### 4. Bridge Multiprotocollo Trasparente
 
-Aggiorna la configurazione senza interrompere i flussi attivi:
+Conversione bidirezionale in streaming tra i tre protocolli agenti principali:
+- **Anthropic Messages** (`POST /v1/messages`): Supporto completo a Claude Code (Tools, blocchi Thinking, stream SSE).
+- **OpenAI Responses** (`POST /v1/responses`): Compatibile con Codex CLI e DeepSeek Harness (`dsh`).
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`): Interfaccia standard per Cursor, OpenCode, Pi Agent e Aider.
+
+### 5. Configurazione Estensibile (`config.user.json`)
+
+Dichiara provider personalizzati, modelli privati e code di alias in `config.user.json`:
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+Rigenera la configurazione con `npm run generate:config`.
+
+### 6. Ricaricamento Dinamico a Caldo (`SIGHUP`)
+
+Aggiorna tabelle di routing e chiavi senza riavviare il processo né interrompere flussi in streaming:
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```
