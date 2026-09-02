@@ -66,6 +66,14 @@ function makeQuota(): QuotaManager {
   });
 }
 
+/** Initialize all runtime singletons atomically up front. */
+export function initRuntime(): { keyPool: KeyPool; health: HealthManager; quota: QuotaManager } {
+  const kp = getKeyPool();
+  const hm = getHealth();
+  const qm = getQuota();
+  return { keyPool: kp, health: hm, quota: qm };
+}
+
 /** Shared KeyPool instance (per-process singleton). */
 export function getKeyPool(): KeyPool {
   keyPool ??= makeKeyPool();
@@ -74,7 +82,8 @@ export function getKeyPool(): KeyPool {
 
 /** Shared passive-health state machine (per-process singleton). */
 export function getHealth(): HealthManager {
-  health ??= makeHealth(getKeyPool());
+  keyPool ??= makeKeyPool();
+  health ??= makeHealth(keyPool);
   return health;
 }
 
