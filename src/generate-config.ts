@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
-import { fetchProviderModels } from "./core/catalog-sync.js";
+import { fetchProviderModels, type UpstreamModelMeta } from "./core/catalog-sync.js";
 import { loadKeyStore, resolveKeys, type KeyStore } from "./keys.js";
 import type { PrismdConfig } from "./types/config.js";
 
@@ -135,7 +135,7 @@ export interface BuildConfigOptions {
   userConfig?: Record<string, any>;
   keyStore: KeyStore;
   warn?: (msg: string) => void;
-  upstreamCatalogs?: Map<string, Set<string>>;
+  upstreamCatalogs?: Map<string, Map<string, UpstreamModelMeta>>;
 }
 
 /**
@@ -179,12 +179,19 @@ export function buildConfig({
       }
       if (upstreamCatalogs && upstreamCatalogs.has(provider)) {
         const available = upstreamCatalogs.get(provider)!;
-        if (!available.has(candidate.providerModelId)) {
+        const meta = available.get(candidate.providerModelId);
+        if (!meta) {
           warn(
             `warning: skipping candidate "${candidate.providerModelId}" for alias "${alias}": ` +
               `not found in live upstream catalog for "${provider}"`,
           );
           return false;
+        }
+        if (typeof meta.contextWindow === "number" && meta.contextWindow > 0) {
+          candidate.contextWindow = meta.contextWindow;
+        }
+        if (typeof meta.maxOutputTokens === "number" && meta.maxOutputTokens > 0) {
+          candidate.maxOutputTokens = meta.maxOutputTokens;
         }
       }
       return true;
@@ -265,14 +272,14 @@ export function generateConfigObject({
 }
 
 /**
- * Query upstream providers with configured keys in parallel to discover actual available models.
+ * Query upstream providers with configured keys in parallel to discover actual available models and parameters.
  */
 export async function queryUpstreamCatalogs(
   providers: Record<string, any>,
   keyStore: KeyStore,
   warn: (msg: string) => void = () => {},
-): Promise<Map<string, Set<string>>> {
-  const catalogs = new Map<string, Set<string>>();
+): Promise<Map<string, Map<string, UpstreamModelMeta>>> {
+  const catalogs = new Map<string, Map<string, UpstreamModelMeta>>();
   const promises = Object.entries(providers).map(async ([providerName, def]) => {
     const keys = resolveKeys(keyStore, def.apiKeyField ?? providerName);
     if (def.auth?.type === "none") {
@@ -280,15 +287,15 @@ export async function queryUpstreamCatalogs(
     }
     if (keys.length === 0) return;
     const apiKey = keys[0];
-    const { ok, models, error } = await fetchProviderModels(
+    const { ok, metadata, error } = await fetchProviderModels(
       providerName,
       def.baseUrl,
       apiKey,
       def.extraHeaders,
       4000,
     );
-    if (ok && models.length > 0) {
-      catalogs.set(providerName, new Set(models));
+    if (ok && metadata.size > 0) {
+      catalogs.set(providerName, metadata);
     } else if (error) {
       warn(`info: could not fetch live catalog for "${providerName}" (${error}); falling back to local presets`);
     }
@@ -320,7 +327,7 @@ export async function generateConfigObjectAsync({
   }
 
   const keyStore = loadKeyStore(homeDir, cwd);
-  let upstreamCatalogs: Map<string, Set<string>> | undefined;
+  let upstreamCatalogs: Map<string, Map<string, UpstreamModelMeta>> | undefined;
   if (liveCheck) {
     const allProviders = deepMerge(presets.providers ?? {}, userConfig.providers);
     upstreamCatalogs = await queryUpstreamCatalogs(allProviders, keyStore, warn);

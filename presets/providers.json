@@ -2,7 +2,7 @@
   "limitsSource": "https://openrouter.ai/docs/limits",
   "providers": {
     "openrouter": {
-      "type": "responses",
+      "type": "chat",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKeyField": "openrouter",
       "auth": {
