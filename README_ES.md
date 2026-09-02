@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### Paso 2: Configuración de Claves API
 
-Añade tus claves en `~/.prismd/keys.yaml` o en `./.env`:
+Añade tus claves en `~/.prismd/keys.yaml` o en `./.env` (configura uno o más; los no configurados se omiten automáticamente):
 
 ```yaml
 # ~/.prismd/keys.yaml (permisos recomendados: chmod 600)
-prismd: "mi-secreto-local"      # Token de protección local
+prismd: "mi-secreto-local"      # Token de protección local (usado por los clientes)
 
-# Clave única o grupo multi-key:
+# Proveedores Cloud (admite clave única o pool multi-key para round-robin):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # Múltiples claves en round-robin
+  - "gsk_key1_xxxx"             # Multi-key pooling y aislamiento de enfriamiento
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # Token de acceso personal de GitHub Models
+amd: "amd_token_xxxx"           # Opcional: Token de AMD Developer Cloud
+
+# Respaldo local sin conexión:
+# ollama: Sin claves requeridas (enrutamiento automático a http://127.0.0.1:11434/v1)
 ```
 
 Iniciar la pasarela:

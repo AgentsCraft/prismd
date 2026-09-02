@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### Passaggio 2: Configurazione delle Chiavi API
 
-Aggiungi le tue chiavi in `~/.prismd/keys.yaml` o in `./.env`:
+Aggiungi le tue chiavi in `~/.prismd/keys.yaml` o in `./.env` (configura uno o più provider; quelli non configurati vengono ignorati):
 
 ```yaml
 # ~/.prismd/keys.yaml (permessi consigliati: chmod 600)
-prismd: "mio-segreto-locale"    # Token di protezione locale
+prismd: "mio-segreto-locale"    # Token di protezione locale (usato dai client)
 
-# Chiave singola o pool multi-key:
+# Provider Cloud (chiave singola o pool multi-key per round-robin):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # Più chiavi in round-robin
+  - "gsk_key1_xxxx"             # Multi-key pooling e isolamento cooldown
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # Token di accesso personale GitHub Models
+amd: "amd_token_xxxx"           # Opzionale: Token AMD Developer Cloud
+
+# Fallback locale offline:
+# ollama: Nessuna chiave richiesta (instradamento automatico a http://127.0.0.1:11434/v1)
 ```
 
 Avviare il gateway:

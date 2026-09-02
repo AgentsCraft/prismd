@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### الخطوة 2: تكوين مفاتيح API
 
-أضف مفاتيحك في `~/.prismd/keys.yaml` أو في ملف `./.env`:
+أضف مفاتيحك في `~/.prismd/keys.yaml` أو في ملف `./.env` (يمكنك تكوين مزود واحد أو أكثر؛ يتم تجاوز المزودين غير المحددين تلقائيًا):
 
 ```yaml
 # ~/.prismd/keys.yaml (الأذونات الموصى بها: chmod 600)
-prismd: "my-local-secret"       # رمز الحماية المحلي
+prismd: "my-local-secret"       # رمز الحماية المحلي (يستخدمه العملاء)
 
-# مفتاح مفرد أو مجمع مفاتيح متعددة:
+# مزودو الخدمات السحابية (يدعم المفتاح المفرد أو مجمع المفاتيح المتعددة للتوزيع بالتناوب):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # توزيع بالتناوب لمفاتيح متعددة
+  - "gsk_key1_xxxx"             # مجمع مفاتيح متعددة وعزل فترة التبريد
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # رمز الوصول الشخصي لنماذج GitHub Models
+amd: "amd_token_xxxx"           # اختياري: رمز AMD Developer Cloud
+
+# التراجع المحلي دون اتصال:
+# ollama: لا يتطلب مفاتيح (توجيه تلقائي إلى http://127.0.0.1:11434/v1)
 ```
 
 تشغيل البوابة:

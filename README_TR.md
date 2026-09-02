@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### 2. Adım: API Anahtarlarını Yapılandırma
 
-Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin:
+Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır):
 
 ```yaml
 # ~/.prismd/keys.yaml (önerilen izin: chmod 600)
-prismd: "yerel-gizli-token"     # Yerel koruma belirteci
+prismd: "yerel-gizli-token"     # Yerel koruma belirteci (istemciler tarafından kullanılır)
 
-# Tekli veya çoklu anahtar havuzu:
+# Bulut Sağlayıcıları (round-robin için tek anahtar veya çoklu anahtar havuzunu destekler):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # Çoklu anahtar round-robin
+  - "gsk_key1_xxxx"             # Çoklu anahtar havuzu ve soğutma izolasyonu
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # GitHub Models kişisel erişim belirteci
+amd: "amd_token_xxxx"           # İsteğe bağlı: AMD Developer Cloud belirteci
+
+# Yerel Çevrimdışı Yedek:
+# ollama: Anahtar gerekmez (http://127.0.0.1:11434/v1 adresine otomatik yönlendirilir)
 ```
 
 Ağ geçidini başlatın:

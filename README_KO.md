@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### 2단계: API Key 설정
 
-`~/.prismd/keys.yaml` 또는 `./.env` 파일에 API Key를 설정합니다:
+`~/.prismd/keys.yaml` 또는 `./.env` 파일에 무료 API Key를 설정합니다 (하나 이상 설정 가능, 미설정 제공자는 자동 건너뜀):
 
 ```yaml
 # ~/.prismd/keys.yaml (권장 권한: chmod 600)
-prismd: "my-local-secret"       # 로컬 보호 토큰
+prismd: "my-local-secret"       # 로컬 보호 토큰 (클라이언트 연결용)
 
-# 단일 Key 또는 다중 Key 풀 설정:
+# 클라우드 제공자 (단일 Key 또는 다중 Key 라운드로빈 풀 지원):
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # 다중 Key 라운드 로빈
+  - "gsk_key1_xxxx"             # 다중 Key 라운드로빈 & 격리 냉각
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # GitHub Models 개인 액세스 토큰
+amd: "amd_token_xxxx"           # 선택: AMD Developer Cloud 토큰
+
+# 로컬 오프라인 폴백:
+# ollama: Key 설정 불필요 (http://127.0.0.1:11434/v1 로 자동 라우팅)
 ```
 
 게이트웨이 실행:

@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### 步骤 2：配置 API Key
 
-在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key：
+在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key（配置任意一个或多个均可，未配置的提供商自动跳过）：
 
 ```yaml
 # ~/.prismd/keys.yaml (建议权限 chmod 600)
-prismd: "my-local-secret"       # 本地网关安全保护令牌
+prismd: "my-local-secret"       # 本地网关安全保护令牌（客户端连接使用）
 
-# 单 Key 或多 Key 轮询配置：
+# 云端模型服务商（支持填单 Key 或多 Key 列表实现自动轮询）：
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # 支持配置多个 Key 自动轮询
+  - "gsk_key1_xxxx"             # 多 Key 轮询与单 Key 限流隔离
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # GitHub Models 个人访问令牌
+amd: "amd_token_xxxx"           # 可选：AMD Developer Cloud 令牌
+
+# 本地离线兜底：
+# ollama: 免 Key 运行（默认自动探测并直连 http://127.0.0.1:11434/v1）
 ```
 
 生成配置并启动：

@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### Étape 2 : Configuration des Clés API
 
-Renseignez vos clés dans `~/.prismd/keys.yaml` ou `./.env` :
+Renseignez vos clés dans `~/.prismd/keys.yaml` ou `./.env` (configurez-en une ou plusieurs ; les fournisseurs non configurés sont ignorés) :
 
 ```yaml
 # ~/.prismd/keys.yaml (permissions recommandées : chmod 600)
-prismd: "mon-secret-local"      # Jeton de protection local
+prismd: "mon-secret-local"      # Jeton de protection local (utilisé par les clients)
 
-# Clé unique ou pool multi-clés :
+# Fournisseurs Cloud (clé unique ou pool multi-clés pour rotation automatique) :
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # Rotation round-robin multi-clés
+  - "gsk_key1_xxxx"             # Pool multi-clés & isolation de refroidissement
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # Jeton d'accès personnel GitHub Models
+amd: "amd_token_xxxx"           # Optionnel : Jeton AMD Developer Cloud
+
+# Repli local hors-ligne :
+# ollama: Aucune clé requise (route automatiquement vers http://127.0.0.1:11434/v1)
 ```
 
 Lancer la passerelle :
