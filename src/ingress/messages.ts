@@ -1,10 +1,8 @@
 import type { Context } from "hono";
-import { resolveProviderApiKey } from "../config.js";
 import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
-import { getHealth } from "../core/runtime.js";
-import { getQuota } from "../core/runtime.js";
+import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
 import { routeAlias, resolveClaudeModelAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import {
@@ -58,6 +56,7 @@ export async function messages(c: Context): Promise<Response> {
   const config = getConfig();
   const quota = getQuota();
   const health = getHealth();
+  const keyPool = getKeyPool();
   const inputChars = JSON.stringify(body).length;
 
   // Resolve alias: automatic fallback for Claude Code / Anthropic model names
@@ -130,8 +129,7 @@ export async function messages(c: Context): Promise<Response> {
         500,
       );
     }
-    const apiKey = resolveProviderApiKey(provider.apiKeyField);
-    if (!apiKey) {
+    if (!keyPool.hasKeys(candidate.provider)) {
       return c.json(
         gatewayError(
           500,
@@ -166,112 +164,123 @@ export async function messages(c: Context): Promise<Response> {
     };
 
     const chatRequest = convertAnthropicToChatRequest(body, candidate.providerModelId);
+    const triedKeys = new Set<string>();
 
-    let result: UpstreamResult;
-    try {
-      if (provider.type === "chat") {
-        const url = `${provider.baseUrl}/chat/completions`;
-        const headers = {
-          authorization: `Bearer ${apiKey}`,
-          "content-type": "application/json",
-          ...provider.extraHeaders,
-        };
-        const bodyStr = JSON.stringify(chatRequest);
-        result = await callRawHttpUpstream(
-          candidate.provider,
-          url,
-          headers,
-          bodyStr,
-          body.stream === true,
-          options,
-        );
-      } else {
-        const responsesReq = convertChatToResponsesRequest(chatRequest, candidate.providerModelId);
-        const startedAtMs = Date.now();
-        const rawResult = await responsesCallUpstream(
-          candidate.provider,
-          provider,
-          candidate.providerModelId,
-          responsesReq,
-          apiKey,
-          options,
-        );
-
-        if (rawResult.kind === "stream" && rawResult.response.body) {
-          result = {
-            kind: "stream",
-            response: wrapResponsesStreamToChat(
-              rawResult.response,
-              rawResult.accounting,
-              options,
-              startedAtMs,
-              candidate.providerModelId,
-            ),
-            accounting: rawResult.accounting,
-            retryAfterMs: rawResult.retryAfterMs,
-          };
-        } else if (rawResult.kind === "json") {
-          result = {
-            kind: "json",
-            response: await bufferAndConvertResponsesJson(
-              rawResult.response,
-              rawResult.accounting,
-              options,
-              startedAtMs,
-              candidate.providerModelId,
-            ),
-            accounting: rawResult.accounting,
-            retryAfterMs: rawResult.retryAfterMs,
-          };
-        } else {
-          result = rawResult;
-        }
+    while (true) {
+      const apiKey = keyPool.getNextKey(candidate.provider, triedKeys);
+      if (!apiKey) {
+        break;
       }
-    } catch (err) {
-      const isTimeout = err instanceof UpstreamConnectError ? err.timeout : false;
-      health.recordFailure(candidate.provider, candidate.providerModelId, {});
-      logger.warn(
-        {
+      triedKeys.add(apiKey);
+
+      let result: UpstreamResult;
+      try {
+        if (provider.type === "chat") {
+          const url = `${provider.baseUrl}/chat/completions`;
+          const headers: Record<string, string> = {
+            "content-type": "application/json",
+            ...provider.extraHeaders,
+          };
+          if (provider.auth?.type !== "none" && apiKey && apiKey !== "none") {
+            headers.authorization = `Bearer ${apiKey}`;
+          }
+          const bodyStr = JSON.stringify(chatRequest);
+          result = await callRawHttpUpstream(
+            candidate.provider,
+            url,
+            headers,
+            bodyStr,
+            body.stream === true,
+            options,
+          );
+        } else {
+          const responsesReq = convertChatToResponsesRequest(chatRequest, candidate.providerModelId);
+          const startedAtMs = Date.now();
+          const rawResult = await responsesCallUpstream(
+            candidate.provider,
+            provider,
+            candidate.providerModelId,
+            responsesReq,
+            apiKey,
+            options,
+          );
+
+          if (rawResult.kind === "stream" && rawResult.response.body) {
+            result = {
+              kind: "stream",
+              response: wrapResponsesStreamToChat(
+                rawResult.response,
+                rawResult.accounting,
+                options,
+                startedAtMs,
+                candidate.providerModelId,
+              ),
+              accounting: rawResult.accounting,
+              retryAfterMs: rawResult.retryAfterMs,
+            };
+          } else if (rawResult.kind === "json") {
+            result = {
+              kind: "json",
+              response: await bufferAndConvertResponsesJson(
+                rawResult.response,
+                rawResult.accounting,
+                options,
+                startedAtMs,
+                candidate.providerModelId,
+              ),
+              accounting: rawResult.accounting,
+              retryAfterMs: rawResult.retryAfterMs,
+            };
+          } else {
+            result = rawResult;
+          }
+        }
+      } catch (err) {
+        const isTimeout = err instanceof UpstreamConnectError ? err.timeout : false;
+        keyPool.recordFailure(candidate.provider, candidate.providerModelId, apiKey, {});
+        logger.warn(
+          {
+            requestId,
+            alias: body.model,
+            provider: candidate.provider,
+            model: candidate.providerModelId,
+            timeout: isTimeout,
+            error: (err as Error).message,
+          },
+          "upstream connection failed",
+        );
+        attemptStatuses.push({ candidate, status: null });
+        failovers += 1;
+        continue;
+      }
+
+      if (result.kind === "stream" || result.kind === "json") {
+        keyPool.recordSuccess(candidate.provider, candidate.providerModelId, apiKey);
+        return await relayAnthropicSuccess({
           requestId,
+          startedAt,
+          method,
+          path,
           alias: body.model,
-          provider: candidate.provider,
-          model: candidate.providerModelId,
-          timeout: isTimeout,
-          error: (err as Error).message,
-        },
-        "upstream connection failed",
-      );
-      attemptStatuses.push({ candidate, status: null });
-      failovers += 1;
-      continue;
-    }
+          candidate,
+          result,
+          inputChars,
+          failovers,
+        });
+      }
 
-    if (result.kind === "stream" || result.kind === "json") {
-      health.recordSuccess(candidate.provider, candidate.providerModelId);
-      return await relayAnthropicSuccess({
-        requestId,
-        startedAt,
-        method,
-        path,
-        alias: body.model,
-        candidate,
-        result,
-        inputChars,
-        failovers,
+      if (!config.policies.failoverOn.includes(String(result.status))) {
+        return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
+      }
+
+      keyPool.recordFailure(candidate.provider, candidate.providerModelId, apiKey, {
+        status: result.status,
+        retryAfterMs: result.retryAfterMs,
       });
+      void result.response.body?.cancel();
+      attemptStatuses.push({ candidate, status: result.status });
+      failovers += 1;
     }
-
-    if (!config.policies.failoverOn.includes(String(result.status))) {
-      return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
-    }
-
-    health.recordFailure(candidate.provider, candidate.providerModelId, {
-      status: result.status,
-      retryAfterMs: result.retryAfterMs,
-    });
-    void result.response.body?.cancel();
-    attemptStatuses.push({ candidate, status: result.status });
-    failovers += 1;
   }
 
   const metadata = attemptStatuses.map(({ candidate, status }) => ({
@@ -287,26 +296,29 @@ export async function messages(c: Context): Promise<Response> {
     message: `all candidates for alias "${body.model}" failed`,
   });
 
-  const finalAttempt = attemptStatuses[attemptStatuses.length - 1];
-  getQuota().record({
-    requestId,
-    ts: new Date().toISOString(),
-    alias: body.model,
-    provider: finalAttempt.candidate.provider,
-    model: finalAttempt.candidate.providerModelId,
-    status: 502,
-    failover: failovers,
-    durationMs: Date.now() - startedAt,
-    usage: { inputChars, outputChars: 0 },
-  });
+  const fallbackCandidate = selection.selected ?? selection.ordered[0];
+  const finalCandidate = attemptStatuses[attemptStatuses.length - 1]?.candidate ?? fallbackCandidate;
+  if (finalCandidate) {
+    getQuota().record({
+      requestId,
+      ts: new Date().toISOString(),
+      alias: body.model,
+      provider: finalCandidate.provider,
+      model: finalCandidate.providerModelId,
+      status: 502,
+      failover: failovers,
+      durationMs: Date.now() - startedAt,
+      usage: { inputChars, outputChars: 0 },
+    });
+  }
   exporter.onRequestEnd({
     requestId,
     ts: Date.now(),
     method,
     path,
     alias: body.model,
-    provider: finalAttempt.candidate.provider,
-    model: finalAttempt.candidate.providerModelId,
+    provider: finalCandidate?.provider ?? "unknown",
+    model: finalCandidate?.providerModelId ?? "unknown",
     status: 502,
     durationMs: Date.now() - startedAt,
     usage: {

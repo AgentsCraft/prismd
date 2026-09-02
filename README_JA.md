@@ -2,12 +2,42 @@
 
 [English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
-コーディングエージェント（Claude Code、Codex CLI、OpenCode 等）向けに、無料および低枠モデル API（OpenRouter、Groq、Cerebras 等）を集約するローカル優先の LLM ゲートウェイです。自動ルーティングとフェイルオーバーを備えた安定した統一インターフェースを提供します。
+**ローカル優先の高可用性 LLM ゲートウェイ**。世界中の無料/低額モデル API（OpenRouter、Groq、Cerebras、Google Gemini、NVIDIA NIM、GitHub Models など）とローカル LLM（Ollama）を集約し、コーディングエージェント（Claude Code、Codex CLI、Cursor、OpenCode、Aider など）に無停止で安定した統一インターフェースを提供します。
 
-単一のローカルエンドポイントと統合エイリアス（`free-auto`）を指定するだけで、prismd は以下を自動処理します：
-- **スマートルーティングとクォータ保護**: コンテキストウィンドウと日次クォータ使用量に基づき利用可能な候補モデルを自動選定。クォータ消費が 80% に達した候補はキュー末尾へソフト降格。
-- **シームレスなフェイルオーバー**: ストリーム開始前に 429/401/5xx エラーやネットワークタイムアウトが発生した場合、次の候補モデルへ自動切り替え。
-- **マルチプロトコル変換**: OpenAI Responses、OpenAI Chat Completions、Anthropic Messages プロトコルをネイティブサポートし、あらゆるコーディングエージェントをシームレスに接続。
+```mermaid
+flowchart LR
+    subgraph Clients["コーディングエージェント (Clients)"]
+        CC["Claude Code<br/>(Anthropic Messages)"]
+        CX["Codex CLI<br/>(OpenAI Responses)"]
+        CU["Cursor / OpenCode<br/>(Chat Completions)"]
+    end
+
+    subgraph Gateway["prismd (127.0.0.1:8787)"]
+        Router["スマートルーティング (free-auto)<br/>クォータ加重 / コンテキスト判定 / 429 フェイルオーバー"]
+        KeyPool["マルチ Key プール (Key Pool)<br/>単一 Key サーキットブレーカー / ラウンドロビン"]
+    end
+
+    subgraph Upstreams["アップストリーム (Providers)"]
+        Cloud["クラウド無料 API<br/>OpenRouter / Groq / Cerebras / Gemini..."]
+        Local["ローカルオフラインフォールバック<br/>Ollama (qwen2.5-coder / deepseek-r1)"]
+    end
+
+    Clients --> Gateway
+    Gateway --> Cloud
+    Cloud -. "全 429 / オフライン" .-> Local
+```
+
+---
+
+## 主な特徴
+
+1. **統合モデルエイリアス（`free-auto`）**：モデルの選択に迷う必要はありません。単一のエイリアスで最適な無料モデルへ自動ルーティングします。
+2. **マルチ Key 輪番と単一 Key 障害隔離（Key Pool）**：単一アカウントのレート制限（RPM）を突破。複数 Key を設定してラウンドロビン分散；1 つの Key が 429 に達してもその Key のみを冷却し、次の Key へ即座に切り替えます。
+3. **ローカル Ollama ゼロダウンタイムオフライン待機**：クラウド無料枠の枯渇やネットワーク切断時、ローカル Ollama（`qwen2.5-coder:7b`、`deepseek-r1:8b`）へ自動でシームレスにフォールバックします。
+4. **全プロトコル双方向ストリーミング変換**：Claude Code（Messages）、Codex（Responses）、Cursor/OpenCode（Chat Completions）間の相互透過中継をネイティブサポート。
+5. **内蔵 Web ダッシュボードと SIGHUP ホットリロード**：`http://127.0.0.1:8787/ui` で稼働状態と配額バーをリアルタイム監視；設定変更後は `SIGHUP` シグナルで無停止更新可能。
+
+---
 
 ## 支援について
 
@@ -17,136 +47,110 @@ prismd が開発時間やクォータの節約に役立ちましたら、ぜひ�
 
 ---
 
-## クイックスタート
+## 3 ステップ クイックスタート
 
-### 方法 1: npm によるグローバルインストール（推奨）
+### ステップ 1: インストールと起動
 
 ```bash
-# 安定版のインストール
+# 方法 A: npm グローバルインストール（推奨）
 npm install -g @prismd/prismd
 
-# または RC プレビュー版
-# npm install -g @agentscraft/prismd
-
-# プロバイダーキーとローカルゲートウェイトークンの設定
-export OPENROUTER_API_KEY=<your-openrouter-key>
-export PRISMD_API_KEY=<local-token>        # ローカル認証トークン（例: openssl rand -hex 32）
-
-# ゲートウェイの起動（127.0.0.1:8787 で待機）
-prismd
-```
-
-### 方法 2: ソースコードから実行
-
-```bash
+# 方法 B: ソースコードから実行
 git clone https://github.com/AgentsCraft/prismd.git
-cd prismd
-npm install
-cp .env.example .env                       # API キーを入力し、chmod 600
-npm run generate:config                    # プリセットとキーを統合して prismd.json を生成
-npm run dev                                # 開発サーバーの起動
+cd prismd && npm install
 ```
 
-### 動作確認（スモークテスト）
+### ステップ 2: API キーの設定
 
+`~/.prismd/keys.yaml` または `./.env` に API キーを設定します：
+
+```yaml
+# ~/.prismd/keys.yaml（推奨権限: chmod 600）
+prismd: "my-local-secret"       # ローカル保護トークン
+
+# 単一 Key またはマルチ Key 設定：
+openrouter: "sk-or-v1-xxxx"
+groq:
+  - "gsk_key1_xxxx"             # 複数 Key のラウンドロビン
+  - "gsk_key2_xxxx"
+cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+gemini: "AIzaSyxxxx"
+```
+
+ゲートウェイを起動：
 ```bash
-curl -N http://127.0.0.1:8787/v1/responses \
-  -H "Authorization: Bearer $PRISMD_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"free-auto","input":"say hi","stream":true}'
+prismd
+# またはソースから: npm run generate:config && npm run dev
 ```
+
+### ステップ 3: エージェントの設定
+
+| クライアント | クイック設定 |
+|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd`（詳細は [Codex 設定](examples/codex/README.md)） |
+| **Cursor** | Settings → Models → OpenAI API Key 有効化（`my-local-secret` を入力）<br>**Override OpenAI Base URL** にチェック: `http://127.0.0.1:8787/v1`<br>モデル追加: `free-auto` |
+| **OpenCode** | `~/.config/opencode/config.json` で `baseUrl: "http://127.0.0.1:8787/v1"` を設定（詳細は [OpenCode 設定](examples/opencode/README.md)） |
 
 ---
 
-## クライアント設定
+## 機能詳細
 
-すべてのクライアントエージェントはローカルゲートウェイエンドポイントを指定し、同一のローカル保護トークン（`PRISMD_API_KEY`）を使用します。
+### 1. デフォルトエイリアス
 
-### 1. Claude Code
-Claude Code は環境変数経由でカスタム Anthropic エンドポイントをネイティブサポートしています。標準モデル名（`claude-*-sonnet` 等）は設定済みゲートウェイエイリアスへ自動解決されます：
+- **`free-auto`**：汎用コーディングモデル。Gemini 2.0 Flash / Llama 3.3 70b などを優先し、クラウド不可時はローカル Ollama `qwen2.5-coder:7b` へ自動フォールバック。
+- **`free-fast`**：高速・軽量モデルキュー（Gemini Flash Lite / Llama 3.1 8b）。
+- **`free-code`**：コード生成特化モデルキュー。
+
+### 2. マルチ Key プールと単一 Key 障害隔離
+
+`.env` または `keys.yaml` で複数 Key を設定：
+- **`.env`**：`GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
+- **`keys.yaml`**：
+  ```yaml
+  groq:
+    - "gsk_key1"
+    - "gsk_key2"
+  ```
+- **動作原理**：ラウンドロビン方式でリクエストを分散。`gsk_key1` が 429 を返した場合、その Key のみを冷却期間（`Retry-After` を遵守）に移行させ、後続リクエストは即座に `gsk_key2` へ割り振られます。
+
+### 3. ローカル Ollama オフラインフォールバック
+
+- 内蔵 `ollama` プロバイダー（`http://127.0.0.1:11434/v1`、Key 不要）。
+- ローカルで Ollama を起動している場合：
+  ```bash
+  ollama run qwen2.5-coder:7b
+  ```
+- クラウド無料枠がすべて枯渇またはネットワーク切断時、自動でローカルモデルへ中継されます。
+
+### 4. 設定の動的ホットリロード (SIGHUP)
+
+再起動することなく設定を更新できます：
 ```bash
-export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"
-export ANTHROPIC_API_KEY="<your-prismd-local-token>"
-claude
+kill -HUP $(pgrep -f "prismd")
 ```
 
-### 2. Codex CLI
-サンプルプロファイルをコピーし、モデルメタデータカタログを生成します：
-```bash
-cp examples/codex/prismd.config.toml ~/.codex/prismd.config.toml
-npm run generate:codex-catalog    # ~/.codex/prismd-models.json を生成
-PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
-```
+---
 
-### 3. Cursor
-Cursor でカスタム OpenAI エンドポイントを設定します：
-- **Settings** → **Models** → **OpenAI API Key** を有効にし、`<your-prismd-local-token>` を入力。
-- **Override OpenAI Base URL** にチェックを入れ、`http://127.0.0.1:8787/v1` を入力。
-- モデル `free-auto`、`free-fast`、`free-code` を追加して有効化。[Cursor 設定ガイド](examples/cursor/README.md) を参照。
+## 監視と Web ダッシュボード
 
-### 4. OpenCode / DeepSeek Harness (dsh) / Pi Agent
-- **OpenCode**: `~/.config/opencode/config.json` で `baseUrl: "http://127.0.0.1:8787/v1"` を設定。[OpenCode 設定ガイド](examples/opencode/README.md) を参照。
-- **DeepSeek Harness (dsh)**: `~/.dsh/config.toml` で `base_url = "http://127.0.0.1:8787/v1"` を設定。[dsh 設定ガイド](examples/dsh/README.md) を参照。
-- **Pi Agent**: `~/.pi/config.json` で `endpoint: "http://127.0.0.1:8787/v1"` を設定。[Pi 設定ガイド](examples/pi/README.md) を参照。
+- **Web ダッシュボード**：ブラウザで `http://127.0.0.1:8787/ui` を開く：
+  - 各候補モデルのリアルタイム稼働状態（`healthy` / `rate_limited` / `cooldown`）
+  - 日次クォータバーとトークン消費統計
+  - 10 言語切り替えと「使用量リセット（Reset usage）」ボタン
+- **CLI ステータス**：
+  ```bash
+  prismd status
+  ```
+  ターミナルにカラーマトリックスを出力。
 
 ---
 
-## キー管理と設定
+## トラブルシューティング
 
-### API キー管理
-キーはプロジェクトルートの `.env` またはグローバルな `~/.prismd/` ディレクトリで設定可能です。検索優先順位（高 → 低）：
-1. **環境変数**: `OPENROUTER_API_KEY`、`GROQ_API_KEY`、`GEMINI_API_KEY` 等
-2. **プロジェクトルートディレクトリ**: `./.env`（`.env.example` からコピー）
-3. **グローバルユーザーディレクトリ**: `~/.prismd/.env` または `~/.prismd/keys.yaml`（推奨権限: `chmod 600`）
-
-### 候補モデルと優先順位のカスタマイズ
-`config.user.json` で候補モデルの優先順位変更や独自モデルの追加を行い、設定を再生成します：
-```jsonc
-{
-  "aliases": {
-    "free-auto": {
-      "candidates": [
-        "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free"
-      ]
-    }
-  },
-  "policies": {
-    "maxCandidatesPerRequest": 3,
-    "connectTimeoutMs": 5000
-  }
-}
-```
-変更を適用するには `npm run generate:config`（または `node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>`）を実行します。
-
-主要な無料プロバイダー（OpenRouter、Groq、Cerebras、Google Gemini、NVIDIA NIM、GitHub Models 等）の詳細な設定方法は [プロバイダー設定ガイド](docs/providers/README.md) を参照してください。
-
----
-
-## 状態監視と可観測性
-
-- **Web ダッシュボード**: ブラウザで `http://127.0.0.1:8787/ui` を開くと、候補モデルのヘルス状態、日次クォータ進捗バー、トークン使用量、リアルタイム SSE イベントログを確認できます。
-- **CLI ステータス**: `prismd status`（または `npm run status`）を実行して、ターミナル上でカラー表示の指標テーブルを確認できます。
-- **構造化ログ**: stderr に JSON 形式のログを出力。機密情報は自動マスキングされ、一意の `request-id` で追跡可能です。
-
----
-
-## 動作原理と制限事項
-
-1. **ルーティングとフィルタリング**:
-   - 設定された順序で候補モデルを試行；
-   - クォータ枯渇、コンテキストウィンドウ不足、またはクールダウン中の候補をハード除外；
-   - 日次クォータ 80% 以上の候補はキュー末尾へソフト降格。
-2. **フェイルオーバーの境界**:
-   - **ストリーム開始前**: 401/403/429/5xx または接続タイムアウト時、最大 `maxCandidatesPerRequest` 回まで次の候補を試行。
-   - **ストリーム開始後**: 出力乱れを防ぐためストリーム途中での再試行は行わず、SSE `error` イベントを送信して正常終了。
-3. **無料枠の制限**:
-   - パブリック無料モデルは共通の同時実行プールを共有しているため、ピーク時に 429 が発生しやすくなります。prismd は自動回避しますが、全候補が枯渇した場合は `error.metadata` に詳細を付与して 429 を返します。
-
----
-
-## よくある問題と解決法
-
-- **429 が頻発する**: 無料モデルプールが混雑しています。`config.user.json` で `free-auto` の順序を変更して混雑の少ないモデルを優先するか、他のプロバイダーキーを追加してください。
-- **アップデート後に候補モデルが消えた**: 旧バージョンと設定キー形式が異なります。`npm run generate:config` を実行して `prismd.json` を更新してください。
-- **クォータカウンターのリセット**: Web ダッシュボード（`http://127.0.0.1:8787/ui`）の「Reset usage」ボタンをクリックするか、ゲートウェイを停止して `data/prismd.sqlite` を削除してください。
+- **Q: `missing API key for provider` エラーが表示される**
+  - `~/.prismd/keys.yaml` または `.env` の設定を確認し、`npm run generate:config`（ソースモード時）を実行してください。
+- **Q: 無料モデルで 429 が頻発する**
+  - プロバイダーに複数 Key を追加するか、`ollama run qwen2.5-coder:7b` を起動してローカル待機枠を確保してください。
+- **Q: 日次クォータ集計をリセットしたい**
+  - Web ダッシュボード（`http://127.0.0.1:8787/ui`）の「Reset usage」をクリックするか、`data/prismd.sqlite` を削除してください。

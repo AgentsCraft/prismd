@@ -158,14 +158,17 @@ test('parseEnvFile parses KEY=value lines, comments and quotes', () => {
   });
 });
 
-test('parseKeysYaml parses flat field: value lines, comments and quotes', () => {
+test('parseKeysYaml parses flat and multi-key yaml lines', () => {
   const yaml = parseKeysYaml(
     [
       '# comment',
       '',
       'prismd: "local-token"',
       "openrouter: 'sk-fake'",
-      'groq: plain-value',
+      'groq: ["gsk_1", "gsk_2"]',
+      'cerebras:',
+      '  - csk_1',
+      '  - csk_2',
       '  # indented comment line',
       'not-key-value',
       'empty:',
@@ -174,7 +177,8 @@ test('parseKeysYaml parses flat field: value lines, comments and quotes', () => 
   assert.deepEqual(yaml, {
     prismd: 'local-token',
     openrouter: 'sk-fake',
-    groq: 'plain-value',
+    groq: ['gsk_1', 'gsk_2'],
+    cerebras: ['csk_1', 'csk_2'],
     empty: '',
   });
 });
@@ -233,7 +237,7 @@ test('partial availability skips keyless providers and omits empty aliases', () 
   assert.ok(warns.some((w) => w.includes('omitting alias "free-fast"')));
 });
 
-test('key lookup prefers env vars over .env over keys.yaml', () => {
+test('key lookup prefers env vars over .env over keys.yaml including multi-key', () => {
   const presets = FIXTURE_PRESETS;
   const user = {};
   const warns = [];
@@ -241,7 +245,7 @@ test('key lookup prefers env vars over .env over keys.yaml', () => {
   const envOnly = buildConfig({
     presets,
     userConfig: user,
-    keys: { env: { OPENROUTER_API_KEY: 'env-key' }, envFile: {}, yaml: {} },
+    keys: { env: { OPENROUTER_API_KEY: 'env-key1,env-key2' }, envFile: {}, yaml: {} },
     warn: (m) => warns.push(m),
   });
   assert.equal(envOnly.models['free-auto'].candidates.length, 1);
@@ -257,7 +261,7 @@ test('key lookup prefers env vars over .env over keys.yaml', () => {
   const yamlOnly = buildConfig({
     presets,
     userConfig: user,
-    keys: { env: {}, envFile: {}, yaml: { openrouter: 'yaml-key' } },
+    keys: { env: {}, envFile: {}, yaml: { openrouter: ['yaml-key-1', 'yaml-key-2'] } },
     warn: () => {},
   });
   assert.equal(yamlOnly.models['free-auto'].candidates.length, 1);
@@ -327,7 +331,7 @@ test('generate reads keys from ~/.prismd/.env and keys.yaml', () => {
   assert.deepEqual(Object.keys(fromEnvFile.models), ['free-auto']);
   assert.equal(fromEnvFile.models['free-auto'].candidates.length, 1);
 
-  const homeYaml = makeHome({ yaml: 'openrouter: "test-key"\n' });
+  const homeYaml = makeHome({ yaml: 'openrouter: ["key-1", "key-2"]\n' });
   const fromYaml = JSON.parse(generate(dir, { homeDir: homeYaml }));
   assert.deepEqual(Object.keys(fromYaml.models), ['free-auto']);
 });

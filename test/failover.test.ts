@@ -121,6 +121,99 @@ test("429 switches to the next candidate and relays the stream", async (t) => {
   assert.equal(mock.requests[1].body?.model, "llama-3.3-70b-versatile");
 });
 
+test("single provider multi-key 429 switches to next key on the same candidate", async (t) => {
+  const mock = await startMockUpstream((captured) => {
+    const auth = captured.headers?.authorization;
+    if (auth === "Bearer key-1") {
+      return {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "5" },
+        body: JSON.stringify({ error: { message: "rate limited on key 1" } }),
+      };
+    }
+    if (auth === "Bearer key-2") {
+      return SSE_OK;
+    }
+    return { status: 500, body: "unexpected key" };
+  });
+  t.after(() => mock.close());
+
+  await setup(mock.url);
+  process.env["OPENROUTER_API_KEY"] = "key-1,key-2";
+  resetConfigForTests();
+  resetRuntimeForTests();
+
+  const res = await post({ model: "free-auto", input: "hi", stream: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/event-stream");
+  const text = await res.text();
+  assert.ok(text.includes('"response.completed"'));
+  assert.equal(mock.requests.length, 2);
+  // Both attempts targeted the first candidate (poolside/laguna-s-2.1:free) with different keys
+  assert.equal(mock.requests[0].body?.model, "poolside/laguna-s-2.1:free");
+  assert.equal(mock.requests[0].headers?.authorization, "Bearer key-1");
+  assert.equal(mock.requests[1].body?.model, "poolside/laguna-s-2.1:free");
+  assert.equal(mock.requests[1].headers?.authorization, "Bearer key-2");
+});
+
+test("cloud candidates 429 failover to local ollama without auth", async (t) => {
+  const mock = await startMockUpstream(
+    byModel({
+      "poolside/laguna-s-2.1:free": {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "5" },
+        body: JSON.stringify({ error: { message: "cloud 429" } }),
+      },
+      "qwen2.5-coder:7b": {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "local-ok", choices: [{ message: { content: "local response" } }] }),
+      },
+    }),
+  );
+  t.after(() => mock.close());
+
+  await setup(mock.url, {
+    providers: {
+      openrouter: { type: "responses", baseUrl: mock.url, apiKeyField: "openrouter" },
+      ollama: { type: "chat", baseUrl: mock.url, apiKeyField: "ollama", auth: { type: "none" } },
+    },
+    models: {
+      "free-auto": {
+        candidates: [
+          {
+            provider: "openrouter",
+            providerModelId: "poolside/laguna-s-2.1:free",
+            contextWindow: 262144,
+            maxOutputTokens: 32768,
+            supportsTools: true,
+            supportsReasoning: true,
+            limits: { dailyRequests: 50, rpm: 20, maxConcurrent: 2 },
+            tags: ["free"],
+          },
+          {
+            provider: "ollama",
+            providerModelId: "qwen2.5-coder:7b",
+            contextWindow: 32768,
+            maxOutputTokens: 8192,
+            supportsTools: true,
+            supportsReasoning: false,
+            limits: { dailyRequests: null, rpm: 0, maxConcurrent: 4 },
+            tags: ["local", "offline"],
+          },
+        ],
+      },
+    },
+  });
+
+  const res = await post({ model: "free-auto", input: "hi" });
+  assert.equal(res.status, 200);
+  assert.equal(mock.requests.length, 2);
+  assert.equal(mock.requests[0].body?.model, "poolside/laguna-s-2.1:free");
+  assert.equal(mock.requests[1].body?.model, "qwen2.5-coder:7b");
+  assert.equal(mock.requests[1].headers?.authorization, undefined);
+});
+
 test("5xx switches to the next candidate", async (t) => {
   const mock = await startMockUpstream(
     byModel({

@@ -17,17 +17,6 @@ import { EventEmitter } from "node:events";
 
 export type HealthState = "healthy" | "cooldown" | "half_open";
 
-export interface HealthOptions {
-  /** Consecutive failures before a candidate goes into cooldown. */
-  failThreshold?: number;
-  /** Base cooldown duration in ms. */
-  cooldownMs?: number;
-  /** Honor upstream Retry-After headers on 429 (cooldown = max(base, retry-after)). */
-  respectRetryAfter?: boolean;
-  /** Clock injection for tests. */
-  now?: () => number;
-}
-
 export interface CandidateHealth {
   state: HealthState;
   /** Consecutive failure count (reset to 0 on a successful probe). */
@@ -38,6 +27,24 @@ export interface CandidateHealth {
   lastError?: string;
   /** ISO timestamp when the last failure occurred, or null. */
   lastErrorAt?: string | null;
+}
+
+export interface HealthOptions {
+  /** Consecutive failures before a candidate goes into cooldown. */
+  failThreshold?: number;
+  /** Base cooldown duration in ms. */
+  cooldownMs?: number;
+  /** Honor upstream Retry-After headers on 429 (cooldown = max(base, retry-after)). */
+  respectRetryAfter?: boolean;
+  /** Clock injection for tests. */
+  now?: () => number;
+  /** Optional KeyPool integration for multi-key providers */
+  keyPool?: {
+    isProviderHealthy(provider: string): boolean;
+    getProviderHealth(provider: string, model: string): CandidateHealth;
+    hasKeys(provider: string): boolean;
+    on(event: string, listener: (event: { provider: string; model: string; health: CandidateHealth }) => void): void;
+  };
 }
 
 export interface RecordFailureInput {
@@ -58,7 +65,9 @@ function keyOf(provider: string, model: string): string {
 
 export class HealthManager extends EventEmitter {
   private readonly states = new Map<string, CandidateHealth>();
-  private readonly options: Required<HealthOptions>;
+  private readonly options: Required<Omit<HealthOptions, "keyPool">> & {
+    keyPool?: HealthOptions["keyPool"];
+  };
 
   constructor(options: HealthOptions = {}) {
     super();
@@ -67,13 +76,33 @@ export class HealthManager extends EventEmitter {
       cooldownMs: options.cooldownMs ?? DEFAULT_COOLDOWN_MS,
       respectRetryAfter: options.respectRetryAfter ?? true,
       now: options.now ?? (() => Date.now()),
+      keyPool: options.keyPool,
     };
+    if (this.options.keyPool) {
+      this.options.keyPool.on("change", (event: { provider: string; model: string; health: CandidateHealth }) => {
+        this.emit("change", event);
+      });
+    }
   }
 
   /** Current (possibly defaulted) health record for a candidate. */
   get(provider: string, model: string): CandidateHealth {
-    const existing = this.states.get(keyOf(provider, model));
-    if (existing) return this.snapshot(existing);
+    const key = keyOf(provider, model);
+    const entry = this.states.get(key);
+    if (entry && (entry.state !== "healthy" || entry.lastError || entry.consecutiveFailures > 0)) {
+      if (entry.state === "cooldown" && this.options.now() >= (entry.cooldownUntil ?? 0)) {
+        entry.state = "half_open";
+        this.emit("change", { provider, model, health: this.snapshot(entry) });
+      }
+      return this.snapshot(entry);
+    }
+    if (this.options.keyPool && this.options.keyPool.hasKeys(provider)) {
+      const poolHealth = this.options.keyPool.getProviderHealth(provider, model);
+      if (poolHealth.state !== "healthy" || poolHealth.lastError || poolHealth.consecutiveFailures > 0) {
+        return poolHealth;
+      }
+    }
+    if (entry) return this.snapshot(entry);
     return { state: "healthy", consecutiveFailures: 0, cooldownUntil: null, lastErrorAt: null };
   }
 
@@ -81,15 +110,20 @@ export class HealthManager extends EventEmitter {
   isHealthy(provider: string, model: string): boolean {
     const key = keyOf(provider, model);
     const entry = this.states.get(key);
-    if (!entry) return true;
-    if (entry.state === "healthy") return true;
-    if (entry.state === "cooldown") {
-      if (this.options.now() >= (entry.cooldownUntil ?? 0)) {
-        entry.state = "half_open";
-        this.emit("change", { provider, model, health: this.snapshot(entry) });
-        return true;
+    if (entry) {
+      if (entry.state === "cooldown") {
+        if (this.options.now() >= (entry.cooldownUntil ?? 0)) {
+          entry.state = "half_open";
+          this.emit("change", { provider, model, health: this.snapshot(entry) });
+        } else {
+          return false;
+        }
       }
-      return false;
+    }
+    if (this.options.keyPool && this.options.keyPool.hasKeys(provider)) {
+      if (!this.options.keyPool.isProviderHealthy(provider)) {
+        return false;
+      }
     }
     return true; // half_open: allow the single probe
   }

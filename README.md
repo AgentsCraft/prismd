@@ -2,151 +2,155 @@
 
 [English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
-Local-first LLM gateway aggregating free and low-cost model APIs (OpenRouter, Groq, Cerebras, etc.) for coding agents (Claude Code, Codex CLI, OpenCode, and others), providing a stable, unified interface with automatic routing and failover.
+**Local-first High-Availability LLM Gateway** aggregating free and low-cost model APIs (OpenRouter, Groq, Cerebras, Google Gemini, NVIDIA NIM, GitHub Models, etc.) and local LLMs (Ollama), providing a stable, unified interface with automatic failover and routing for coding agents (Claude Code, Codex CLI, Cursor, OpenCode, Aider, etc.).
 
-With a single local endpoint and a unified alias (`free-auto`), prismd automatically handles:
-- **Smart Routing & Quota Protection**: Automatically picks available candidates based on context window and daily quota usage; soft-demotes candidates at ≥ 80% quota to the back of the queue.
-- **Seamless Failover**: Before streaming starts, automatically fails over to the next candidate on 429/401/5xx errors or network timeouts.
-- **Multi-Protocol Conversion**: Native support for OpenAI Responses, OpenAI Chat Completions, and Anthropic Messages protocols, allowing any coding agent to connect seamlessly.
+```mermaid
+flowchart LR
+    subgraph Clients["Coding Agents (Clients)"]
+        CC["Claude Code<br/>(Anthropic Messages)"]
+        CX["Codex CLI<br/>(OpenAI Responses)"]
+        CU["Cursor / OpenCode<br/>(Chat Completions)"]
+    end
+
+    subgraph Gateway["prismd (127.0.0.1:8787)"]
+        Router["Smart Router (free-auto)<br/>Quota-Weighted / Context Check / 429 Failover"]
+        KeyPool["Key Pool & Sharding<br/>Single-Key Circuit Breaking / Round-Robin"]
+    end
+
+    subgraph Upstreams["Providers"]
+        Cloud["Cloud Free APIs<br/>OpenRouter / Groq / Cerebras / Gemini..."]
+        Local["Local Offline Fallback<br/>Ollama (qwen2.5-coder / deepseek-r1)"]
+    end
+
+    Clients --> Gateway
+    Gateway --> Cloud
+    Cloud -. "All 429 / Offline" .-> Local
+```
+
+---
+
+## Key Highlights
+
+1. **Unified Model Alias (`free-auto`)**: Connect using a single alias; prismd automatically selects the best available free model.
+2. **Multi-Key Pooling & Single-Key Circuit Breaking**: Hit rate limits? Configure multiple keys per provider for automatic round-robin scheduling. When a single key hits 429, only that key is cooled down while traffic seamlessly shifts to the next key.
+3. **Local Ollama Zero-Downtime Fallback**: When cloud free models hit 429 or internet drops, requests automatically fall back to local Ollama (`qwen2.5-coder:7b` / `deepseek-r1:8b`), ensuring coding agent tasks never crash.
+4. **Transparent Multi-Protocol Conversion**: Full bi-directional streaming conversion across Claude Code (Messages), Codex (Responses), and Cursor/OpenCode (Chat Completions).
+5. **Embedded Web Dashboard & Hot Reloading**: Open `http://127.0.0.1:8787/ui` to monitor live candidate health and quota progress bars. Update configurations dynamically via `SIGHUP` without restarting.
+
+---
 
 ## Support
 
-If prismd saves you time or quota, consider buying the author a coffee:
+If prismd saves you time or API costs, consider buying the author a coffee:
 
 [![ko-fi](https://storage.ko-fi.com/cdn/kofi2.png)](https://ko-fi.com/keanz21)
 
 ---
 
-## Quick Start
+## 3-Step Quick Start
 
-### Option 1: Global Install via npm (Recommended)
+### Step 1: Install and Start Gateway
 
 ```bash
-# Install stable release
+# Option A: Global npm install (Recommended)
 npm install -g @prismd/prismd
 
-# Or RC preview channel
-# npm install -g @agentscraft/prismd
-
-# Configure provider keys and local gateway token
-export OPENROUTER_API_KEY=<your-openrouter-key>
-export PRISMD_API_KEY=<local-token>        # Local auth token, e.g. openssl rand -hex 32
-
-# Start the gateway (listens on 127.0.0.1:8787)
-prismd
-```
-
-### Option 2: Run from Source
-
-```bash
+# Option B: Run from source
 git clone https://github.com/AgentsCraft/prismd.git
-cd prismd
-npm install
-cp .env.example .env                       # Fill in API keys, chmod 600
-npm run generate:config                    # Merge presets and keys to generate prismd.json
-npm run dev                                # Start development server
+cd prismd && npm install
 ```
 
-### Smoke Test
+### Step 2: Configure API Keys
 
+Add your free API keys in `~/.prismd/keys.yaml` or `./.env`:
+
+```yaml
+# ~/.prismd/keys.yaml (recommended chmod 600)
+prismd: "my-local-secret"       # Local protection token
+
+# Single key or multi-key pool:
+openrouter: "sk-or-v1-xxxx"
+groq:
+  - "gsk_key1_xxxx"             # Multiple keys auto round-robin
+  - "gsk_key2_xxxx"
+cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+gemini: "AIzaSyxxxx"
+```
+
+Start the gateway:
 ```bash
-curl -N http://127.0.0.1:8787/v1/responses \
-  -H "Authorization: Bearer $PRISMD_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"free-auto","input":"say hi","stream":true}'
+prismd
+# Or from source: npm run generate:config && npm run dev
 ```
+
+### Step 3: Configure Your Agent
+
+| Client | Quick Setup |
+|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` (See [Codex Setup](examples/codex/README.md)) |
+| **Cursor** | Settings → Models → Enable OpenAI API Key (enter `my-local-secret`)<br>Check **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Add model: `free-auto` |
+| **OpenCode** | Set `baseUrl: "http://127.0.0.1:8787/v1"` in `~/.config/opencode/config.json` (See [OpenCode Setup](examples/opencode/README.md)) |
 
 ---
 
-## Client Setup
+## Features In Depth
 
-All client agents point to the local gateway endpoint and use the same local protection token (`PRISMD_API_KEY`).
+### 1. Default Aliases
 
-### 1. Claude Code
-Claude Code natively supports custom Anthropic endpoints via environment variables. Standard model names (`claude-*-sonnet`, etc.) automatically fall back to configured gateway aliases:
+- **`free-auto`**: General coding model alias. Prioritizes Gemini 2.0 Flash / Llama 3.3 70b, with automatic fallback to local Ollama `qwen2.5-coder:7b`.
+- **`free-fast`**: Ultra-fast lightweight model alias (Gemini Flash Lite / Llama 3.1 8b).
+- **`free-code`**: Specialized code generation model queue.
+
+### 2. Multi-Key Pooling & Cooldown Isolation
+
+Configure multiple keys in `.env` or `keys.yaml`:
+- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
+- **`keys.yaml`**:
+  ```yaml
+  groq:
+    - "gsk_key1"
+    - "gsk_key2"
+  ```
+- **How it works**: Round-robin request distribution. When `gsk_key1` receives a 429 response, only `gsk_key1` enters cooldown (respecting `Retry-After`), and subsequent requests immediately shift to `gsk_key2`.
+
+### 3. Local Ollama Offline Fallback
+
+- Built-in `ollama` provider (`http://127.0.0.1:11434/v1`, auth: none).
+- When Ollama is running locally with coding models:
+  ```bash
+  ollama run qwen2.5-coder:7b
+  ```
+- If cloud APIs are exhausted or internet is disconnected, prismd automatically routes requests to your local model.
+
+### 4. Dynamic Config Hot Reloading (SIGHUP)
+
+Update `prismd.json` or aliases and reload without dropping connections:
 ```bash
-export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"
-export ANTHROPIC_API_KEY="<your-prismd-local-token>"
-claude
+kill -HUP $(pgrep -f "prismd")
 ```
-
-### 2. Codex CLI
-Copy the example profile and generate the model metadata catalog:
-```bash
-cp examples/codex/prismd.config.toml ~/.codex/prismd.config.toml
-npm run generate:codex-catalog    # Generates ~/.codex/prismd-models.json
-PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
-```
-
-### 3. Cursor
-Configure a custom OpenAI endpoint in Cursor:
-- **Settings** → **Models** → enable **OpenAI API Key**, enter `<your-prismd-local-token>`.
-- Check **Override OpenAI Base URL**, enter `http://127.0.0.1:8787/v1`.
-- Add and enable models: `free-auto`, `free-fast`, `free-code`. See [Cursor Setup](examples/cursor/README.md).
-
-### 4. OpenCode / DeepSeek Harness (dsh) / Pi Agent
-- **OpenCode**: Configure provider `baseUrl: "http://127.0.0.1:8787/v1"` in `~/.config/opencode/config.json`. See [OpenCode Setup](examples/opencode/README.md).
-- **DeepSeek Harness (dsh)**: Configure `base_url = "http://127.0.0.1:8787/v1"` in `~/.dsh/config.toml`. See [dsh Setup](examples/dsh/README.md).
-- **Pi Agent**: Configure `endpoint: "http://127.0.0.1:8787/v1"` in `~/.pi/config.json`. See [Pi Setup](examples/pi/README.md).
-
----
-
-## Keys & Configuration
-
-### Key Management
-Keys can be configured in the project root `.env` or in the global `~/.prismd/` directory. Lookup order (highest to lowest):
-1. **Environment Variables**: `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, etc.
-2. **Current Project Directory**: `./.env` (copy from `.env.example`)
-3. **Global User Directory**: `~/.prismd/.env` or `~/.prismd/keys.yaml` (recommended permission: `chmod 600`)
-
-### Customizing Candidates & Ordering
-Override candidate priorities or add custom models in `config.user.json`, then regenerate the config:
-```jsonc
-{
-  "aliases": {
-    "free-auto": {
-      "candidates": [
-        "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free"
-      ]
-    }
-  },
-  "policies": {
-    "maxCandidatesPerRequest": 3,
-    "connectTimeoutMs": 5000
-  }
-}
-```
-Run `npm run generate:config` (or `node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>`) to apply changes.
-
-For detailed setup instructions for major free providers (OpenRouter, Groq, Cerebras, Google Gemini, NVIDIA NIM, GitHub Models, etc.), see the [Provider Configuration Guides](docs/providers/README.md).
 
 ---
 
 ## Status & Observability
 
-- **Web Dashboard**: Open `http://127.0.0.1:8787/ui` in your browser for candidate health status, daily quota progress bars, token usage, and live SSE event stream.
-- **CLI Status**: Run `prismd status` (or `npm run status`) to view colorized metrics tables directly in the terminal.
-- **Structured Logs**: JSON logs emitted to stderr with automatic secret redaction and unique `request-id` tracking.
-
----
-
-## How It Works & Limitations
-
-1. **Routing & Filtering**:
-   - Tries candidates in configured order;
-   - Hard-excludes candidates that exhausted quota, have insufficient context window, or are in cooldown;
-   - Soft-demotes candidates at ≥ 80% daily quota to the back of the queue.
-2. **Failover Boundaries**:
-   - **Before stream starts**: On 401/403/429/5xx or connect timeout, tries next candidate up to `maxCandidatesPerRequest`.
-   - **After stream starts**: Never retries mid-stream (to avoid garbled outputs), cleanly terminating with an SSE error event.
-3. **Free Pool Limitations**:
-   - Public free models share upstream concurrency pools and can experience frequent 429s during peak hours. prismd routes around them, but if all configured candidates are exhausted, it returns a 429 with candidate status details in `error.metadata`.
+- **Web Dashboard**: Open `http://127.0.0.1:8787/ui` in your browser:
+  - Real-time candidate health (`healthy` / `rate_limited` / `cooldown`)
+  - Daily quota progress bars and token usage statistics
+  - 10-language UI selector and "Reset usage" button
+- **CLI Status**:
+  ```bash
+  prismd status
+  ```
+  Displays colorized candidate metrics tables in terminal.
 
 ---
 
 ## Troubleshooting
 
-- **Frequent 429s**: Free model pools are congested. Reorder `free-auto` in `config.user.json` to prioritize less congested models, or add additional provider API keys.
-- **Candidates disappeared after upgrade**: Older versions used different config key fields. Run `npm run generate:config` to refresh `prismd.json`.
-- **Reset quota counters**: Click the "Reset usage" button in the Web Dashboard (`http://127.0.0.1:8787/ui`), or stop the gateway and delete `data/prismd.sqlite`.
+- **Q: `missing API key for provider` error?**
+  - Verify keys in `~/.prismd/keys.yaml` or `.env`, then run `npm run generate:config` (in source mode).
+- **Q: Frequent 429s on free models?**
+  - Add multiple keys for the provider, or launch `ollama run qwen2.5-coder:7b` for local offline fallback.
+- **Q: Reset daily quota counters?**
+  - Click "Reset usage" in the Web Dashboard (`http://127.0.0.1:8787/ui`) or delete `data/prismd.sqlite`.

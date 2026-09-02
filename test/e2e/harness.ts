@@ -29,8 +29,10 @@ export interface GatewayHandle {
   port: number;
   url: string;
   dataPath: string;
+  configPath: string;
   dir: string;
   stderrLines: string[];
+  signal: (sig: NodeJS.Signals) => void;
   /**
    * SIGTERM (graceful shutdown + quota flush), then SIGKILL on timeout.
    * Returns the process exit code. Removes the temp dir unless keepDir.
@@ -138,8 +140,12 @@ export async function startGateway(
     port,
     url,
     dataPath,
+    configPath,
     dir,
     stderrLines,
+    signal: (sig: NodeJS.Signals) => {
+      child.kill(sig);
+    },
     stop: async () => {
       if (child.exitCode === null) {
         child.kill("SIGTERM");

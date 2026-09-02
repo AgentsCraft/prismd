@@ -1,10 +1,8 @@
 import type { Context } from "hono";
-import { resolveProviderApiKey } from "../config.js";
 import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
-import { getHealth } from "../core/runtime.js";
-import { getQuota } from "../core/runtime.js";
+import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
 import { routeAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
@@ -14,14 +12,16 @@ import { logger } from "../observability/logger.js";
 import type { ResponsesRequestBody } from "../types/protocol.js";
 
 /**
- * POST /v1/responses ingress with the M2a failover decision tree:
+ * POST /v1/responses ingress with KeyPool and M2a failover decision tree:
  *
  *   try candidate i (<= maxCandidatesPerRequest)
- *     -> connect failure / connect timeout / failoverOn status (401/403/429/5xx)
- *        -> record health failure, switch to candidate i+1
- *     -> other 4xx (400/404/422) -> passthrough verbatim, no switch
- *     -> 2xx -> relay; stream breaks afterwards are never retried
- *        (SSE error event ends the stream)
+ *     try next available key in candidate's provider pool
+ *       -> connect failure / connect timeout / failoverOn status (401/403/429/5xx)
+ *          -> record key failure, try next key in provider pool
+ *          -> when provider pool keys exhausted, switch to candidate i+1
+ *       -> other 4xx (400/404/422) -> passthrough verbatim, no switch
+ *       -> 2xx -> relay; stream breaks afterwards are never retried
+ *          (SSE error event ends the stream)
  *   all candidates failed -> 502 gateway_all_candidates_failed
  */
 
@@ -49,6 +49,7 @@ export async function responses(c: Context): Promise<Response> {
   const config = getConfig();
   const quota = getQuota();
   const health = getHealth();
+  const keyPool = getKeyPool();
   const inputChars = JSON.stringify(body).length;
 
   const routed = routeAlias(config.models, body.model, {
@@ -73,10 +74,6 @@ export async function responses(c: Context): Promise<Response> {
       422,
     );
   }
-  // Defensive boundary: the schema requires >= 1 candidate and the config
-  // generator skips empty aliases, so this path should not occur in
-  // practice — report it as a gateway misconfiguration rather than a
-  // misleading 429 with empty metadata.
   if (candidates.length === 0) {
     return c.json(
       gatewayError(500, "gateway_internal_error", `alias "${body.model}" has no candidates defined`),
@@ -122,8 +119,7 @@ export async function responses(c: Context): Promise<Response> {
         500,
       );
     }
-    const apiKey = resolveProviderApiKey(provider.apiKeyField);
-    if (!apiKey) {
+    if (!keyPool.hasKeys(candidate.provider)) {
       return c.json(
         gatewayError(
           500,
@@ -134,86 +130,96 @@ export async function responses(c: Context): Promise<Response> {
       );
     }
 
-    const caller = provider.type === "chat" ? chatCallUpstream : responsesCallUpstream;
-    let result: UpstreamResult;
-    try {
-      result = await caller(
-        candidate.provider,
-        provider,
-        candidate.providerModelId,
-        body,
-        apiKey,
-        {
-          connectTimeoutMs: config.policies.connectTimeoutMs,
-          streamIdleTimeoutMs: config.policies.streamIdleTimeoutMs,
-          onFirstToken: (latencyMs) =>
-            exporter.onFirstToken({
-              requestId,
-              ts: Date.now(),
-              alias: body.model,
-              provider: candidate.provider,
-              model: candidate.providerModelId,
-              latencyMs,
-            }),
-          onChunk: (bytes) =>
-            exporter.onChunk({
-              requestId,
-              ts: Date.now(),
-              alias: body.model,
-              provider: candidate.provider,
-              model: candidate.providerModelId,
-              bytes,
-            }),
-        },
-      );
-    } catch (err) {
-      const isTimeout = err instanceof UpstreamConnectError ? err.timeout : false;
-      health.recordFailure(candidate.provider, candidate.providerModelId, {});
-      logger.warn(
-        {
+    const triedKeys = new Set<string>();
+
+    while (true) {
+      const apiKey = keyPool.getNextKey(candidate.provider, triedKeys);
+      if (!apiKey) {
+        break;
+      }
+      triedKeys.add(apiKey);
+
+      const caller = provider.type === "chat" ? chatCallUpstream : responsesCallUpstream;
+      let result: UpstreamResult;
+      try {
+        result = await caller(
+          candidate.provider,
+          provider,
+          candidate.providerModelId,
+          body,
+          apiKey,
+          {
+            connectTimeoutMs: config.policies.connectTimeoutMs,
+            streamIdleTimeoutMs: config.policies.streamIdleTimeoutMs,
+            onFirstToken: (latencyMs) =>
+              exporter.onFirstToken({
+                requestId,
+                ts: Date.now(),
+                alias: body.model,
+                provider: candidate.provider,
+                model: candidate.providerModelId,
+                latencyMs,
+              }),
+            onChunk: (bytes) =>
+              exporter.onChunk({
+                requestId,
+                ts: Date.now(),
+                alias: body.model,
+                provider: candidate.provider,
+                model: candidate.providerModelId,
+                bytes,
+              }),
+          },
+        );
+      } catch (err) {
+        const isTimeout = err instanceof UpstreamConnectError ? err.timeout : false;
+        keyPool.recordFailure(candidate.provider, candidate.providerModelId, apiKey, {});
+        logger.warn(
+          {
+            requestId,
+            alias: body.model,
+            provider: candidate.provider,
+            model: candidate.providerModelId,
+            timeout: isTimeout,
+            error: (err as Error).message,
+          },
+          "upstream connection failed",
+        );
+        attemptStatuses.push({ candidate, status: null });
+        failovers += 1;
+        continue;
+      }
+
+      if (result.kind === "stream" || result.kind === "json") {
+        keyPool.recordSuccess(candidate.provider, candidate.providerModelId, apiKey);
+        return relaySuccess({
           requestId,
+          startedAt,
+          method,
+          path,
           alias: body.model,
-          provider: candidate.provider,
-          model: candidate.providerModelId,
-          timeout: isTimeout,
-          error: (err as Error).message,
-        },
-        "upstream connection failed",
-      );
-      attemptStatuses.push({ candidate, status: null });
-      failovers += 1;
-      continue;
-    }
+          candidate,
+          result,
+          inputChars,
+          failovers,
+        });
+      }
 
-    if (result.kind === "stream" || result.kind === "json") {
-      health.recordSuccess(candidate.provider, candidate.providerModelId);
-      return relaySuccess({
-        requestId,
-        startedAt,
-        method,
-        path,
-        alias: body.model,
-        candidate,
-        result,
-        inputChars,
-        failovers,
+      // kind === "error": failover or passthrough, decided by status.
+      if (!config.policies.failoverOn.includes(String(result.status))) {
+        // Request-class 4xx and any non-listed status: relay verbatim, no switch.
+        return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
+      }
+
+      keyPool.recordFailure(candidate.provider, candidate.providerModelId, apiKey, {
+        status: result.status,
+        retryAfterMs: result.retryAfterMs,
       });
+      // Free the unused error body so the upstream connection is released.
+      void result.response.body?.cancel();
+      attemptStatuses.push({ candidate, status: result.status });
+      failovers += 1;
     }
-
-    // kind === "error": failover or passthrough, decided by status.
-    if (!config.policies.failoverOn.includes(String(result.status))) {
-      // Request-class 4xx and any non-listed status: relay verbatim, no switch.
-      return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
-    }
-
-    health.recordFailure(candidate.provider, candidate.providerModelId, {
-      status: result.status,
-      retryAfterMs: result.retryAfterMs,
-    });
-    // Free the unused error body so the upstream connection is released.
-    void result.response.body?.cancel();
-    attemptStatuses.push({ candidate, status: result.status });
-    failovers += 1;
   }
 
   // All attempts failed: 502 with per-candidate upstream status codes.
@@ -230,30 +236,29 @@ export async function responses(c: Context): Promise<Response> {
     message: `all candidates for alias "${body.model}" failed`,
   });
 
-  // Failed attempts still consumed attempts against the daily quotas:
-  // record the final attempt (request_log is keyed by request_id, so one
-  // row per client request) with the gateway's own 502 status, and close
-  // out the request lifecycle for observability.
-  const finalAttempt = attemptStatuses[attemptStatuses.length - 1];
-  getQuota().record({
-    requestId,
-    ts: new Date().toISOString(),
-    alias: body.model,
-    provider: finalAttempt.candidate.provider,
-    model: finalAttempt.candidate.providerModelId,
-    status: 502,
-    failover: failovers,
-    durationMs: Date.now() - startedAt,
-    usage: { inputChars, outputChars: 0 },
-  });
+  const fallbackCandidate = selection.selected ?? selection.ordered[0];
+  const finalCandidate = attemptStatuses[attemptStatuses.length - 1]?.candidate ?? fallbackCandidate;
+  if (finalCandidate) {
+    getQuota().record({
+      requestId,
+      ts: new Date().toISOString(),
+      alias: body.model,
+      provider: finalCandidate.provider,
+      model: finalCandidate.providerModelId,
+      status: 502,
+      failover: failovers,
+      durationMs: Date.now() - startedAt,
+      usage: { inputChars, outputChars: 0 },
+    });
+  }
   exporter.onRequestEnd({
     requestId,
     ts: Date.now(),
     method,
     path,
     alias: body.model,
-    provider: finalAttempt.candidate.provider,
-    model: finalAttempt.candidate.providerModelId,
+    provider: finalCandidate?.provider ?? "unknown",
+    model: finalCandidate?.providerModelId ?? "unknown",
     status: 502,
     durationMs: Date.now() - startedAt,
     usage: {
@@ -288,7 +293,7 @@ interface RelayContext {
 
 type OkResult = Extract<UpstreamResult, { kind: "stream" | "json" }>;
 type HttpErrorResult = Extract<UpstreamResult, { kind: "error" }>;
-/** Build the client response for a successful 2xx upstream result. */
+
 function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
   const { result } = ctx;
   const accounting = result.accounting;
@@ -317,9 +322,6 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
         },
       }),
     );
-    // A client disconnect cancels the transform stream without running its
-    // flush; the wrapper guarantees endStream/finalize run exactly once on
-    // every path so graceful shutdown never waits for a dead stream.
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         const reader = relayed.getReader();
@@ -352,7 +354,6 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
   return new Response(result.response.body, { status: result.response.status, headers });
 }
 
-/** Build the client response for a passthrough upstream error (4xx etc.). */
 function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Response {
   const { result } = ctx;
   const headers: Record<string, string> = {};
@@ -372,7 +373,6 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
   return response;
 }
 
-/** Async accounting after the response is (fully or partially) delivered. */
 function finalize(ctx: RelayContext & { status: number }, accounting: StreamAccounting): void {
   const usage = {
     inputTokens: accounting.realUsage?.inputTokens,

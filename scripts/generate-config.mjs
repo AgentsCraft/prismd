@@ -75,28 +75,135 @@ export function parseEnvFile(text) {
   return env;
 }
 
+function stripYamlInlineComment(val) {
+  let v = val.trim();
+  if (v.startsWith('#')) return '';
+  if (v.startsWith('"')) {
+    const endQuote = v.indexOf('"', 1);
+    if (endQuote !== -1) return v.slice(0, endQuote + 1);
+  } else if (v.startsWith("'")) {
+    const endQuote = v.indexOf("'", 1);
+    if (endQuote !== -1) return v.slice(0, endQuote + 1);
+  }
+  const hashIdx = v.indexOf(' #');
+  if (hashIdx !== -1) v = v.slice(0, hashIdx).trim();
+  return v;
+}
+
+function stripYamlQuotesAndComment(val) {
+  let v = stripYamlInlineComment(val);
+  if (
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
+  ) {
+    v = v.slice(1, -1);
+  }
+  return v;
+}
+
+function parseInlineArray(inner) {
+  const items = [];
+  let current = '';
+  let inQuote = null;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (inQuote) {
+      if (ch === inQuote) inQuote = null;
+      else current += ch;
+    } else {
+      if (ch === '"' || ch === "'") inQuote = ch;
+      else if (ch === ',') {
+        const item = current.trim();
+        if (item !== '') items.push(stripYamlQuotesAndComment(item));
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  const item = current.trim();
+  if (item !== '') items.push(stripYamlQuotesAndComment(item));
+  return items;
+}
+
+function parseCommaSeparated(str) {
+  return str
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '');
+}
+
 /**
- * Minimal flat keys.yaml parser: `field: value` lines, full-line #
- * comments, blank lines, quotes stripped. No nested structures or flow
- * syntax — deliberately no yaml dependency (mirrors parseEnvFile).
+ * Minimal keys.yaml parser supporting:
+ * - `field: value`
+ * - `field: ["v1", "v2"]`
+ * - `field:\n  - "v1"\n  - "v2"`
+ * No external yaml dependency.
  */
 export function parseKeysYaml(text) {
   const out = {};
+  let currentKey = null;
+
   for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (line === '' || line.startsWith('#')) continue;
-    const colon = line.indexOf(':');
-    if (colon === -1) continue;
-    const key = line.slice(0, colon).trim();
-    let value = line.slice(colon + 1).trim();
+    const trimmed = rawLine.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) continue;
+
+    if (trimmed.startsWith('-') && currentKey !== null) {
+      let itemVal = trimmed.slice(1).trim();
+      itemVal = stripYamlQuotesAndComment(itemVal);
+      if (itemVal !== '') {
+        const existing = out[currentKey];
+        if (Array.isArray(existing)) {
+          existing.push(itemVal);
+        } else {
+          out[currentKey] = [itemVal];
+        }
+      }
+      continue;
+    }
+
+    const colon = trimmed.indexOf(':');
+    if (colon === -1) {
+      currentKey = null;
+      continue;
+    }
+
+    const key = trimmed.slice(0, colon).trim();
+    if (key === '') {
+      currentKey = null;
+      continue;
+    }
+
+    let value = trimmed.slice(colon + 1).trim();
+    value = stripYamlInlineComment(value);
+
+    if (value.startsWith('[') && value.endsWith(']')) {
+      const inner = value.slice(1, -1).trim();
+      if (inner === '') {
+        out[key] = [];
+      } else {
+        out[key] = parseInlineArray(inner);
+      }
+      currentKey = key;
+      continue;
+    }
+
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
     ) {
       value = value.slice(1, -1);
     }
-    if (key !== '' && !value.startsWith('#')) out[key] = value;
+
+    if (value === '') {
+      out[key] = '';
+      currentKey = key;
+    } else {
+      out[key] = value;
+      currentKey = key;
+    }
   }
+
   return out;
 }
 
@@ -173,14 +280,37 @@ function expandCandidates(entries, modelCatalog, alias, warn) {
   return candidates;
 }
 
+export function resolveKeysValue(keys, field) {
+  const envVar = `${field.toUpperCase()}_API_KEY`;
+  if (keys.env && keys.env[envVar] !== undefined && keys.env[envVar] !== '') {
+    const resolved = parseCommaSeparated(keys.env[envVar]);
+    if (resolved.length > 0) return resolved;
+  }
+  if (keys.localEnvFile && keys.localEnvFile[envVar] !== undefined && keys.localEnvFile[envVar] !== '') {
+    const resolved = parseCommaSeparated(keys.localEnvFile[envVar]);
+    if (resolved.length > 0) return resolved;
+  }
+  if (keys.envFile && keys.envFile[envVar] !== undefined && keys.envFile[envVar] !== '') {
+    const resolved = parseCommaSeparated(keys.envFile[envVar]);
+    if (resolved.length > 0) return resolved;
+  }
+  if (keys.yaml && keys.yaml[field] !== undefined) {
+    const val = keys.yaml[field];
+    if (Array.isArray(val)) {
+      const resolved = val.map((k) => (typeof k === 'string' ? k.trim() : '')).filter((k) => k !== '');
+      if (resolved.length > 0) return resolved;
+    } else if (typeof val === 'string' && val !== '') {
+      const resolved = parseCommaSeparated(val);
+      if (resolved.length > 0) return resolved;
+    }
+  }
+  return [];
+}
+
 /** Key sources in priority order: env vars > ./.env > ~/.prismd/.env > ~/.prismd/keys.yaml. */
 function resolveKeyValue(keys, field) {
-  const envVar = `${field.toUpperCase()}_API_KEY`;
-  if (keys.env[envVar]) return keys.env[envVar];
-  if (keys.localEnvFile && keys.localEnvFile[envVar]) return keys.localEnvFile[envVar];
-  if (keys.envFile[envVar]) return keys.envFile[envVar];
-  if (keys.yaml[field]) return keys.yaml[field];
-  return undefined;
+  const resolved = resolveKeysValue(keys, field);
+  return resolved.length > 0 ? resolved[0] : undefined;
 }
 
 function keyConfigured(provider, keys) {
@@ -188,7 +318,7 @@ function keyConfigured(provider, keys) {
   if (authType !== 'api_key') return true;
   const field = provider?.apiKeyField;
   if (!field) return true;
-  return resolveKeyValue(keys, field) !== undefined;
+  return resolveKeysValue(keys, field).length > 0;
 }
 
 /**
