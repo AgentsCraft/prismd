@@ -12,7 +12,7 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_SERVER = { host: "127.0.0.1", port: 8787 };
 const DEFAULT_AUTH = { localTokenField: "prismd" };
 const DEFAULT_POLICIES = {
-  failoverOn: ["401", "403", "404", "410", "429", "500", "502", "503", "504"],
+  failoverOn: ["401", "403", "404", "410", "413", "429", "500", "502", "503", "504"],
   retryBeforeStream: true,
   retryAfterStream: false,
   maxCandidatesPerRequest: 5,
