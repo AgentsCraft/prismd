@@ -142,8 +142,8 @@
     },
     "openai/gpt-oss-120b": {
       "provider": "groq",
-      "contextWindow": 131072,
-      "maxOutputTokens": 32768,
+      "contextWindow": 8000,
+      "maxOutputTokens": 8000,
       "supportsTools": true,
       "supportsReasoning": true,
       "limits": { "dailyRequests": 1000, "rpm": 30, "maxConcurrent": 2 },
@@ -153,8 +153,8 @@
     },
     "openai/gpt-oss-20b": {
       "provider": "groq",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
+      "contextWindow": 8000,
+      "maxOutputTokens": 8000,
       "supportsTools": true,
       "supportsReasoning": true,
       "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
@@ -164,8 +164,8 @@
     },
     "qwen/qwen3.8-27b": {
       "provider": "groq",
-      "contextWindow": 131072,
-      "maxOutputTokens": 32768,
+      "contextWindow": 8000,
+      "maxOutputTokens": 8000,
       "supportsTools": true,
       "supportsReasoning": false,
       "limits": { "dailyRequests": 1000, "rpm": 30, "maxConcurrent": 2 },
@@ -175,8 +175,8 @@
     },
     "qwen/qwen3.6-27b": {
       "provider": "groq",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
+      "contextWindow": 8000,
+      "maxOutputTokens": 8000,
       "supportsTools": true,
       "supportsReasoning": false,
       "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
