@@ -101,13 +101,19 @@ prismd
 
 ## Features In Depth
 
-### 1. Default Aliases
+### 1. Smart Routing & Automated Failover
 
-- **`free-auto`**: General coding model alias. Prioritizes Gemini 2.0 Flash / Llama 3.3 70b, with automatic fallback to local Ollama `qwen2.5-coder:7b`.
-- **`free-fast`**: Ultra-fast lightweight model alias (Gemini Flash Lite / Llama 3.1 8b).
-- **`free-code`**: Specialized code generation model queue.
+prismd dynamically selects the optimal model candidate per request using an intelligent evaluation pipeline:
 
-### 2. Multi-Key Pooling & Cooldown Isolation (Key Pool)
+- **Context Window Verification**: Estimates input tokens before dispatch; automatically filters out candidates whose context window is too small, preventing 400 Context Overflow errors.
+- **Quota-Weighted Soft Limits**: When a cloud candidate reaches 80% of its daily quota (`quotaSoftLimitRatio`), it is automatically demoted to the tail of the queue, reserving remaining quota for peak requirements.
+- **Zero-Crash Failover**: If an upstream provider returns a 429 rate limit or 5xx outage, prismd transparently fails over to the next healthy candidate in the alias queue without failing the client's session.
+- **Default Aliases**:
+  - `free-auto`: Primary coding queue. Prioritizes Gemini 2.0 Flash / Llama 3.3 70B, with automatic fallback to local Ollama `qwen2.5-coder:7b`.
+  - `free-fast`: Lightweight high-speed queue (Gemini Flash Lite / Llama 3.1 8B).
+  - `free-code`: Specialized code generation & test writing queue.
+
+### 2. Multi-Key Pooling & Single-Key Circuit Breaking (Key Pool)
 
 All cloud providers (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models, etc.) support multi-key configurations for automatic round-robin request distribution and single-key fault isolation:
 
@@ -128,18 +134,52 @@ All cloud providers (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitH
   ```
 - **How it works**: Requests are distributed across healthy keys via Round-Robin. When a key (e.g. `gsk_key1`) receives a 429 rate limit error, only that key enters cooldown (respecting `Retry-After`), while subsequent requests immediately shift to the next available key (`gsk_key2`) or candidate model, multiplying throughput without failing requests.
 
-### 3. Local Ollama Offline Fallback
+### 3. Local LLM Zero-Downtime Fallback (Ollama & LM Studio)
 
-- Built-in `ollama` provider (`http://127.0.0.1:11434/v1`, auth: none).
-- When Ollama is running locally with coding models:
+When cloud APIs are exhausted or internet connectivity drops, prismd automatically routes traffic to local inference backends:
+
+- **Ollama**: Built-in zero-config provider (`http://127.0.0.1:11434/v1`):
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- If cloud APIs are exhausted or internet is disconnected, prismd automatically routes requests to your local model.
+- **LM Studio**: Supports local OpenAI-compatible server (`http://127.0.0.1:1234/v1`) running GGUF models. See [LM Studio Guide](docs/providers/lmstudio.md).
+- Requests fall back silently to local models so coding agent tasks never crash midway.
 
-### 4. Dynamic Config Hot Reloading (SIGHUP)
+### 4. Transparent Multi-Protocol Bridge
 
-Update `prismd.json` or aliases and reload without dropping connections:
+Full bi-directional streaming conversion across three major agent wire protocols:
+- **Anthropic Messages** (`POST /v1/messages`): Full support for Claude Code (tools, thinking blocks, SSE streams).
+- **OpenAI Responses** (`POST /v1/responses`): Compatible with Codex CLI and DeepSeek Harness (`dsh`).
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`): Standard interface for Cursor, OpenCode, Pi Agent, and Aider.
+
+### 5. Extensible Configuration (`config.user.json`)
+
+Customize providers, register private models, or define custom model queues in `config.user.json`:
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+Re-compile configuration with `npm run generate:config`.
+
+### 6. Dynamic Config Hot Reloading (`SIGHUP`)
+
+Update routing tables, keys, or aliases without restarting the process or interrupting active streaming connections:
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```

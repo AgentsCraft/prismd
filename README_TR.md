@@ -101,11 +101,17 @@ prismd
 
 ## Detaylı Özellikler
 
-### 1. Varsayılan Takma Adlar
+### 1. Akıllı Yönlendirme ve Otomatik Yük Devretme
 
-- **`free-auto`**: Genel kodlama modeli. Gemini 2.0 Flash / Llama 3.3 70b önceliklidir; bulut kullanılamadığında yerel Ollama `qwen2.5-coder:7b` modeline otomatik düşer.
-- **`free-fast`**: Ultra hızlı ve hafif model kuyruğu (Gemini Flash Lite / Llama 3.1 8b).
-- **`free-code`**: Kod üretimi için özelleşmiş model kuyruğu.
+prismd çok boyutlu değerlendirme boru hattı ile her istek için en uygun model adayını dinamik olarak seçer:
+
+- **Bağlam Penceresi Doğrulaması (Context Window Check)**: Göndermeden önce girdi token miktarını tahmin eder; yetersiz pencereye sahip modelleri hariç tutarak 400 Context Overflow hatasını önler.
+- **Kota Ağırlıklı Esnek Sınırlar (Quota-Weighted Soft Limit)**: Günlük kotasının %80'ine (`quotaSoftLimitRatio`) ulaşan model otomatik olarak kuyruğun sonuna kaydırılır.
+- **Kesintisiz 429 Yük Devretme (Zero-Crash Failover)**: Sağlayıcıdan 429 veya 5xx hatası döndüğünde prismd şeffaf şekilde kuyruktaki bir sonraki modele geçer.
+- **Varsayılan Takma Adlar**:
+  - `free-auto`: Ana kodlama kuyruğu (Gemini 2.0 Flash / Llama 3.3 70B öncelikli, Ollama `qwen2.5-coder:7b` modeline otomatik düşer).
+  - `free-fast`: Ultra hızlı ve hafif model kuyruğu (Gemini Flash Lite / Llama 3.1 8B).
+  - `free-code`: Kod üretimi ve test yazımı için özel model kuyruğu.
 
 ### 2. Çoklu Anahtar ve Hata İzolasyonu (Key Pool)
 
@@ -128,18 +134,52 @@ Tüm bulut sağlayıcıları (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA 
   ```
 - **Çalışma Mantığı**: İstekler sağlıklı anahtarlar arasında Round-Robin ile paylaştırılır. Bir anahtar (örn. `gsk_key1`) 429 hız sınırı hatası aldığında yalnızca o anahtar soğuma süresine (`Retry-After`) alınır, sonraki istekler hemen sonraki anahtara (`gsk_key2`) veya yedek modele aktarılır.
 
-### 3. Yerel Ollama Çevrimdışı Yedek
+### 3. Yerel LLM Kesintisiz Çevrimdışı Yedek (Ollama & LM Studio)
 
-- Yerleşik `ollama` sağlayıcısı (`http://127.0.0.1:11434/v1`, anahtar gerekmez).
-- Yerelde Ollama çalıştırıldığında:
+Bulut kotaları tükendiğinde veya internet bağlantısı kesildiğinde prismd trafiği otomatik olarak yerel çıkarım motorlarına yönlendirir:
+
+- **Ollama**: Sıfır yapılandırmalı yerleşik sağlayıcı (`http://127.0.0.1:11434/v1`):
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- Bulut kotaları tükendiğinde veya bağlantı kesildiğinde prismd istekleri otomatik olarak yerel modele yönlendirir.
+- **LM Studio**: GGUF modelleri çalıştıran yerel OpenAI uyumlu sunucu (`http://127.0.0.1:1234/v1`). [LM Studio Kılavuzuna](docs/providers/lmstudio.md) bakın.
+- Ajan görevleri çökmeden güvenle devam eder.
 
-### 4. Dinamik Çalışırken Yenileme (SIGHUP)
+### 4. Şeffaf Çoklu Protokol Köprüsü
 
-Bağlantıları kesmeden yapılandırmayı güncelleyin:
+Üç ana ajan protokolü arasında tam çift yönlü akış dönüşümü:
+- **Anthropic Messages** (`POST /v1/messages`): Claude Code (Tools, Thinking blokları, SSE akışları) tam desteği.
+- **OpenAI Responses** (`POST /v1/responses`): Codex CLI ve DeepSeek Harness (`dsh`) uyumlu.
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`): Cursor, OpenCode, Pi Agent ve Aider için standart arayüz.
+
+### 5. Genişletilebilir Yapılandırma (`config.user.json`)
+
+`config.user.json` dosyasında özel sağlayıcılar, özel modeller ve takma ad kuyrukları tanımlayın:
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+`npm run generate:config` komutuyla yapılandırmayı yeniden derleyin.
+
+### 6. Dinamik Çalışırken Yenileme (`SIGHUP`)
+
+İşlemi yeniden başlatmadan ve aktif akışları kesmeden yönlendirme tablolarını ve anahtarları güncelleyin:
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```

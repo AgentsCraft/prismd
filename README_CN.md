@@ -101,11 +101,17 @@ prismd
 
 ## 核心功能详解
 
-### 1. 默认模型别名列表
+### 1. 智能路由调度与故障转移算法
 
-- **`free-auto`**：全能自动编码模型。优先优选 Gemini 2.0 Flash / Llama 3.3 70b 等大模型，云端不可用时自动回退到本地 Ollama `qwen2.5-coder:7b`。
-- **`free-fast`**：极速轻量模型。优选 Gemini Flash Lite / Llama 3.1 8b，高响应速度。
-- **`free-code`**：代码生成特化模型队列。
+prismd 通过多维评估管道，对每次请求动态决策最优候选模型：
+
+- **上下文窗口检查 (Context Window Check)**：分发前预估输入 Token 量，自动硬排除上下文窗口不足的候选模型，避免触发 400 Context Overflow 报错。
+- **软配额平滑降权 (Quota-Weighted Soft Limit)**：当云端候选模型当日调用量达到 80% 软限（`quotaSoftLimitRatio`）时，自动将其优先级软降至队列尾部，为高优先级任务留存配额。
+- **零中断 429 故障转移 (Zero-Crash Failover)**：若上游服务商返回 429 限流或 5xx 故障，网关自动透明重试别名队列中的下一候选模型，客户端会话完全无感知。
+- **默认模型别名**：
+  - `free-auto`：全能自动编码模型。优先优选 Gemini 2.0 Flash / Llama 3.3 70B 等大模型，云端不可用时自动回退到本地 Ollama `qwen2.5-coder:7b`。
+  - `free-fast`：极速轻量模型（Gemini Flash Lite / Llama 3.1 8B）。
+  - `free-code`：代码生成特化模型队列。
 
 ### 2. 多 Key 轮询与单 Key 熔断隔离 (Key Pool)
 
@@ -128,22 +134,56 @@ prismd
   ```
 - **工作机制**：网关按 Round-Robin 算法在可用 Key 之间轮询。若某个 Key（如 `gsk_key1`）收到 429 限流响应，网关仅将该 Key 标记进入冷却期（严格尊重上游返回的 `Retry-After`），后续请求立即透明分发至同提供商的健康 Key（`gsk_key2`）或切换上游候选，使单提供商吞吐量成倍提升且不中断业务。
 
-### 3. 本地 Ollama 离线无缝兜底
+### 3. 本地 LLM 零宕机离线兜底 (Ollama & LM Studio)
 
-- 网关内置 `ollama` 本地提供商模板（默认 `http://127.0.0.1:11434/v1`，无需 Key）。
-- 当本地启动了 Ollama（并拉取了 `qwen2.5-coder:7b` 或 `deepseek-r1:8b`）：
+当云端 API 额度耗尽或发生网络中断时，网关透明将请求路由至本地推理后端：
+
+- **Ollama**：内置零配置支持（默认 `http://127.0.0.1:11434/v1`）：
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- 当发生断网或云端全部免费额度耗尽时，网关透明将请求路由至本地模型，避免 Agent 任务中断报错。
+- **LM Studio**：支持通过本地 OpenAI 兼容服务器（`http://127.0.0.1:1234/v1`）加载 GGUF 模型。详见 [LM Studio 配置指南](docs/providers/lmstudio.md)。
+- 本地兜底过程无需重启网关，编码智能体任务永不中断。
 
-### 4. 运行时配置热重载 (SIGHUP)
+### 4. 全协议跨端透明中继
 
-修改 `prismd.json` 或别名后，无需重启网关，直接发送 SIGHUP 信号：
+网关在底层提供三大主流协议的双向流式转换引擎：
+- **Anthropic Messages** (`POST /v1/messages`)：完整支持 Claude Code（Tools 工具调用、Thinking 思考块、SSE 流式事件）。
+- **OpenAI Responses** (`POST /v1/responses`)：支持 Codex CLI 与 DeepSeek Harness (`dsh`)。
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`)：兼容 Cursor、OpenCode、Pi Agent、Aider 等主流工具。
+
+### 5. 自定义配置与扩展 (`config.user.json`)
+
+在项目根目录（或自定义目录）编写 `config.user.json` 添加自定义提供商、私有模型或别名队列：
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+运行 `npm run generate:config` 即可完成配置编译合并。
+
+### 6. 运行时配置热重载 (`SIGHUP`)
+
+修改路由表、密钥或别名后，无需重启网关，直接发送 SIGHUP 信号：
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```
-网关将完成新配置合法性校验并原子更新内存路由表，进行中的流式连接不受影响。
+网关完成新配置合法性校验后原子更新内存路由表，进行中的流式长连接完全不受影响。
 
 ---
 

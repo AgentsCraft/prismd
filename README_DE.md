@@ -101,11 +101,17 @@ prismd
 
 ## Funktionen im Detail
 
-### 1. Standard-Aliase
+### 1. Intelligentes Routing & Automatisches Failover
 
-- **`free-auto`**: Allgemeines Coding-Modell. Bevorzugt Gemini 2.0 Flash / Llama 3.3 70b; Fallback auf lokales Ollama `qwen2.5-coder:7b`.
-- **`free-fast`**: Ultra-schnelle, leichte Modelle (Gemini Flash Lite / Llama 3.1 8b).
-- **`free-code`**: Spezialisierte Codegenerierungsmodelle.
+prismd wählt für jede Anfrage dynamisch den optimalen Modellkandidaten über eine Auswertungspipeline:
+
+- **Kontextfensterprüfung (Context Window Check)**: Schätzt die Eingabetoken vor dem Versand; filtert Modelle mit zu kleinem Fenster heraus und verhindert so 400 Context Overflow Fehler.
+- **Quotenbasierte Soft-Limits (Quota-Weighted Soft Limit)**: Erreicht ein Kandidat 80 % seiner Tagesquote (`quotaSoftLimitRatio`), wird er ans Ende der Warteschlange verschoben, um Restkontingente zu schonen.
+- **Unterbrechungsfreies 429 Failover (Zero-Crash Failover)**: Bei 429-Ratenbegrenzungen oder 5xx-Fehlern wechselt prismd nahtlos zum nächsten gesunden Kandidaten in der Alias-Warteschlange.
+- **Standard-Aliase**:
+  - `free-auto`: Haupt-Coding-Warteschlange (bevorzugt Gemini 2.0 Flash / Llama 3.3 70B, automatischer Fallback auf Ollama `qwen2.5-coder:7b`).
+  - `free-fast`: Leichtgewichtige Highspeed-Warteschlange (Gemini Flash Lite / Llama 3.1 8B).
+  - `free-code`: Spezialisierte Codegenerierungs-Warteschlange.
 
 ### 2. Multi-Key-Pooling & Circuit Breaking (Key Pool)
 
@@ -128,18 +134,52 @@ Alle Cloud-Provider (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitH
   ```
 - **Funktionsweise**: Anfragen werden per Round-Robin über funktionierende Keys verteilt. Wenn ein Key (z. B. `gsk_key1`) einen 429-Fehler erhält, wird nur dieser Key isoliert gekühlt (unter Beachtung von `Retry-After`), während nachfolgende Anfragen sofort auf `gsk_key2` oder das nächste Modell übergehen.
 
-### 3. Lokales Ollama-Fallback
+### 3. Lokaler LLM Offline-Fallback (Ollama & LM Studio)
 
-- Integrierter `ollama`-Provider (`http://127.0.0.1:11434/v1`, kein Key nötig).
-- Wenn Ollama lokal läuft:
+Bei Quotenerschöpfung oder Verbindungsabbruch leitet prismd den Datenverkehr automatisch auf lokale Inferenz-Backends um:
+
+- **Ollama**: Integrierter Zero-Config-Provider (`http://127.0.0.1:11434/v1`):
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- Bei Quotenerschöpfung oder Verbindungsabbruch leitet prismd automatisch auf das lokale Modell um.
+- **LM Studio**: Lokaler OpenAI-kompatibler Server (`http://127.0.0.1:1234/v1`) mit GGUF-Modellen. Siehe [LM Studio Leitfaden](docs/providers/lmstudio.md).
+- Aufgaben von Coding-Agenten laufen ohne Absturz nahtlos weiter.
 
-### 4. Dynamisches Hot-Reloading (SIGHUP)
+### 4. Transparente Protokoll-Bridge
 
-Konfiguration ohne Verbindungsabbruch aktualisieren:
+Vollständige bidirektionale Streaming-Konvertierung zwischen allen drei führenden Agenten-Protokollen:
+- **Anthropic Messages** (`POST /v1/messages`): Volle Unterstützung für Claude Code (Tools, Thinking-Blöcke, SSE-Streams).
+- **OpenAI Responses** (`POST /v1/responses`): Kompatibel mit Codex CLI und DeepSeek Harness (`dsh`).
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`): Standardschnittstelle für Cursor, OpenCode, Pi Agent und Aider.
+
+### 5. Erweiterbare Konfiguration (`config.user.json`)
+
+Eigene Provider, private Modelle und benutzerdefinierte Alias-Warteschlangen in `config.user.json` definieren:
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+Mit `npm run generate:config` die Konfiguration neu generieren.
+
+### 6. Dynamisches Hot-Reloading (`SIGHUP`)
+
+Routingtabellen und Keys ohne Prozessneustart oder Verbindungsabbruch aktualisieren:
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```
