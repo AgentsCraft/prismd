@@ -4,27 +4,19 @@
 
 Ücretsiz ve düşük maliyetli model API'lerini (OpenRouter, Groq, Cerebras, Google Gemini, NVIDIA NIM, GitHub Models vb.) ve yerel LLM'leri (Ollama) bir araya getiren **yerel öncelikli, yüksek erişilebilirlikli LLM ağ geçidi**. Kodlama ajanları (Claude Code, Codex CLI, Cursor, OpenCode, Aider vb.) için kesintisiz, kararlı ve otomatik yük devretmeli birleşik bir arayüz sağlar.
 
-```mermaid
-flowchart LR
-    subgraph Clients["Kodlama Ajanları (Clients)"]
-        CC["Claude Code<br/>(Anthropic Messages)"]
-        CX["Codex CLI<br/>(OpenAI Responses)"]
-        CU["Cursor / OpenCode<br/>(Chat Completions)"]
-    end
-
-    subgraph Gateway["prismd (127.0.0.1:8787)"]
-        Router["Akıllı Yönlendirici (free-auto)<br/>Kota Ağırlıklandırması / Bağlam Kontrolü / 429 Yük Devretme"]
-        KeyPool["Çoklu Anahtar Havuzu (Key Pool)<br/>Tekil Anahtar Devre Kesici / Round-Robin"]
-    end
-
-    subgraph Upstreams["Sağlayıcılar (Providers)"]
-        Cloud["Bulut Ücretsiz API'leri<br/>OpenRouter / Groq / Cerebras / Gemini..."]
-        Local["Yerel Çevrimdışı Yedek<br/>Ollama (qwen2.5-coder / deepseek-r1)"]
-    end
-
-    Clients --> Gateway
-    Gateway --> Cloud
-    Cloud -. "Tümü 429 / Çevrimdışı" .-> Local
+```text
+┌────────────────────────────────┐       ┌─────────────────────────────────────┐       ┌─────────────────────────────────────┐
+│    Coding Agents (Clients)     │       │        prismd Gateway (Local)       │       │         Model Providers (Upstream)  │
+│                                │       │          127.0.0.1:8787             │       │                                     │
+│  Claude Code  (Messages API)   ├──────►│  [Protocol Converter]               ├──────►│  Cloud Free APIs                    │
+│  Codex CLI    (Responses API)  ├──────►│    • Messages ↔ Responses ↔ Chat    │       │    • OpenRouter / Groq / Cerebras   │
+│  Cursor / dsh (Chat API)       ├──────►│  [Smart Router (free-auto)]         │       │    • Google Gemini / NVIDIA NIM     │
+│  OpenCode / Pi / Aider         ├──────►│    • Quota-Weighted & Context Check │       │    • GitHub Models / AMD            │
+│                                │       │  [Key Pool & Circuit Breaker]       │       │                                     │
+│                                │       │    • Multi-Key Round-Robin / 429    │  all  │  Local Offline Fallback             │
+│                                │       │    • Zero-Downtime Auto Fallback    ├──────►│    • Ollama (qwen2.5-coder / r1)    │
+│                                │       │                                     │  429  │    • LM Studio (local GGUF models)  │
+└────────────────────────────────┘       └─────────────────────────────────────┘       └─────────────────────────────────────┘
 ```
 
 ---
