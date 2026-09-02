@@ -1,12 +1,15 @@
-# Codex CLI 接入 prismd
+# Codex CLI 接入 prismd 指南
 
-Codex CLI 支持通过 `responses` wire API 接入本地 prismd 网关的 `/v1/responses` 端点。
+Codex CLI 支持通过 OpenAI Responses 协议接入本地 prismd 网关的 `/v1/responses` 端点。
 
-## 配置文件 (`~/.codex/prismd.config.toml`)
+---
 
-创建或保存配置文件到 `~/.codex/prismd.config.toml`：
+## 1. 配置文件
+
+在用户主目录下创建或编辑 `~/.codex/prismd.config.toml`：
 
 ```toml
+# 默认选用 prismd 别名：free-auto（自动优选最合适候选模型）
 model = "free-auto"
 model_provider = "prismd"
 
@@ -20,15 +23,29 @@ stream_max_retries = 1
 stream_idle_timeout_ms = 180000
 ```
 
-## 运行
+---
+
+## 2. 运行与验证
+
+在运行 Codex 时传入本地网关密钥（或导出至环境变量）：
 
 ```bash
-PRISMD_API_KEY="your-prismd-local-token" codex --profile prismd
+PRISMD_API_KEY="my-local-secret" codex --profile prismd
 ```
 
-亦可将 `PRISMD_API_KEY` 写入环境变量（如 `~/.zshrc` 或 `~/.bashrc`）：
-
+### 持久化环境变量
 ```bash
-export PRISMD_API_KEY="your-prismd-local-token"
+echo 'export PRISMD_API_KEY="my-local-secret"' >> ~/.zshrc
+source ~/.zshrc
+
 codex --profile prismd
 ```
+
+---
+
+## 3. 模型别名选用
+
+在 `prismd.config.toml` 中，可按需指定不同的虚拟别名：
+- `model = "free-auto"`：主力通用编码模型队列。
+- `model = "free-fast"`：超轻量快速响应队列。
+- `model = "free-code"`：代码生成特化模型队列。
