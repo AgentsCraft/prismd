@@ -140,6 +140,50 @@
       "source": "https://console.groq.com/docs/models",
       "checkedAt": "2026-09-01"
     },
+    "openai/gpt-oss-120b": {
+      "provider": "groq",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "supportsTools": true,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": 1000, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "groq", "reasoning"],
+      "source": "https://console.groq.com/docs/models",
+      "checkedAt": "2026-09-02"
+    },
+    "openai/gpt-oss-20b": {
+      "provider": "groq",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "groq", "reasoning"],
+      "source": "https://console.groq.com/docs/models",
+      "checkedAt": "2026-09-02"
+    },
+    "qwen/qwen3.8-27b": {
+      "provider": "groq",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 1000, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "groq", "code"],
+      "source": "https://console.groq.com/docs/models",
+      "checkedAt": "2026-09-02"
+    },
+    "qwen/qwen3.6-27b": {
+      "provider": "groq",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
+      "tags": ["fast", "groq", "code"],
+      "source": "https://console.groq.com/docs/models",
+      "checkedAt": "2026-09-02"
+    },
     "gemini-2.0-flash": {
       "provider": "gemini",
       "contextWindow": 1048576,
@@ -246,9 +290,9 @@
       "description": "Auto-select a free coding model, with fallback candidates",
       "candidates": [
         "gemini-2.0-flash",
+        "openai/gpt-oss-120b",
+        "qwen/qwen3.8-27b",
         "llama-3.3-70b",
-        "llama-3.3-70b-versatile",
-        "meta/llama-3.3-70b-instruct",
         "gpt-4o-mini",
         "cohere/north-mini-code:free",
         "poolside/laguna-s-2.1:free",
@@ -259,8 +303,9 @@
       "description": "Smaller, faster free model",
       "candidates": [
         "gemini-2.0-flash-lite",
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.6-27b",
         "llama3.1-8b",
-        "llama-3.1-8b-instant",
         "poolside/laguna-xs-2.1:free",
         "qwen2.5-coder:7b"
       ]
@@ -269,9 +314,10 @@
       "description": "Free models tuned for code generation",
       "candidates": [
         "gemini-2.0-flash",
+        "qwen/qwen3.8-27b",
+        "openai/gpt-oss-120b",
         "cohere/north-mini-code:free",
         "llama-3.3-70b",
-        "llama-3.3-70b-versatile",
         "poolside/laguna-s-2.1:free",
         "qwen2.5-coder:7b"
       ]

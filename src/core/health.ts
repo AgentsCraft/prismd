@@ -111,6 +111,9 @@ export class HealthManager extends EventEmitter {
     const key = keyOf(provider, model);
     const entry = this.states.get(key);
     if (entry) {
+      if (entry.lastError === "model_not_found" || entry.lastError === AUTH_ERROR) {
+        return false;
+      }
       if (entry.state === "cooldown") {
         if (this.options.now() >= (entry.cooldownUntil ?? 0)) {
           entry.state = "half_open";
@@ -146,6 +149,8 @@ export class HealthManager extends EventEmitter {
       entry.lastError = AUTH_ERROR;
     } else if (input.status === 429) {
       entry.lastError = "429";
+    } else if (input.status === 404 || input.status === 410) {
+      entry.lastError = "model_not_found";
     } else if (input.status !== undefined) {
       entry.lastError = String(input.status);
     }
@@ -155,13 +160,20 @@ export class HealthManager extends EventEmitter {
       coolFor = Math.max(cooldownMs, input.retryAfterMs);
     }
 
-    if (entry.state === "healthy" && entry.consecutiveFailures < failThreshold) {
+    if (
+      entry.state === "healthy" &&
+      entry.consecutiveFailures < failThreshold &&
+      input.status !== 404 &&
+      input.status !== 410 &&
+      input.status !== 401 &&
+      input.status !== 403
+    ) {
       this.emit("change", { provider, model, health: this.snapshot(entry) });
       return this.snapshot(entry);
     }
-    // Failures above the threshold (or any failure in half-open) re-cool.
+    // Failures above the threshold (or 404/410/401/403 or any failure in half-open) re-cool.
     entry.state = "cooldown";
-    entry.cooldownUntil = currentNow + coolFor;
+    entry.cooldownUntil = currentNow + (input.status === 404 || input.status === 410 ? 86400_000 : coolFor);
     this.emit("change", { provider, model, health: this.snapshot(entry) });
     return this.snapshot(entry);
   }
