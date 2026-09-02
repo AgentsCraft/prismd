@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
+import { fetchProviderModels } from "./core/catalog-sync.js";
 import { loadKeyStore, resolveKeys, type KeyStore } from "./keys.js";
 import type { PrismdConfig } from "./types/config.js";
 
@@ -11,10 +12,10 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_SERVER = { host: "127.0.0.1", port: 8787 };
 const DEFAULT_AUTH = { localTokenField: "prismd" };
 const DEFAULT_POLICIES = {
-  failoverOn: ["401", "403", "429", "500", "502", "503", "504"],
+  failoverOn: ["401", "403", "404", "410", "429", "500", "502", "503", "504"],
   retryBeforeStream: true,
   retryAfterStream: false,
-  maxCandidatesPerRequest: 2,
+  maxCandidatesPerRequest: 5,
   respectRetryAfter: true,
   quotaSoftLimitRatio: 0.8,
   connectTimeoutMs: 10000,
@@ -134,6 +135,7 @@ export interface BuildConfigOptions {
   userConfig?: Record<string, any>;
   keyStore: KeyStore;
   warn?: (msg: string) => void;
+  upstreamCatalogs?: Map<string, Set<string>>;
 }
 
 /**
@@ -144,6 +146,7 @@ export function buildConfig({
   userConfig = {},
   keyStore,
   warn = () => {},
+  upstreamCatalogs,
 }: BuildConfigOptions): PrismdConfig {
   const config: any = {
     version: userConfig.version ?? 1,
@@ -173,6 +176,16 @@ export function buildConfig({
             `key "${providerDef.apiKeyField}" not found (${envVar} / .env / ~/.prismd/.env / ~/.prismd/keys.yaml)`,
         );
         return false;
+      }
+      if (upstreamCatalogs && upstreamCatalogs.has(provider)) {
+        const available = upstreamCatalogs.get(provider)!;
+        if (!available.has(candidate.providerModelId)) {
+          warn(
+            `warning: skipping candidate "${candidate.providerModelId}" for alias "${alias}": ` +
+              `not found in live upstream catalog for "${provider}"`,
+          );
+          return false;
+        }
       }
       return true;
     });
@@ -249,6 +262,96 @@ export function generateConfigObject({
   }
 
   return config;
+}
+
+/**
+ * Query upstream providers with configured keys in parallel to discover actual available models.
+ */
+export async function queryUpstreamCatalogs(
+  providers: Record<string, any>,
+  keyStore: KeyStore,
+  warn: (msg: string) => void = () => {},
+): Promise<Map<string, Set<string>>> {
+  const catalogs = new Map<string, Set<string>>();
+  const promises = Object.entries(providers).map(async ([providerName, def]) => {
+    const keys = resolveKeys(keyStore, def.apiKeyField ?? providerName);
+    if (def.auth?.type === "none") {
+      keys.push("none");
+    }
+    if (keys.length === 0) return;
+    const apiKey = keys[0];
+    const { ok, models, error } = await fetchProviderModels(
+      providerName,
+      def.baseUrl,
+      apiKey,
+      def.extraHeaders,
+      4000,
+    );
+    if (ok && models.length > 0) {
+      catalogs.set(providerName, new Set(models));
+    } else if (error) {
+      warn(`info: could not fetch live catalog for "${providerName}" (${error}); falling back to local presets`);
+    }
+  });
+
+  await Promise.allSettled(promises);
+  return catalogs;
+}
+
+/**
+ * Generate validated PrismdConfig object asynchronously, verifying models against live upstream catalogs.
+ */
+export async function generateConfigObjectAsync({
+  rootDir = PACKAGE_ROOT,
+  homeDir = homedir(),
+  cwd = process.cwd(),
+  warn = () => {},
+  liveCheck = true,
+}: GenerateOptions & { liveCheck?: boolean } = {}): Promise<PrismdConfig> {
+  const presets = readJson(join(rootDir, "presets", "providers.json"));
+  let userConfig: Record<string, any> = {};
+
+  const cwdUserPath = join(cwd, "config.user.json");
+  const homeUserPath = join(homeDir, ".prismd", "config.user.json");
+  if (existsSync(cwdUserPath)) {
+    userConfig = readJson(cwdUserPath);
+  } else if (existsSync(homeUserPath)) {
+    userConfig = readJson(homeUserPath);
+  }
+
+  const keyStore = loadKeyStore(homeDir, cwd);
+  let upstreamCatalogs: Map<string, Set<string>> | undefined;
+  if (liveCheck) {
+    const allProviders = deepMerge(presets.providers ?? {}, userConfig.providers);
+    upstreamCatalogs = await queryUpstreamCatalogs(allProviders, keyStore, warn);
+  }
+
+  const config = buildConfig({ presets, userConfig, keyStore, warn, upstreamCatalogs });
+
+  if (Object.keys(config.models).length === 0) {
+    warn(
+      "warning: no aliases generated — configure at least one API key " +
+        "(env vars, .env, ~/.prismd/.env or ~/.prismd/keys.yaml)",
+    );
+  }
+
+  const schema = readJson(join(rootDir, "config.schema.json"));
+  const { valid, errors } = validateConfig(config, schema);
+  if (!valid) {
+    throw new Error(`generated config failed schema validation:\n${formatErrors(errors)}`);
+  }
+
+  return config;
+}
+
+/**
+ * Generate validated configuration as a formatted JSON string asynchronously with live upstream checks.
+ */
+export async function generateConfigStringAsync(
+  options: GenerateOptions & { liveCheck?: boolean } = {},
+): Promise<string> {
+  const config = await generateConfigObjectAsync(options);
+  return stableStringify(config);
 }
 
 /**

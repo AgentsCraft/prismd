@@ -55,8 +55,17 @@ function post(body: Record<string, unknown>): Promise<Response> {
 }
 
 /** Behavior routed by the upstream model id in the request body. */
-function byModel(handlers: Record<string, MockBehavior>): (captured: { body?: Record<string, unknown> }) => MockBehavior {
+function byModel(handlers: Record<string, MockBehavior>): (captured: CapturedRequest) => MockBehavior {
   return (captured) => {
+    if (captured.url?.endsWith("/models") || captured.method === "GET") {
+      return {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          data: Object.keys(handlers).map((id) => ({ id, object: "model" })),
+        }),
+      };
+    }
     const model = captured.body?.model as string | undefined;
     const handler = model ? handlers[model] : undefined;
     if (!handler) {

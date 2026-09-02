@@ -101,6 +101,7 @@ export async function startGateway(
         GROQ_API_KEY: "e2e-upstream-key",
         CEREBRAS_API_KEY: "e2e-upstream-key",
         PRISMD_LOG_LEVEL: "warn",
+        PRISMD_DISABLE_CATALOG_SYNC: "1",
         ...(options.env ?? {}),
       },
       stdio: ["ignore", "pipe", "pipe"],
