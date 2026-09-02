@@ -89,7 +89,7 @@ prismd
 # 或源码运行：npm run generate:config && npm run dev
 ```
 
-> 📖 **各提供商详细配置指南**：参阅 [免费 / 低额度模型提供商配置总览](docs/providers/README.md)，包含 [OpenRouter](docs/providers/openrouter.md)、[Groq](docs/providers/groq.md)、[Cerebras](docs/providers/cerebras.md)、[Google Gemini](docs/providers/gemini.md)、[NVIDIA NIM](docs/providers/nvidia.md)、[GitHub Models](docs/providers/github-models.md)、[AMD](docs/providers/amd.md) 及 [本地 Ollama](docs/providers/ollama.md) 的获取步骤与模型列表。
+> 📖 **各提供商详细配置指南**：参阅 [免费 / 低额度模型提供商配置总览](docs/providers/README.md)，包含 [OpenRouter](docs/providers/openrouter.md)、[Groq](docs/providers/groq.md)、[Cerebras](docs/providers/cerebras.md)、[Google Gemini](docs/providers/gemini.md)、[NVIDIA NIM](docs/providers/nvidia.md)、[GitHub Models](docs/providers/github-models.md)、[AMD](docs/providers/amd.md)、[本地 Ollama](docs/providers/ollama.md) 及 [LM Studio](docs/providers/lmstudio.md) 的获取步骤与模型列表。
 
 ### 步骤 3：配置智能体客户端（即开即用）
 

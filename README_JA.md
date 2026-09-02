@@ -89,7 +89,7 @@ prismd
 # またはソースから: npm run generate:config && npm run dev
 ```
 
-> 📖 **各プロバイダー設定ガイド**: [モデルプロバイダー設定一覧](docs/providers/README.md)（[OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md)）を参照してください。
+> 📖 **各プロバイダー設定ガイド**: [モデルプロバイダー設定一覧](docs/providers/README.md)（[OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)）を参照してください。
 
 ### ステップ 3: エージェントの設定
 

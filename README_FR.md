@@ -89,7 +89,7 @@ prismd
 # Ou en mode source : npm run generate:config && npm run dev
 ```
 
-> 📖 **Guides des fournisseurs** : Consultez le [Guide des fournisseurs de modèles](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md)) pour l'obtention des clés et la configuration.
+> 📖 **Guides des fournisseurs** : Consultez le [Guide des fournisseurs de modèles](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)) pour l'obtention des clés et la configuration.
 
 ### Étape 3 : Configurer votre Agent
 

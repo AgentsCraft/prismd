@@ -89,7 +89,7 @@ prismd
 # O en modo fuente: npm run generate:config && npm run dev
 ```
 
-> 📖 **Guías de configuración de proveedores**: Consulte las [Guías de integración de proveedores](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md)) para obtener claves y detalles.
+> 📖 **Guías de configuración de proveedores**: Consulte las [Guías de integración de proveedores](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)) para obtener claves y detalles.
 
 ### Paso 3: Configuración del Agente
 

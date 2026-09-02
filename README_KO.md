@@ -89,7 +89,7 @@ prismd
 # 또는 소스 모드: npm run generate:config && npm run dev
 ```
 
-> 📖 **제공자별 설정 가이드**: [모델 제공자 연동 총괄 가이드](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md))를 참조하세요.
+> 📖 **제공자별 설정 가이드**: [모델 제공자 연동 총괄 가이드](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md))를 참조하세요.
 
 ### 3단계: 에이전트 클라이언트 설정
 
