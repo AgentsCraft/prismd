@@ -175,7 +175,7 @@ Customize providers, register private models, or define custom model queues in `
   }
 }
 ```
-Re-compile configuration with `npm run generate:config`.
+Re-compile configuration with `prismd generate` (or `npm run generate:config` in source mode).
 
 ### 6. Dynamic Config Hot Reloading (`SIGHUP`)
 
@@ -192,18 +192,18 @@ kill -HUP $(pgrep -f "prismd")
   - Real-time candidate health (`healthy` / `rate_limited` / `cooldown`)
   - Daily quota progress bars and token usage statistics
   - 10-language UI selector and "Reset usage" button
-- **CLI Status**:
+- **CLI Status & Commands**:
   ```bash
-  prismd status
+  prismd status      # Display metrics table in terminal
+  prismd generate    # Recompile ~/.prismd/prismd.json
   ```
-  Displays colorized candidate metrics tables in terminal.
 
 ---
 
 ## Troubleshooting
 
 - **Q: `missing API key for provider` error?**
-  - Verify keys in `~/.prismd/keys.yaml` or `.env`, then run `npm run generate:config` (in source mode).
+  - Verify keys in `~/.prismd/keys.yaml` or `.env`, then run `prismd generate` (or `npm run generate:config` in source mode).
 - **Q: Frequent 429s on free models?**
   - Add multiple keys for the provider, or launch `ollama run qwen2.5-coder:7b` for local offline fallback.
 - **Q: Reset daily quota counters?**
