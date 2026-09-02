@@ -176,10 +176,20 @@ export async function chatCompletions(c: Context): Promise<Response> {
           if (provider.auth?.type !== "none" && apiKey && apiKey !== "none") {
             headers.authorization = `Bearer ${apiKey}`;
           }
-          const bodyStr = JSON.stringify({
+          const adaptedBody: Record<string, any> = {
             ...body,
             model: candidate.providerModelId,
-          });
+          };
+          const candidateMax = candidate.maxOutputTokens;
+          if (typeof candidateMax === "number" && candidateMax > 0) {
+            if (typeof adaptedBody.max_completion_tokens === "number" && adaptedBody.max_completion_tokens > candidateMax) {
+              adaptedBody.max_completion_tokens = candidateMax;
+            }
+            if (typeof adaptedBody.max_tokens === "number" && adaptedBody.max_tokens > candidateMax) {
+              adaptedBody.max_tokens = candidateMax;
+            }
+          }
+          const bodyStr = JSON.stringify(adaptedBody);
           result = await callRawHttpUpstream(
             candidate.provider,
             url,
