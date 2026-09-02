@@ -115,17 +115,26 @@ prismd
 - **`free-fast`**: 초고속 경량 모델 큐 (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: 코드 생성 특화 모델 큐.
 
-### 2. 다중 Key 풀과 서킷 브레이커
+### 2. 다중 Key 풀과 서킷 브레이커 (Key Pool)
 
-`.env` 또는 `keys.yaml`에 다중 Key를 등록:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+모든 클라우드 제공자(Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models 등)에서 다중 Key 라운드로빈 요청 분배와 단일 Key 격리 냉각을 지원합니다:
+
+- **`~/.prismd/keys.yaml` 형식** (목록 또는 인라인 배열):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **작동 방식**: 라운드 로빈 방식으로 요청을 분산합니다. `gsk_key1`이 429를 반환하면 해당 Key만 쿨다운에 들어가고, 이후 요청은 즉시 `gsk_key2`로 분배됩니다.
+- **`.env` 또는 환경 변수** (쉼표로 구분):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **작동 방식**: 라운드로빈 방식으로 정상 Key들에 요청을 분산합니다. 특정 Key(예: `gsk_key1`)가 429 속도 제한 오류를 받으면 해당 Key만 냉각 기간(`Retry-After` 준수)에 들어가며, 후속 요청은 즉시 다음 정상 Key(`gsk_key2`) 또는 다음 후보 모델로 자동 전환됩니다.
 
 ### 3. 로컬 Ollama 오프라인 대체
 

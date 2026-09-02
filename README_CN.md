@@ -115,17 +115,26 @@ prismd
 - **`free-fast`**：极速轻量模型。优选 Gemini Flash Lite / Llama 3.1 8b，高响应速度。
 - **`free-code`**：代码生成特化模型队列。
 
-### 2. 多 Key 轮询与单 Key 熔断隔离
+### 2. 多 Key 轮询与单 Key 熔断隔离 (Key Pool)
 
-在 `.env` 或 `keys.yaml` 中配置多个 Key：
-- **`.env`**：`GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**：
+所有云端模型提供商（Groq、Cerebras、Google Gemini、OpenRouter、NVIDIA NIM、GitHub Models 等）均通用支持配置多 Key 自动 Round-Robin 轮询分发与单 Key 限流隔离：
+
+- **`~/.prismd/keys.yaml` 格式**（支持列表与数组语法）：
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **工作机制**：网关按 Round-Robin 轮询分发请求。若 `gsk_key1` 触发 429 限流，仅将 `gsk_key1` 隔离进入冷却期（尊重 `Retry-After`），后续请求自动分配至 `gsk_key2`，单 Provider 吞吐直接翻倍。
+- **`.env` 或环境变量格式**（英文逗号分隔）：
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **工作机制**：网关按 Round-Robin 算法在可用 Key 之间轮询。若某个 Key（如 `gsk_key1`）收到 429 限流响应，网关仅将该 Key 标记进入冷却期（严格尊重上游返回的 `Retry-After`），后续请求立即透明分发至同提供商的健康 Key（`gsk_key2`）或切换上游候选，使单提供商吞吐量成倍提升且不中断业务。
 
 ### 3. 本地 Ollama 离线无缝兜底
 

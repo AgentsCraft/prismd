@@ -115,17 +115,26 @@ prismd
 - **`free-fast`**: Modelos ultra-rápidos y ligeros (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: Cola de modelos especializados en generación de código.
 
-### 2. Multi-Key y Aislamiento de Errores
+### 2. Multi-Key y Aislamiento de Errores (Key Pool)
 
-Configura varias claves en `.env` o `keys.yaml`:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+Todos los proveedores Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models, etc.) admiten configuración multi-key para distribución round-robin y aislamiento de fallos:
+
+- **Formato `~/.prismd/keys.yaml`** (lista YAML o array en línea):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **Funcionamiento**: Distribución round-robin. Cuando una clave recibe un error 429, solo esa clave entra en enfriamiento (`Retry-After`), y las solicitudes posteriores pasan inmediatamente a la siguiente clave.
+- **Formato `.env` o variables de entorno** (separadas por comas):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **Funcionamiento**: Las solicitudes se distribuyen mediante Round-Robin entre las claves sanas. Cuando una clave (p. ej. `gsk_key1`) recibe un error 429, solo esa clave entra en enfriamiento (`Retry-After`), y las solicitudes posteriores pasan inmediatamente a `gsk_key2` o al siguiente candidato.
 
 ### 3. Respaldo Local Ollama Desconectado
 

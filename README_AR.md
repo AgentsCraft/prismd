@@ -115,17 +115,26 @@ prismd
 - **`free-fast`**: نماذج فائقة السرعة وخفيفة الوزن (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: طابور نماذج مخصصة لتوليد الأكواد البرمجية.
 
-### 2. مجمع المفاتيح المتعددة وعزل الأعطال
+### 2. مجمع المفاتيح المتعددة وعزل الأعطال (Key Pool)
 
-قم بتهيئة مفاتيح متعددة في `.env` أو `keys.yaml`:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+تدعم جميع المزودين السحابيين (Groq و Cerebras و Google Gemini و OpenRouter و NVIDIA NIM و GitHub Models وغيرها) تكوين مفاتيح متعددة للتوزيع التلقائي بالتناوب وعزل الأعطال:
+
+- **تنسيق `~/.prismd/keys.yaml`** (قائمة أو مصفوفة مدمجة):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **آلية العمل**: توزيع الطلبات بنظام Round-Robin. عند تلقي خطأ 429 على مفتاح معين، يدخل ذلك المفتاح فقط فترة تهدئة (`Retry-After`)، وتتحول الطلبات التالية فورًا إلى المفتاح التالي.
+- **تنسيق `.env` أو متغيرات البيئة** (مفصولة بفواصل):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **آلية العمل**: يتم توزيع الطلبات عبر مفاتيح صالحة باستخدام Round-Robin. عندما يتلقى مفتاح معين (مثل `gsk_key1`) خطأ 429، يدخل ذلك المفتاح فقط في فترة التهدئة (`Retry-After`)، بينما تتحول الطلبات اللاحقة فورًا إلى المفتاح التالي (`gsk_key2`) أو النموذج البديل.
 
 ### 3. احتياطي محلي دون اتصال عبر Ollama
 

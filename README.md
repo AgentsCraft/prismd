@@ -115,17 +115,26 @@ prismd
 - **`free-fast`**: Ultra-fast lightweight model alias (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: Specialized code generation model queue.
 
-### 2. Multi-Key Pooling & Cooldown Isolation
+### 2. Multi-Key Pooling & Cooldown Isolation (Key Pool)
 
-Configure multiple keys in `.env` or `keys.yaml`:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+All cloud providers (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models, etc.) support multi-key configurations for automatic round-robin request distribution and single-key fault isolation:
+
+- **`~/.prismd/keys.yaml` format** (YAML list or inline array):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **How it works**: Round-robin request distribution. When `gsk_key1` receives a 429 response, only `gsk_key1` enters cooldown (respecting `Retry-After`), and subsequent requests immediately shift to `gsk_key2`.
+- **`.env` or Environment Variables** (comma-separated):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **How it works**: Requests are distributed across healthy keys via Round-Robin. When a key (e.g. `gsk_key1`) receives a 429 rate limit error, only that key enters cooldown (respecting `Retry-After`), while subsequent requests immediately shift to the next available key (`gsk_key2`) or candidate model, multiplying throughput without failing requests.
 
 ### 3. Local Ollama Offline Fallback
 

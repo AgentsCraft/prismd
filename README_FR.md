@@ -115,17 +115,26 @@ prismd
 - **`free-fast`** : Modèles ultra-rapides et légers (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`** : File de modèles spécialisés dans la génération de code.
 
-### 2. Multi-Clés et Disjoncteur Automatique
+### 2. Multi-Clés et Disjoncteur Automatique (Key Pool)
 
-Configurez plusieurs clés dans `.env` ou `keys.yaml` :
-- **`.env`** : `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`** :
+Tous les fournisseurs Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models, etc.) prennent en charge la configuration multi-clés pour la répartition round-robin et l'isolation des erreurs :
+
+- **Format `~/.prismd/keys.yaml`** (liste YAML ou tableau en ligne) :
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **Fonctionnement** : Répartition round-robin. Lorsqu'une clé reçoit une erreur 429, seule cette clé entre en période de refroidissement (`Retry-After`), et les requêtes suivantes passent immédiatement à la clé suivante.
+- **Format `.env` ou variables d'environnement** (séparées par des virgules) :
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **Fonctionnement** : Les requêtes sont réparties en round-robin entre les clés saines. Lorsqu'une clé (ex. `gsk_key1`) reçoit une erreur 429, seule cette clé est isolée en refroidissement (`Retry-After`), et les requêtes suivantes basculent immédiatement sur `gsk_key2` ou le candidat suivant.
 
 ### 3. Repli Local Ollama Hors-Ligne
 

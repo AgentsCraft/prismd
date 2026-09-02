@@ -115,17 +115,26 @@ prismd
 - **`free-fast`**：高速・軽量モデルキュー（Gemini Flash Lite / Llama 3.1 8b）。
 - **`free-code`**：コード生成特化モデルキュー。
 
-### 2. マルチ Key プールと単一 Key 障害隔離
+### 2. マルチ Key プールと単一 Key 障害隔離 (Key Pool)
 
-`.env` または `keys.yaml` で複数 Key を設定：
-- **`.env`**：`GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**：
+すべてのクラウドプロバイダー（Groq、Cerebras、Google Gemini、OpenRouter、NVIDIA NIM、GitHub Models 等）で複数 Key の自動ラウンドロビンと単一 Key の障害隔離に対応しています：
+
+- **`~/.prismd/keys.yaml` 形式**（リストまたはインライン配列）：
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **動作原理**：ラウンドロビン方式でリクエストを分散。`gsk_key1` が 429 を返した場合、その Key のみを冷却期間（`Retry-After` を遵守）に移行させ、後続リクエストは即座に `gsk_key2` へ割り振られます。
+- **`.env` または環境変数**（カンマ区切り）：
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **動作原理**：ラウンドロビン方式でリクエストを分散。特定の Key（例: `gsk_key1`）が 429 エラーとなった場合、その Key のみを冷却期間（`Retry-After` を遵守）に隔離し、後続リクエストは即座に健全な Key（`gsk_key2`）または次の候補へ自動切り替えされます。
 
 ### 3. ローカル Ollama オフラインフォールバック
 

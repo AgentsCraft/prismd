@@ -115,17 +115,26 @@ prismd
 - **`free-fast`**: Ultra hızlı ve hafif model kuyruğu (Gemini Flash Lite / Llama 3.1 8b).
 - **`free-code`**: Kod üretimi için özelleşmiş model kuyruğu.
 
-### 2. Çoklu Anahtar ve Hata İzolasyonu
+### 2. Çoklu Anahtar ve Hata İzolasyonu (Key Pool)
 
-`.env` veya `keys.yaml` dosyasında birden fazla anahtar tanımlayın:
-- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**:
+Tüm bulut sağlayıcıları (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models vb.) otomatik round-robin dağıtımı ve tek anahtar arıza izolasyonu için çoklu anahtar yapılandırmasını destekler:
+
+- **`~/.prismd/keys.yaml` formatı** (YAML listesi veya satır içi dizi):
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **Çalışma Mantığı**: İstekler round-robin ile dağıtılır. `gsk_key1` 429 hatası aldığında yalnızca o anahtar bekletmeye alınır (`Retry-After`), sonraki istekler hemen `gsk_key2` anahtarına yönlendirilir.
+- **`.env` veya Ortam Değişkenleri** (virgülle ayrılmış):
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **Çalışma Mantığı**: İstekler sağlıklı anahtarlar arasında Round-Robin ile paylaştırılır. Bir anahtar (örn. `gsk_key1`) 429 hız sınırı hatası aldığında yalnızca o anahtar soğuma süresine (`Retry-After`) alınır, sonraki istekler hemen sonraki anahtara (`gsk_key2`) veya yedek modele aktarılır.
 
 ### 3. Yerel Ollama Çevrimdışı Yedek
 
