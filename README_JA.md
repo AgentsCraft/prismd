@@ -101,11 +101,17 @@ prismd
 
 ## 機能詳細
 
-### 1. デフォルトエイリアス
+### 1. スマートルーティングと自動フェイルオーバー
 
-- **`free-auto`**：汎用コーディングモデル。Gemini 2.0 Flash / Llama 3.3 70b などを優先し、クラウド不可時はローカル Ollama `qwen2.5-coder:7b` へ自動フォールバック。
-- **`free-fast`**：高速・軽量モデルキュー（Gemini Flash Lite / Llama 3.1 8b）。
-- **`free-code`**：コード生成特化モデルキュー。
+prismd は多次元評価パイプラインにより、リクエストごとに最適な候補モデルを動的に選択します：
+
+- **コンテキストウィンドウ検証 (Context Window Check)**：送信前に入力トークン量を推定し、コンテキスト幅が不足しているモデルを自動除外（400 Context Overflow の発生を未然に防止）。
+- **ソフトクォータ優先度降格 (Quota-Weighted Soft Limit)**：日次呼び出し量が 80%（`quotaSoftLimitRatio`）に達したモデルは自動的にキュー末尾へ回され、高優先度タスク用の枠を確保。
+- **ゼロダウンタイム 429 フェイルオーバー (Zero-Crash Failover)**：上流から 429 レート制限または 5xx エラーが返された場合、即座に次の候補モデルへ自動透過リトライ。
+- **デフォルトエイリアス**：
+  - `free-auto`：汎用コーディングモデル（Gemini 2.0 Flash / Llama 3.3 70B 優先、Ollama `qwen2.5-coder:7b` へ自動フォールバック）。
+  - `free-fast`：高速軽量モデル（Gemini Flash Lite / Llama 3.1 8B）。
+  - `free-code`：コード生成特化モデルキュー。
 
 ### 2. マルチ Key プールと単一 Key 障害隔離 (Key Pool)
 
@@ -128,18 +134,52 @@ prismd
   ```
 - **動作原理**：ラウンドロビン方式でリクエストを分散。特定の Key（例: `gsk_key1`）が 429 エラーとなった場合、その Key のみを冷却期間（`Retry-After` を遵守）に隔離し、後続リクエストは即座に健全な Key（`gsk_key2`）または次の候補へ自動切り替えされます。
 
-### 3. ローカル Ollama オフラインフォールバック
+### 3. ローカル LLM ゼロダウンタイムオフラインフォールバック (Ollama & LM Studio)
 
-- 内蔵 `ollama` プロバイダー（`http://127.0.0.1:11434/v1`、Key 不要）。
-- ローカルで Ollama を起動している場合：
+クラウド無料枠の枯渇やネットワーク切断時、ローカル推論バックエンドへ自動ルーティングします：
+
+- **Ollama**：内蔵ゼロ設定プロバイダー（`http://127.0.0.1:11434/v1`）：
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- クラウド無料枠がすべて枯渇またはネットワーク切断時、自動でローカルモデルへ中継されます。
+- **LM Studio**：ローカル OpenAI 互換サーバー（`http://127.0.0.1:1234/v1`）経由で GGUF モデルを稼働。詳細は [LM Studio 設定ガイド](docs/providers/lmstudio.md) を参照。
+- エージェントのタスクが途中でクラッシュすることなく完了します。
 
-### 4. 設定の動的ホットリロード (SIGHUP)
+### 4. 全プロトコル透過ブリッジ
 
-再起動することなく設定を更新できます：
+3 大エージェント通信プロトコルの双方向ストリーミング変換に対応：
+- **Anthropic Messages** (`POST /v1/messages`)：Claude Code（Tools、Thinking ブロック、SSE ストリーム）を完全サポート。
+- **OpenAI Responses** (`POST /v1/responses`)：Codex CLI および DeepSeek Harness (`dsh`) に対応。
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`)：Cursor、OpenCode、Pi Agent、Aider の標準インターフェース。
+
+### 5. ユーザー定義設定の拡張 (`config.user.json`)
+
+独自プロバイダー、プライベートモデル、カスタムエイリアスキューを `config.user.json` で定義可能：
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+`npm run generate:config` を実行して設定を再生成します。
+
+### 6. 設定の動的ホットリロード (`SIGHUP`)
+
+接続を切断することなくルーティングテーブルや Key を即時更新：
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```

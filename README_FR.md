@@ -101,11 +101,17 @@ prismd
 
 ## Fonctionnalités Détaillées
 
-### 1. Alias par Défaut
+### 1. Routage Intelligent & Basculement Automatique
 
-- **`free-auto`** : Modèle de code polyvalent. Priorité à Gemini 2.0 Flash / Llama 3.3 70b ; repli automatique sur Ollama local `qwen2.5-coder:7b`.
-- **`free-fast`** : Modèles ultra-rapides et légers (Gemini Flash Lite / Llama 3.1 8b).
-- **`free-code`** : File de modèles spécialisés dans la génération de code.
+prismd sélectionne dynamiquement le meilleur modèle pour chaque requête via un pipeline d'évaluation :
+
+- **Vérification de la fenêtre de contexte (Context Window Check)** : Estime les tokens en amont ; filtre les modèles dont la fenêtre est insuffisante, éliminant les erreurs 400 Context Overflow.
+- **Limites souples de quota (Quota-Weighted Soft Limit)** : Dès qu'un modèle atteint 80 % de son quota journalier (`quotaSoftLimitRatio`), il est rétrogradé en fin de file pour réserver les quotas restants.
+- **Basculement sans interruption (Zero-Crash Failover)** : En cas d'erreur 429 ou 5xx d'un fournisseur, prismd bascule de manière transparente sur le candidat suivant de la file.
+- **Alias par Défaut** :
+  - `free-auto` : File principale de code (priorité Gemini 2.0 Flash / Llama 3.3 70B, repli sur Ollama `qwen2.5-coder:7b`).
+  - `free-fast` : File ultra-rapide et légère (Gemini Flash Lite / Llama 3.1 8B).
+  - `free-code` : File dédiée à la génération de code et aux tests.
 
 ### 2. Multi-Clés et Disjoncteur Automatique (Key Pool)
 
@@ -128,18 +134,52 @@ Tous les fournisseurs Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA N
   ```
 - **Fonctionnement** : Les requêtes sont réparties en round-robin entre les clés saines. Lorsqu'une clé (ex. `gsk_key1`) reçoit une erreur 429, seule cette clé est isolée en refroidissement (`Retry-After`), et les requêtes suivantes basculent immédiatement sur `gsk_key2` ou le candidat suivant.
 
-### 3. Repli Local Ollama Hors-Ligne
+### 3. Repli Local LLM Hors-Ligne sans Interruption (Ollama & LM Studio)
 
-- Fournisseur `ollama` intégré (`http://127.0.0.1:11434/v1`, sans clé requise).
-- Lancez un modèle localement :
+En cas d'épuisement des quotas cloud ou de perte de connexion, prismd achemine automatiquement le trafic vers les moteurs locaux :
+
+- **Ollama** : Fournisseur intégré zéro-config (`http://127.0.0.1:11434/v1`) :
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- En cas de coupure ou d'épuisement des quotas cloud, prismd achemine automatiquement les requêtes vers votre modèle local.
+- **LM Studio** : Serveur local compatible OpenAI (`http://127.0.0.1:1234/v1`) exécutant des modèles GGUF. Voir le [Guide LM Studio](docs/providers/lmstudio.md).
+- Les tâches des agents continuent sans interruption ni plantage.
 
-### 4. Rechargement Dynamique sans Arrêt (SIGHUP)
+### 4. Pont Multiprotocole Transparent
 
-Mettez à jour votre configuration sans couper les flux :
+Conversion bidirectionnelle en streaming entre les trois grands protocoles d'agents :
+- **Anthropic Messages** (`POST /v1/messages`) : Prise en charge intégrale de Claude Code (Tools, blocs Thinking, flux SSE).
+- **OpenAI Responses** (`POST /v1/responses`) : Compatible avec Codex CLI et DeepSeek Harness (`dsh`).
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`) : Interface standard pour Cursor, OpenCode, Pi Agent et Aider.
+
+### 5. Configuration Extensible (`config.user.json`)
+
+Déclarez vos propres fournisseurs, modèles privés et files d'alias dans `config.user.json` :
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+Régénérez la configuration avec `npm run generate:config`.
+
+### 6. Rechargement Dynamique sans Arrêt (`SIGHUP`)
+
+Mettez à jour les tables de routage et les clés sans couper les flux en cours :
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```
