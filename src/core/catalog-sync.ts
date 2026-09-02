@@ -12,8 +12,14 @@ export interface ModelValidationResult {
   error?: string;
 }
 
+export interface UpstreamModelMeta {
+  id: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+}
+
 /**
- * Probes the upstream provider's /models endpoint to fetch active models.
+ * Probes the upstream provider's /models endpoint to fetch active models and parameters.
  * Non-blocking, short timeout, uses 0 tokens/quota.
  */
 export async function fetchProviderModels(
@@ -22,11 +28,17 @@ export async function fetchProviderModels(
   apiKey?: string,
   extraHeaders: Record<string, string> = {},
   timeoutMs: number = 5000,
-): Promise<{ ok: boolean; models: string[]; status: number; error?: string }> {
+): Promise<{
+  ok: boolean;
+  models: string[];
+  metadata: Map<string, UpstreamModelMeta>;
+  status: number;
+  error?: string;
+}> {
   try {
     const url = `${baseUrl.replace(/\/+$/, "")}/models`;
     const headers: Record<string, string> = {
-      "Accept": "application/json",
+      Accept: "application/json",
       ...extraHeaders,
     };
     if (apiKey && apiKey !== "none") {
@@ -40,30 +52,49 @@ export async function fetchProviderModels(
     });
 
     if (!res.ok) {
-      return { ok: false, models: [], status: res.status, error: `HTTP ${res.status}` };
+      return { ok: false, models: [], metadata: new Map(), status: res.status, error: `HTTP ${res.status}` };
     }
 
     const json = (await res.json()) as any;
     const modelList: string[] = [];
+    const metadata = new Map<string, UpstreamModelMeta>();
+
+    const parseItem = (item: any) => {
+      if (!item || typeof item !== "object") return;
+      const id = typeof item.id === "string" ? item.id : typeof item.name === "string" ? item.name : undefined;
+      if (!id) return;
+      modelList.push(id);
+
+      const contextWindow =
+        typeof item.context_length === "number"
+          ? item.context_length
+          : typeof item.context_window === "number"
+            ? item.context_window
+            : typeof item.top_provider?.context_length === "number"
+              ? item.top_provider.context_length
+              : undefined;
+
+      const maxOutputTokens =
+        typeof item.max_completion_tokens === "number"
+          ? item.max_completion_tokens
+          : typeof item.max_output_tokens === "number"
+            ? item.max_output_tokens
+            : typeof item.top_provider?.max_completion_tokens === "number"
+              ? item.top_provider.max_completion_tokens
+              : undefined;
+
+      metadata.set(id, { id, contextWindow, maxOutputTokens });
+    };
+
     if (Array.isArray(json.data)) {
-      for (const item of json.data) {
-        if (item && typeof item.id === "string") {
-          modelList.push(item.id);
-        } else if (item && typeof item.name === "string") {
-          modelList.push(item.name);
-        }
-      }
+      for (const item of json.data) parseItem(item);
     } else if (Array.isArray(json.models)) {
-      for (const item of json.models) {
-        if (item && typeof item.name === "string") {
-          modelList.push(item.name);
-        }
-      }
+      for (const item of json.models) parseItem(item);
     }
 
-    return { ok: true, models: modelList, status: 200 };
+    return { ok: true, models: modelList, metadata, status: 200 };
   } catch (err: any) {
-    return { ok: false, models: [], status: 0, error: err.message };
+    return { ok: false, models: [], metadata: new Map(), status: 0, error: err.message };
   }
 }
 
@@ -106,7 +137,7 @@ export async function validateUpstreamModels(
       continue;
     }
 
-    const { ok, models, status, error } = await fetchProviderModels(
+    const { ok, models, metadata, status, error } = await fetchProviderModels(
       providerName,
       providerDef.baseUrl,
       apiKey,
@@ -128,6 +159,40 @@ export async function validateUpstreamModels(
             { provider: providerName, model: configuredModel },
             `upstream model not found in provider catalog (marked unavailable in router; update prismd.json to fix)`,
           );
+        }
+      }
+
+      // Auto-hydrate upstream metadata (contextWindow, maxOutputTokens) into candidate config
+      for (const aliasModel of Object.values(config.models)) {
+        for (const candidate of aliasModel.candidates) {
+          if (candidate.provider !== providerName) continue;
+          const meta = metadata.get(candidate.providerModelId);
+          if (meta) {
+            if (typeof meta.contextWindow === "number" && meta.contextWindow > 0 && meta.contextWindow !== candidate.contextWindow) {
+              logger.info(
+                {
+                  provider: providerName,
+                  model: candidate.providerModelId,
+                  from: candidate.contextWindow,
+                  to: meta.contextWindow,
+                },
+                "auto-synced model contextWindow from upstream",
+              );
+              candidate.contextWindow = meta.contextWindow;
+            }
+            if (typeof meta.maxOutputTokens === "number" && meta.maxOutputTokens > 0 && meta.maxOutputTokens !== candidate.maxOutputTokens) {
+              logger.info(
+                {
+                  provider: providerName,
+                  model: candidate.providerModelId,
+                  from: candidate.maxOutputTokens,
+                  to: meta.maxOutputTokens,
+                },
+                "auto-synced model maxOutputTokens from upstream",
+              );
+              candidate.maxOutputTokens = meta.maxOutputTokens;
+            }
+          }
         }
       }
 

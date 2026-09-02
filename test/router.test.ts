@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveAlias, resolveClaudeModelAlias } from "../src/core/router.js";
+import { resolveAlias, resolveClaudeModelAlias, shouldFailover } from "../src/core/router.js";
 import type { AliasModel } from "../src/types/config.js";
 import { makeValidConfig } from "./helpers.js";
 
@@ -76,4 +76,15 @@ test("resolveClaudeModelAlias falls back to first configured alias if free-auto 
 
 test("resolveClaudeModelAlias returns requested model when models config is empty", () => {
   assert.equal(resolveClaudeModelAlias({}, "claude-3-5-sonnet"), "claude-3-5-sonnet");
+});
+
+test("shouldFailover matches specific codes, 4xx/5xx classes, and wildcards", () => {
+  assert.equal(shouldFailover(404, ["404", "429"]), true);
+  assert.equal(shouldFailover(400, ["404", "429"]), false);
+  assert.equal(shouldFailover(400, ["4xx", "5xx"]), true);
+  assert.equal(shouldFailover(413, ["4xx", "5xx"]), true);
+  assert.equal(shouldFailover(502, ["4xx", "5xx"]), true);
+  assert.equal(shouldFailover(500, ["*"]), true);
+  assert.equal(shouldFailover(429, ["all"]), true);
+  assert.equal(shouldFailover(200, ["*"]), false);
 });

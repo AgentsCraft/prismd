@@ -93,3 +93,22 @@ export function resolveClaudeModelAlias(
   // 9. Fallback to first configured alias
   return configuredKeys[0];
 }
+
+/**
+ * Determines whether an upstream HTTP status code should trigger failover
+ * to the next candidate. Supports explicit status codes ("404", "429"),
+ * HTTP status classes ("4xx", "5xx"), and wildcards ("*", "all").
+ */
+export function shouldFailover(status: number, failoverOn: string[]): boolean {
+  if (status < 400) return false;
+  if (!failoverOn || failoverOn.length === 0) return true;
+  const statusStr = String(status);
+  const statusClass = `${Math.floor(status / 100)}xx`.toLowerCase();
+  for (const pattern of failoverOn) {
+    const p = pattern.toLowerCase();
+    if (p === "*" || p === "all" || p === statusClass || p === statusStr) {
+      return true;
+    }
+  }
+  return false;
+}

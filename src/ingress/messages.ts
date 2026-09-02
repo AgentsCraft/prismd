@@ -3,7 +3,7 @@ import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
-import { routeAlias, resolveClaudeModelAlias } from "../core/router.js";
+import { routeAlias, shouldFailover, resolveClaudeModelAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import {
   callRawHttpUpstream,
@@ -269,7 +269,7 @@ export async function messages(c: Context): Promise<Response> {
         });
       }
 
-      if (!config.policies.failoverOn.includes(String(result.status))) {
+      if (!shouldFailover(result.status, config.policies.failoverOn)) {
         return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
       }
 
