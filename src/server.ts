@@ -83,9 +83,11 @@ const server: ServerType = serve(
   (info) => {
     logger.info({ host: info.address, port: info.port }, "prismd listening");
     // Asynchronously validate upstream model catalogs in background without blocking startup
-    void validateUpstreamModels(config, getHealth(), getKeyPool()).catch((err) => {
-      logger.debug({ error: (err as Error).message }, "background catalog validation error");
-    });
+    if (process.env.PRISMD_DISABLE_CATALOG_SYNC !== "1") {
+      void validateUpstreamModels(config, getHealth(), getKeyPool()).catch((err) => {
+        logger.debug({ error: (err as Error).message }, "background catalog validation error");
+      });
+    }
   },
 );
 
@@ -117,7 +119,9 @@ process.on("SIGHUP", () => {
   try {
     const newConfig = reloadConfig();
     logger.info({ models: Object.keys(newConfig.models) }, "configuration reloaded successfully");
-    void validateUpstreamModels(newConfig, getHealth(), getKeyPool()).catch(() => {});
+    if (process.env.PRISMD_DISABLE_CATALOG_SYNC !== "1") {
+      void validateUpstreamModels(newConfig, getHealth(), getKeyPool()).catch(() => {});
+    }
   } catch (err) {
     logger.error({ error: (err as Error).message }, "failed to reload configuration; keeping active config");
   }
