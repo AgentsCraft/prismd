@@ -62,19 +62,25 @@ cd prismd && npm install
 
 ### 步骤 2：配置 API Key
 
-在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key：
+在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key（配置任意一个或多个均可，未配置的提供商自动跳过）：
 
 ```yaml
 # ~/.prismd/keys.yaml (建议权限 chmod 600)
-prismd: "my-local-secret"       # 本地网关安全保护令牌
+prismd: "my-local-secret"       # 本地网关安全保护令牌（客户端连接使用）
 
-# 单 Key 或多 Key 轮询配置：
+# 云端模型服务商（支持填单 Key 或多 Key 列表实现自动轮询）：
 openrouter: "sk-or-v1-xxxx"
 groq:
-  - "gsk_key1_xxxx"             # 支持配置多个 Key 自动轮询
+  - "gsk_key1_xxxx"             # 多 Key 轮询与单 Key 限流隔离
   - "gsk_key2_xxxx"
 cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
 gemini: "AIzaSyxxxx"
+nvidia: "nvapi-xxxx"
+github: "ghp_xxxx"              # GitHub Models 个人访问令牌
+amd: "amd_token_xxxx"           # 可选：AMD Developer Cloud 令牌
+
+# 本地离线兜底：
+# ollama: 免 Key 运行（默认自动探测并直连 http://127.0.0.1:11434/v1）
 ```
 
 生成配置并启动：
@@ -83,14 +89,21 @@ prismd
 # 或源码运行：npm run generate:config && npm run dev
 ```
 
+> 📖 **各提供商详细配置指南**：参阅 [免费 / 低额度模型提供商配置总览](docs/providers/README.md)，包含 [OpenRouter](docs/providers/openrouter.md)、[Groq](docs/providers/groq.md)、[Cerebras](docs/providers/cerebras.md)、[Google Gemini](docs/providers/gemini.md)、[NVIDIA NIM](docs/providers/nvidia.md)、[GitHub Models](docs/providers/github-models.md)、[AMD](docs/providers/amd.md)、[本地 Ollama](docs/providers/ollama.md) 及 [LM Studio](docs/providers/lmstudio.md) 的获取步骤与模型列表。
+
 ### 步骤 3：配置智能体客户端（即开即用）
 
-| 客户端 | 极简配置命令 / 设置项 |
-|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd`（详见 [Codex 配置](examples/codex/README.md)） |
-| **Cursor** | Settings → Models → 开启 OpenAI API Key（填 `my-local-secret`）<br>勾选 **Override OpenAI Base URL** 填 `http://127.0.0.1:8787/v1`<br>模型填 `free-auto` |
-| **OpenCode** | `~/.config/opencode/config.json` 设置 `baseUrl: "http://127.0.0.1:8787/v1"`（详见 [OpenCode 配置](examples/opencode/README.md)） |
+| 客户端 | 极简配置命令 / 设置项 | 配置示例 |
+|---|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [详细指南](examples/claude-code/README.md) |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [详细指南](examples/codex/README.md) |
+| **Cursor** | Settings → Models → 开启 OpenAI API Key（填 `my-local-secret`）<br>勾选 **Override OpenAI Base URL** 填 `http://127.0.0.1:8787/v1`<br>模型填 `free-auto` | [详细指南](examples/cursor/README.md) |
+| **OpenCode** | `~/.config/opencode/config.json` 设置 `baseUrl: "http://127.0.0.1:8787/v1"` | [详细指南](examples/opencode/README.md) |
+| **DeepSeek Harness (dsh)** | `~/.dsh/config.toml` 设置 `base_url = "http://127.0.0.1:8787/v1"`<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [详细指南](examples/dsh/README.md) |
+| **Pi Agent** | `~/.pi/config.json` 设置 `endpoint: "http://127.0.0.1:8787/v1"`<br>`pi run` | [详细指南](examples/pi/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [详细指南](examples/aider/README.md) |
+
+> 📖 **完整文档**：参阅 [智能体客户端接入总览与协议详解](docs/clients/README.md)。
 
 ---
 
@@ -102,17 +115,26 @@ prismd
 - **`free-fast`**：极速轻量模型。优选 Gemini Flash Lite / Llama 3.1 8b，高响应速度。
 - **`free-code`**：代码生成特化模型队列。
 
-### 2. 多 Key 轮询与单 Key 熔断隔离
+### 2. 多 Key 轮询与单 Key 熔断隔离 (Key Pool)
 
-在 `.env` 或 `keys.yaml` 中配置多个 Key：
-- **`.env`**：`GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
-- **`keys.yaml`**：
+所有云端模型提供商（Groq、Cerebras、Google Gemini、OpenRouter、NVIDIA NIM、GitHub Models 等）均通用支持配置多 Key 自动 Round-Robin 轮询分发与单 Key 限流隔离：
+
+- **`~/.prismd/keys.yaml` 格式**（支持列表与数组语法）：
   ```yaml
   groq:
-    - "gsk_key1"
-    - "gsk_key2"
+    - "gsk_key1_xxxx"
+    - "gsk_key2_xxxx"
+  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+  gemini:
+    - "AIzaSy_key1_xxxx"
+    - "AIzaSy_key2_xxxx"
   ```
-- **工作机制**：网关按 Round-Robin 轮询分发请求。若 `gsk_key1` 触发 429 限流，仅将 `gsk_key1` 隔离进入冷却期（尊重 `Retry-After`），后续请求自动分配至 `gsk_key2`，单 Provider 吞吐直接翻倍。
+- **`.env` 或环境变量格式**（英文逗号分隔）：
+  ```bash
+  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
+  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
+  ```
+- **工作机制**：网关按 Round-Robin 算法在可用 Key 之间轮询。若某个 Key（如 `gsk_key1`）收到 429 限流响应，网关仅将该 Key 标记进入冷却期（严格尊重上游返回的 `Retry-After`），后续请求立即透明分发至同提供商的健康 Key（`gsk_key2`）或切换上游候选，使单提供商吞吐量成倍提升且不中断业务。
 
 ### 3. 本地 Ollama 离线无缝兜底
 

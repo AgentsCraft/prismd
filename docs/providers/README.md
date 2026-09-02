@@ -13,6 +13,8 @@ prismd 支持接入任何提供免费额度或低成本 API 的模型服务商�
 | **NVIDIA NIM** | 开发者免费体验点数，提供大量开源前沿模型直接推理 | `chat`（OpenAI 兼容端点） | `meta/llama-3.3-70b-instruct`<br>`deepseek-ai/deepseek-r1` | [查看配置](nvidia.md) |
 | **GitHub Models** | GitHub 账号自带免费调用限额（按分钟/日速率限制） | `chat`（Azure/OpenAI 兼容） | `gpt-4o`<br>`meta-llama-3.3-70b-instruct` | [查看配置](github-models.md) |
 | **AMD (ROCm / Cloud)** | Developer Cloud 算力点数 / 本地 ROCm 硬件推理（Ollama / vLLM） | `chat`（OpenAI 兼容端点） | `llama3.3`<br>`deepseek-r1` | [查看配置](amd.md) |
+| **Ollama (本地离线)** | 本地私有化离线运行，零网络依赖，终极防崩兜底 | `chat`（OpenAI 兼容端点，无鉴权） | `qwen2.5-coder:7b`<br>`deepseek-r1:8b` | [查看配置](ollama.md) |
+| **LM Studio (本地推理)** | 桌面端本地 GGUF 模型加载，内置 OpenAI 兼容服务 | `chat`（OpenAI 兼容端点，无鉴权） | `qwen2.5-coder-7b`<br>`deepseek-r1-distill-8b` | [查看配置](lmstudio.md) |
 
 ---
 
