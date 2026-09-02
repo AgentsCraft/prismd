@@ -194,12 +194,14 @@ test('buildConfig expands aliases, applies defaults, drops presets-only fields',
   assert.equal(config.version, 1);
   assert.deepEqual(config.server, { host: '127.0.0.1', port: 8787 });
   assert.deepEqual(config.auth, { localTokenField: 'prismd' });
-  assert.equal(config.policies.maxCandidatesPerRequest, 2);
+  assert.equal(config.policies.maxCandidatesPerRequest, 5);
   assert.equal(config.policies.failThreshold, 3);
   assert.equal(config.policies.cooldownMs, 60000);
   assert.deepEqual(config.policies.failoverOn, [
     '401',
     '403',
+    '404',
+    '410',
     '429',
     '500',
     '502',
