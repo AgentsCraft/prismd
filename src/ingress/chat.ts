@@ -29,6 +29,30 @@ export interface ChatRequestBody {
   [key: string]: unknown;
 }
 
+/**
+ * Sanitizes incoming chat messages to ensure strict cross-provider compatibility.
+ * Strips proprietary/non-standard fields (e.g. reasoning_details, reasoning, refusal, x_groq, thought)
+ * on previous assistant/tool/user messages that cause strict schema validation failures (HTTP 400)
+ * on providers like Groq and Cerebras.
+ */
+export function sanitizeChatMessages(
+  messages: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(messages)) return messages;
+  return messages.map((msg) => {
+    if (!msg || typeof msg !== "object") return msg;
+    const clean: Record<string, unknown> = {
+      role: msg.role,
+    };
+    if (msg.content !== undefined) clean.content = msg.content;
+    if (msg.name !== undefined) clean.name = msg.name;
+    if (msg.tool_call_id !== undefined) clean.tool_call_id = msg.tool_call_id;
+    if (msg.tool_calls !== undefined) clean.tool_calls = msg.tool_calls;
+    if (msg.function_call !== undefined) clean.function_call = msg.function_call;
+    return clean;
+  });
+}
+
 export async function chatCompletions(c: Context): Promise<Response> {
   const requestId = c.get("requestId") as string;
   const startedAt = Date.now();
@@ -180,6 +204,9 @@ export async function chatCompletions(c: Context): Promise<Response> {
             ...body,
             model: candidate.providerModelId,
           };
+          if (Array.isArray(adaptedBody.messages)) {
+            adaptedBody.messages = sanitizeChatMessages(adaptedBody.messages);
+          }
           const candidateMax = candidate.maxOutputTokens;
           if (typeof candidateMax === "number" && candidateMax > 0) {
             if (typeof adaptedBody.max_completion_tokens === "number" && adaptedBody.max_completion_tokens > candidateMax) {
