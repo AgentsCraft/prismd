@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getConfig, loadConfig, reloadConfig, resetConfigForTests } from "../src/config.js";
@@ -121,3 +121,96 @@ test("getConfig throws when PRISMD_CONFIG_PATH points to a missing file", () => 
     }
   }
 });
+
+test("resolveConfigPath falls back to local ./prismd.json if present", () => {
+  const dir = mkdtempSync(join(tmpdir(), "prismd-local-"));
+  const localConfig = join(dir, "prismd.json");
+  writeFileSync(localConfig, JSON.stringify(makeValidConfig()));
+
+  const previousCwd = process.env.PRISMD_CWD;
+  const previousHome = process.env.PRISMD_HOME;
+  const previousConfig = process.env.PRISMD_CONFIG_PATH;
+  delete process.env.PRISMD_CONFIG_PATH;
+  process.env.PRISMD_CWD = dir;
+  process.env.PRISMD_HOME = mkdtempSync(join(tmpdir(), "prismd-home-"));
+
+  try {
+    resetConfigForTests();
+    const config = getConfig();
+    assert.equal(config.version, 1);
+    assert.equal(config.server.port, 8787);
+  } finally {
+    resetConfigForTests();
+    if (previousCwd) process.env.PRISMD_CWD = previousCwd;
+    else delete process.env.PRISMD_CWD;
+    if (previousHome) process.env.PRISMD_HOME = previousHome;
+    else delete process.env.PRISMD_HOME;
+    if (previousConfig) process.env.PRISMD_CONFIG_PATH = previousConfig;
+    else delete process.env.PRISMD_CONFIG_PATH;
+  }
+});
+
+test("resolveConfigPath falls back to ~/.prismd/prismd.json if local is missing", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "prismd-empty-cwd-"));
+  const home = mkdtempSync(join(tmpdir(), "prismd-home-"));
+  const homePrismd = join(home, ".prismd");
+  mkdirSync(homePrismd, { recursive: true });
+  const homeConfig = join(homePrismd, "prismd.json");
+  writeFileSync(homeConfig, JSON.stringify(makeValidConfig({ server: { port: 9876 } })));
+
+  const previousCwd = process.env.PRISMD_CWD;
+  const previousHome = process.env.PRISMD_HOME;
+  const previousConfig = process.env.PRISMD_CONFIG_PATH;
+  delete process.env.PRISMD_CONFIG_PATH;
+  process.env.PRISMD_CWD = cwd;
+  process.env.PRISMD_HOME = home;
+
+  try {
+    resetConfigForTests();
+    const config = getConfig();
+    assert.equal(config.server.port, 9876);
+  } finally {
+    resetConfigForTests();
+    if (previousCwd) process.env.PRISMD_CWD = previousCwd;
+    else delete process.env.PRISMD_CWD;
+    if (previousHome) process.env.PRISMD_HOME = previousHome;
+    else delete process.env.PRISMD_HOME;
+    if (previousConfig) process.env.PRISMD_CONFIG_PATH = previousConfig;
+    else delete process.env.PRISMD_CONFIG_PATH;
+  }
+});
+
+test("resolveConfigPath auto-initializes ~/.prismd/prismd.json when no config exists", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "prismd-auto-cwd-"));
+  const home = mkdtempSync(join(tmpdir(), "prismd-auto-home-"));
+  const homePrismd = join(home, ".prismd");
+  mkdirSync(homePrismd, { recursive: true });
+  writeFileSync(join(homePrismd, "keys.yaml"), "openrouter: sk-test-key\n");
+
+  const previousCwd = process.env.PRISMD_CWD;
+  const previousHome = process.env.PRISMD_HOME;
+  const previousConfig = process.env.PRISMD_CONFIG_PATH;
+  delete process.env.PRISMD_CONFIG_PATH;
+  process.env.PRISMD_CWD = cwd;
+  process.env.PRISMD_HOME = home;
+
+  try {
+    resetConfigForTests();
+    const config = getConfig();
+    assert.equal(config.version, 1);
+    assert.equal(config.server.host, "127.0.0.1");
+    // Verifies that ~/.prismd/prismd.json was created on disk
+    assert.ok(existsSync(join(homePrismd, "prismd.json")));
+    // Verifies that candidates were generated using the configured keys
+    assert.ok(config.models["free-auto"]);
+  } finally {
+    resetConfigForTests();
+    if (previousCwd) process.env.PRISMD_CWD = previousCwd;
+    else delete process.env.PRISMD_CWD;
+    if (previousHome) process.env.PRISMD_HOME = previousHome;
+    else delete process.env.PRISMD_HOME;
+    if (previousConfig) process.env.PRISMD_CONFIG_PATH = previousConfig;
+    else delete process.env.PRISMD_CONFIG_PATH;
+  }
+});
+

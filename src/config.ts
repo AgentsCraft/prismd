@@ -1,14 +1,51 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Ajv } from "ajv";
+import { generateConfigString } from "./generate-config.js";
 import { loadKeyStore, resolveKey, resolveKeys, type KeyStore } from "./keys.js";
+import { logger } from "./observability/logger.js";
 import type { PrismdConfig } from "./types/config.js";
 
 /** Packaged at the repo/package root, next to config.schema.json in dev and dist. */
 const SCHEMA_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "config.schema.json");
 
-const DEFAULT_CONFIG_PATH = join(process.cwd(), "prismd.json");
+/**
+ * Resolve the configuration file path using hierarchical fallback:
+ * 1. Explicit PRISMD_CONFIG_PATH environment variable (throws if missing).
+ * 2. Local ./prismd.json in current working directory.
+ * 3. ~/.prismd/prismd.json in user's home directory.
+ * 4. Auto-generates ~/.prismd/prismd.json from presets and keys if no file exists.
+ */
+export function resolveConfigPath(
+  envPath?: string,
+  cwd: string = process.env.PRISMD_CWD ?? process.cwd(),
+  homeDir: string = process.env.PRISMD_HOME ?? homedir(),
+): string {
+  const explicitPath = envPath ?? process.env.PRISMD_CONFIG_PATH;
+  if (explicitPath !== undefined && explicitPath !== "") {
+    return explicitPath;
+  }
+
+  const localPath = join(cwd, "prismd.json");
+  if (existsSync(localPath)) {
+    return localPath;
+  }
+
+  const homeDirPrismd = join(homeDir, ".prismd");
+  const homeConfigPath = join(homeDirPrismd, "prismd.json");
+  if (existsSync(homeConfigPath)) {
+    return homeConfigPath;
+  }
+
+  // Auto-initialize ~/.prismd/prismd.json on first launch
+  mkdirSync(homeDirPrismd, { recursive: true, mode: 0o700 });
+  const content = generateConfigString({ homeDir, cwd });
+  writeFileSync(homeConfigPath, content, { mode: 0o600 });
+  logger.info({ path: homeConfigPath }, "initialized default configuration at ~/.prismd/prismd.json");
+  return homeConfigPath;
+}
 
 /**
  * Load and validate a prismd.json file. Throws on missing file, invalid
@@ -54,12 +91,12 @@ let cached: PrismdConfig | undefined;
 let cachedKeys: KeyStore | undefined;
 
 /**
- * Get the validated runtime config, loading (once) from PRISMD_CONFIG_PATH
- * or ./prismd.json. The ~/.prismd key store snapshot loads once alongside.
+ * Get the validated runtime config, loading (once) from PRISMD_CONFIG_PATH,
+ * ./prismd.json, or ~/.prismd/prismd.json. Auto-generates on first launch.
  */
 export function getConfig(): PrismdConfig {
   if (cached) return cached;
-  const path = process.env.PRISMD_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
+  const path = resolveConfigPath();
   cached = loadConfig(path);
   cachedKeys = loadKeyStore();
   return cached;
@@ -70,7 +107,7 @@ export function getConfig(): PrismdConfig {
  * Keeps previous configuration if loading or validation fails.
  */
 export function reloadConfig(filePath?: string): PrismdConfig {
-  const path = filePath ?? process.env.PRISMD_CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
+  const path = filePath ?? resolveConfigPath();
   const newConfig = loadConfig(path);
   const newKeys = loadKeyStore();
   cached = newConfig;
@@ -103,3 +140,4 @@ export function resetConfigForTests(): void {
   cached = undefined;
   cachedKeys = undefined;
 }
+
