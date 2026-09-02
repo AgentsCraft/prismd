@@ -101,11 +101,17 @@ prismd
 
 ## Funcionalidades Detalladas
 
-### 1. Alias por Defecto
+### 1. Enrutamiento Inteligente y Conmutación por Error
 
-- **`free-auto`**: Modelo de código general. Prioridad a Gemini 2.0 Flash / Llama 3.3 70b; respaldo automático en Ollama local `qwen2.5-coder:7b`.
-- **`free-fast`**: Modelos ultra-rápidos y ligeros (Gemini Flash Lite / Llama 3.1 8b).
-- **`free-code`**: Cola de modelos especializados en generación de código.
+prismd selecciona dinámicamente el mejor modelo candidato para cada solicitud mediante una canalización de evaluación:
+
+- **Verificación de ventana de contexto (Context Window Check)**: Estima tokens previamente; descarta modelos con ventana insuficiente evitando errores 400 Context Overflow.
+- **Límites suaves de cuota (Quota-Weighted Soft Limit)**: Al alcanzar el 80 % de cuota diaria (`quotaSoftLimitRatio`), el modelo se desplaza al final de la cola para reservar cupo restante.
+- **Conmutación sin fallos (Zero-Crash Failover)**: Ante errores 429 de límite o 5xx de caída, prismd conmuta automáticamente al siguiente candidato en cola de forma transparente.
+- **Alias por Defecto**:
+  - `free-auto`: Cola principal de código (prioridad Gemini 2.0 Flash / Llama 3.3 70B, respaldo en Ollama `qwen2.5-coder:7b`).
+  - `free-fast`: Cola ultrarrápida y ligera (Gemini Flash Lite / Llama 3.1 8B).
+  - `free-code`: Cola especializada en generación y prueba de código.
 
 ### 2. Multi-Key y Aislamiento de Errores (Key Pool)
 
@@ -128,18 +134,52 @@ Todos los proveedores Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA N
   ```
 - **Funcionamiento**: Las solicitudes se distribuyen mediante Round-Robin entre las claves sanas. Cuando una clave (p. ej. `gsk_key1`) recibe un error 429, solo esa clave entra en enfriamiento (`Retry-After`), y las solicitudes posteriores pasan inmediatamente a `gsk_key2` o al siguiente candidato.
 
-### 3. Respaldo Local Ollama Desconectado
+### 3. Respaldo Local LLM Desconectado sin Interrupciones (Ollama & LM Studio)
 
-- Proveedor `ollama` integrado (`http://127.0.0.1:11434/v1`, sin necesidad de clave).
-- Cuando Ollama se ejecuta localmente:
+Si las cuotas en la nube se agotan o se corta la conexión, prismd conmuta el tráfico a motores locales:
+
+- **Ollama**: Proveedor integrado cero configuración (`http://127.0.0.1:11434/v1`):
   ```bash
   ollama run qwen2.5-coder:7b
   ```
-- Si las cuotas en la nube se agotan o no hay conexión, prismd redirige automáticamente al modelo local.
+- **LM Studio**: Servidor local compatible con OpenAI (`http://127.0.0.1:1234/v1`) con modelos GGUF. Consulte la [Guía de LM Studio](docs/providers/lmstudio.md).
+- Las tareas de los agentes continúan sin interrumpirse.
 
-### 4. Recarga Dinámica en Caliente (SIGHUP)
+### 4. Puente Multiprotocolo Transparente
 
-Actualiza la configuración sin desconectar flujos activos:
+Conversión bidireccional en streaming entre los tres principales protocolos de agentes:
+- **Anthropic Messages** (`POST /v1/messages`): Soporte total de Claude Code (Tools, bloques Thinking, flujos SSE).
+- **OpenAI Responses** (`POST /v1/responses`): Compatible con Codex CLI y DeepSeek Harness (`dsh`).
+- **OpenAI Chat Completions** (`POST /v1/chat/completions`): Interfaz estándar para Cursor, OpenCode, Pi Agent y Aider.
+
+### 5. Configuración Extensible (`config.user.json`)
+
+Declare proveedores propios, modelos privados y colas de alias en `config.user.json`:
+
+```jsonc
+{
+  "models": {
+    "my-custom-model": {
+      "provider": "openrouter",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
+    }
+  },
+  "aliases": {
+    "free-auto": {
+      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
+Regenere la configuración con `npm run generate:config`.
+
+### 6. Recarga Dinámica en Caliente (`SIGHUP`)
+
+Actualice tablas de enrutamiento y claves sin reiniciar el proceso ni cortar flujos en ejecución:
 ```bash
 kill -HUP $(pgrep -f "prismd")
 ```
