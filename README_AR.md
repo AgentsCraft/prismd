@@ -2,151 +2,155 @@
 
 [English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
-بوابة LLM محلية تُجمّع واجهات برمجة تطبيقات النماذج المجانية والمنخفضة التكلفة (OpenRouter و Groq و Cerebras وغيرها) لوكلاء البرمجة (Claude Code و Codex CLI و OpenCode وغيرها)، وتوفر واجهة موحدة ومستقرة مع التوجيه التلقائي وتجاوز الفشل.
+**بوابة LLM محلية عالية التوافر** تجمع بين واجهات برمجة التطبيقات المجانية والمنخفضة التكلفة (OpenRouter و Groq و Cerebras و Google Gemini و NVIDIA NIM و GitHub Models وغيرها) ونماذج LLM المحلية (Ollama). توفر واجهة موحدة ومستقرة وغير منقطعة لوكلاء البرمجة (Claude Code و Codex CLI و Cursor و OpenCode و Aider وغيرها).
 
-باستخدام نقطة نهاية محلية واحدة واسم مستعار موحد (`free-auto`)، يتعامل prismd تلقائيًا مع:
-- **التوجيه الذكي وحماية الحصص**: يختار تلقائيًا النماذج المرشحة المتاحة بناءً على نافذة السياق والاستخدام اليومي للحصة؛ ويخفض النماذج التي تصل إلى 80% أو أكثر إلى نهاية قائمة الانتظار.
-- **تجاوز الفشل السلس**: قبل بدء التدفق، ينتقل تلقائيًا إلى المرشح التالي في حالة أخطاء 429/401/5xx أو انتهاء مهلة الشبكة.
-- **تحويل متعدد البروتوكولات**: دعم أصلي لبروتوكولات OpenAI Responses و OpenAI Chat Completions و Anthropic Messages، مما يسمح لأي وكيل برمجة بالاتصال بسلاسة.
+```mermaid
+flowchart LR
+    subgraph Clients["وكلاء البرمجة (Clients)"]
+        CC["Claude Code<br/>(Anthropic Messages)"]
+        CX["Codex CLI<br/>(OpenAI Responses)"]
+        CU["Cursor / OpenCode<br/>(Chat Completions)"]
+    end
 
-## الدعم
+    subgraph Gateway["prismd (127.0.0.1:8787)"]
+        Router["توجيه ذكي (free-auto)<br/>ترجيح الحصص / فحص السياق / تجاوز الفشل 429"]
+        KeyPool["مجمع المفاتيح المتعددة (Key Pool)<br/>قاطع الدائرة لكل مفتاح / Round-Robin"]
+    end
 
-إذا وفر لك prismd الوقت أو الحصة، يمكنك دعم المؤلف بشراء فنجان قهوة:
+    subgraph Upstreams["المزودون (Providers)"]
+        Cloud["واجهات مجانية سحابية<br/>OpenRouter / Groq / Cerebras / Gemini..."]
+        Local["احتياطي محلي دون اتصال<br/>Ollama (qwen2.5-coder / deepseek-r1)"]
+    end
+
+    Clients --> Gateway
+    Gateway --> Cloud
+    Cloud -. "الكل 429 / دون اتصال" .-> Local
+```
+
+---
+
+## الميزات الرئيسية
+
+1. **اسم مستعار موحد للنماذج (`free-auto`)**: لا حاجة لاختيار النماذج يدويًا؛ يختار prismd تلقائيًا أفضل نموذج مجاني متاح.
+2. **مجمع المفاتيح المتعددة وعزل الأعطال (Key Pool)**: تجاوز قيود معدل الطلبات (RPM). قم بتعيين مفاتيح متعددة لتوزيع الحمل بالتناوب (Round-Robin). عند حدوث خطأ 429 على مفتاح معين، يتم تبريد هذا المفتاح فقط وتتحول الطلبات فورًا إلى المفتاح التالي.
+3. **احتياطي محلي دون اتصال عبر Ollama دون انقطاع**: عند نفاد الحصص السحابية أو انقطاع الإنترنت، يتم تحويل الطلبات بسلاسة إلى Ollama المحلي (`qwen2.5-coder:7b` و `deepseek-r1:8b`).
+4. **تحويل ثنائي الاتجاه عبر البروتوكولات**: دعم أصيل للتدفق المتبادل بين Claude Code (Messages) و Codex (Responses) و Cursor/OpenCode (Chat Completions).
+5. **لوحة تحكم ويب مدمجة وإعادة تحميل ديناميكية (SIGHUP)**: راقب الحالة مباشرة عبر `http://127.0.0.1:8787/ui`، وقم بتحديث الإعدادات دون إعادة التشغيل عبر إشارة `SIGHUP`.
+
+---
+
+## دعم المشروع
+
+إذا وفر لك prismd الوقت أو تكاليف الحصص، يمكنك دعم المطور بفنجان قهوة:
 
 [![ko-fi](https://storage.ko-fi.com/cdn/kofi2.png)](https://ko-fi.com/keanz21)
 
 ---
 
-## البدء السريع
+## البدء السريع في 3 خطوات
 
-### الخيار 1: التثبيت العام عبر npm (موصى به)
+### الخطوة 1: التثبيت والتشغيل
 
 ```bash
-# تثبيت الإصدار المستقر
+# الخيار أ: التثبيت العام عبر npm (موصى به)
 npm install -g @prismd/prismd
 
-# أو قناة المعاينة RC
-# npm install -g @agentscraft/prismd
-
-# تكوين مفاتيح المزودين ورمز البوابة المحلي
-export OPENROUTER_API_KEY=<your-openrouter-key>
-export PRISMD_API_KEY=<local-token>        # رمز المصادقة المحلي، مثل openssl rand -hex 32
-
-# تشغيل البوابة (تستمع على 127.0.0.1:8787)
-prismd
-```
-
-### الخيار 2: التشغيل من الكود المصدري
-
-```bash
+# الخيار ب: التشغيل من المصدر
 git clone https://github.com/AgentsCraft/prismd.git
-cd prismd
-npm install
-cp .env.example .env                       # أدخل مفاتيح API، مع chmod 600
-npm run generate:config                    # دمج الإعدادات والمفاتيح لإنشاء prismd.json
-npm run dev                                # بدء تشغيل خادم التطوير
+cd prismd && npm install
 ```
 
-### اختبار التحقق السريع
+### الخطوة 2: تكوين مفاتيح API
 
+أضف مفاتيحك في `~/.prismd/keys.yaml` أو في ملف `./.env`:
+
+```yaml
+# ~/.prismd/keys.yaml (الأذونات الموصى بها: chmod 600)
+prismd: "my-local-secret"       # رمز الحماية المحلي
+
+# مفتاح مفرد أو مجمع مفاتيح متعددة:
+openrouter: "sk-or-v1-xxxx"
+groq:
+  - "gsk_key1_xxxx"             # توزيع بالتناوب لمفاتيح متعددة
+  - "gsk_key2_xxxx"
+cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
+gemini: "AIzaSyxxxx"
+```
+
+تشغيل البوابة:
 ```bash
-curl -N http://127.0.0.1:8787/v1/responses \
-  -H "Authorization: Bearer $PRISMD_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"free-auto","input":"say hi","stream":true}'
+prismd
+# أو من المصدر: npm run generate:config && npm run dev
 ```
+
+### الخطوة 3: إعداد الوكيل الخاص بك
+
+| العميل | الإعداد السريع |
+|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` ([دليل Codex](examples/codex/README.md)) |
+| **Cursor** | Settings → Models → تفعيل OpenAI API Key (أدخل `my-local-secret`)<br>تحديد **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>إضافة النموذج: `free-auto` |
+| **OpenCode** | اضبط `baseUrl: "http://127.0.0.1:8787/v1"` في `~/.config/opencode/config.json` ([دليل OpenCode](examples/opencode/README.md)) |
 
 ---
 
-## إعداد العملاء
+## تفاصيل الميزات
 
-تشير جميع وكلاء العملاء إلى نقطة نهاية البوابة المحلية وتستخدم نفس رمز الحماية المحلي (`PRISMD_API_KEY`).
+### 1. الأسماء المستعارة الافتراضية
 
-### 1. Claude Code
-يدعم Claude Code نقاط نهاية Anthropic المخصصة عبر متغيرات البيئة. تعود أسماء النماذج القياسية (`claude-*-sonnet` وغيرها) تلقائيًا إلى الأسماء المستعارة المكونة:
+- **`free-auto`**: نموذج برمجة شامل. يفضل Gemini 2.0 Flash / Llama 3.3 70b؛ مع تراجع تلقائي إلى Ollama المحلي `qwen2.5-coder:7b`.
+- **`free-fast`**: نماذج فائقة السرعة وخفيفة الوزن (Gemini Flash Lite / Llama 3.1 8b).
+- **`free-code`**: طابور نماذج مخصصة لتوليد الأكواد البرمجية.
+
+### 2. مجمع المفاتيح المتعددة وعزل الأعطال
+
+قم بتهيئة مفاتيح متعددة في `.env` أو `keys.yaml`:
+- **`.env`**: `GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"`
+- **`keys.yaml`**:
+  ```yaml
+  groq:
+    - "gsk_key1"
+    - "gsk_key2"
+  ```
+- **آلية العمل**: توزيع الطلبات بنظام Round-Robin. عند تلقي خطأ 429 على مفتاح معين، يدخل ذلك المفتاح فقط فترة تهدئة (`Retry-After`)، وتتحول الطلبات التالية فورًا إلى المفتاح التالي.
+
+### 3. احتياطي محلي دون اتصال عبر Ollama
+
+- مزود `ollama` مدمج (`http://127.0.0.1:11434/v1`، دون الحاجة إلى مفتاح).
+- عند تشغيل Ollama محليًا:
+  ```bash
+  ollama run qwen2.5-coder:7b
+  ```
+- في حال نفاد الحصص السحابية أو انقطاع الاتصال، يقوم prismd بتحويل الطلبات تلقائيًا إلى النموذج المحلي.
+
+### 4. إعادة التحميل الساخن الديناميكي (SIGHUP)
+
+تحديث الإعدادات دون مقاطعة الاتصالات النشطة:
 ```bash
-export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"
-export ANTHROPIC_API_KEY="<your-prismd-local-token>"
-claude
+kill -HUP $(pgrep -f "prismd")
 ```
-
-### 2. Codex CLI
-انسخ الملف التعريفي النموذجي وأنشئ كتالوج بيانات التعريف:
-```bash
-cp examples/codex/prismd.config.toml ~/.codex/prismd.config.toml
-npm run generate:codex-catalog    # إنشاء ~/.codex/prismd-models.json
-PRISMD_API_KEY=<your-prismd-local-token> codex --profile prismd
-```
-
-### 3. Cursor
-قم بتكوين نقطة نهاية OpenAI مخصصة في Cursor:
-- **Settings** ← **Models** ← قم بتمكين **OpenAI API Key** وأدخل `<your-prismd-local-token>`.
-- فعّل خيار **Override OpenAI Base URL** وأدخل `http://127.0.0.1:8787/v1`.
-- أضف وفعّل النماذج `free-auto` و `free-fast` و `free-code`. راجع [دليل إعداد Cursor](examples/cursor/README.md).
-
-### 4. OpenCode / DeepSeek Harness (dsh) / Pi Agent
-- **OpenCode**: عيّن `baseUrl: "http://127.0.0.1:8787/v1"` في `~/.config/opencode/config.json`. راجع [دليل OpenCode](examples/opencode/README.md).
-- **DeepSeek Harness (dsh)**: عيّن `base_url = "http://127.0.0.1:8787/v1"` في `~/.dsh/config.toml`. راجع [دليل dsh](examples/dsh/README.md).
-- **Pi Agent**: عيّن `endpoint: "http://127.0.0.1:8787/v1"` في `~/.pi/config.json`. راجع [دليل Pi](examples/pi/README.md).
 
 ---
 
-## إدارة المفاتيح والتكوين
+## المراقبة ولوحة تحكم الويب
 
-### إدارة المفاتيح
-يمكن تكوين المفاتيح في ملف `.env` في جذر المشروع أو في الدليل العام `~/.prismd/`. ترتيب الأولوية (من الأعلى إلى الأدنى):
-1. **متغيرات البيئة**: `OPENROUTER_API_KEY` و `GROQ_API_KEY` و `GEMINI_API_KEY` إلخ.
-2. **دليل المشروع الحالي**: `./.env` (منسوخ من `.env.example`)
-3. **دليل المستخدم العام**: `~/.prismd/.env` أو `~/.prismd/keys.yaml` (الصلاحية الموصى بها: `chmod 600`)
-
-### تخصيص المرشحين والترتيب
-قم بتجاوز أولويات المرشحين أو إضافة نماذج مخصصة في `config.user.json` ثم أعد إنشاء التكوين:
-```jsonc
-{
-  "aliases": {
-    "free-auto": {
-      "candidates": [
-        "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free"
-      ]
-    }
-  },
-  "policies": {
-    "maxCandidatesPerRequest": 3,
-    "connectTimeoutMs": 5000
-  }
-}
-```
-قم بتشغيل `npm run generate:config` (أو `node node_modules/@prismd/prismd/scripts/generate-config.mjs --root <dir>`) لتطبيق التغييرات.
-
-للحصول على إرشادات تفصيلية حول موفري الخدمات المجانيين (OpenRouter و Groq و Cerebras و Google Gemini و NVIDIA NIM و GitHub Models وغيرها)، راجع [أدلة موفري الخدمات](docs/providers/README.md).
-
----
-
-## الحالة وإمكانية الملاحظة
-
-- **لوحة التحكم على الويب**: افتح `http://127.0.0.1:8787/ui` في متصفحك لمتابعة صحة النماذج وأشرطة تقدم الحصة اليومية واستخدام الرموز وأحداث SSE المباشرة.
-- **حالة CLI**: شغّل `prismd status` (أو `npm run status`) لعرض جداول المقاييس الملونة مباشرة في الطرفية.
-- **السجلات المهيكلة**: سجلات بتنسيق JSON تُرسل إلى stderr مع إخفاء المفاتيح الحساسة وتتبع بواسطة `request-id` فريد.
-
----
-
-## آلية العمل والقيود
-
-1. **التوجيه والتصفية**:
-   - يجرّب المرشحين بالترتيب المكون؛
-   - يستبعد تمامًا المرشحين المستنفدين أو ذوي السياق غير الكافي أو في فترة التهدئة؛
-   - يخفض النماذج المستهلكة لـ 80% أو أكثر من الحصة إلى ذيل قائمة الانتظار.
-2. **حدود تجاوز الفشل (Failover)**:
-   - **قبل بدء التدفق**: عند أخطاء 401/403/429/5xx أو انتهاء المهلة، يحاول المرشح التالي حتى `maxCandidatesPerRequest`.
-   - **بعد بدء التدفق**: لا يعيد المحاولة أثناء التدفق لتجنب تلف الاستجابات، وينهي العملية بحدث SSE `error`.
-3. **قيود الحصص المجانية**:
-   - تشارك النماذج العامة المجانية مجمعات سعة مشتركة وقد تُرجع أخطاء 429 في أوقات الذروة. يتجاوزها prismd تلقائيًا، وإذا استُنفدت جميع النماذج، يُرجع خطأ 429 مع التفاصيل في `error.metadata`.
+- **لوحة تحكم الويب**: افتح `http://127.0.0.1:8787/ui` في المتصفح:
+  - حالة صحة النماذج اللحظية (`healthy` / `rate_limited` / `cooldown`)
+  - أشرطة تقدم الحصص اليومية وإحصائيات الرموز (Tokens)
+  - محدد 10 لغات وزر «إعادة تعيين الاستخدام (Reset usage)»
+- **حالة CLI**:
+  ```bash
+  prismd status
+  ```
+  يعرض مصفوفة ملونة في الطرفية.
 
 ---
 
 ## استكشاف الأخطاء وإصلاحها
 
-- **تكرار أخطاء 429**: مجمعات النماذج المجانية مزدحمة. أعد ترتيب `free-auto` في `config.user.json` لمنح الأولوية للنماذج الأقل ازدحامًا أو أضف مفاتيح موفرين آخرين.
-- **اختفاء النماذج بعد الترقية**: الإصدارات القديمة استخدمت تنسيقًا مختلفًا. شغّل `npm run generate:config` لتحديث `prismd.json`.
-- **إعادة تعيين عدادات الحصة**: انقر على زر «Reset usage» في لوحة تحكم الويب (`http://127.0.0.1:8787/ui`)، أو أوقف البوابة واحذف `data/prismd.sqlite`.
+- **س: خطأ `missing API key for provider`؟**
+  - تحقق من المفاتيح في `~/.prismd/keys.yaml` أو `.env` ثم شغل `npm run generate:config`.
+- **س: تكرار أخطاء 429 على النماذج المجانية؟**
+  - أضف مفاتيح متعددة للمزود أو شغل `ollama run qwen2.5-coder:7b`.
+- **س: كيفية إعادة تعيين عدادات الاستخدام اليومي؟**
+  - انقر على «Reset usage» في لوحة تحكم الويب أو احذف `data/prismd.sqlite`.

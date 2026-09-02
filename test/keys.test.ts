@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { envVarFor, loadKeyStore, parseEnvFile, parseKeysYaml, resolveKey } from "../src/keys.js";
+import { envVarFor, loadKeyStore, parseEnvFile, parseKeysYaml, resolveKey, resolveKeys } from "../src/keys.js";
 
 function makeHome(files: Record<string, string>): { home: string; localDir: string } {
   const dir = mkdtempSync(join(tmpdir(), "prismd-keys-"));
@@ -35,6 +35,24 @@ test("parseKeysYaml handles comments, blank lines, quotes and bare values", () =
     groq: "bare-value",
     empty: "",
     spaced: "value with spaces",
+  });
+});
+
+test("parseKeysYaml handles inline arrays and YAML list items", () => {
+  const yaml = parseKeysYaml(
+    [
+      'groq: ["gsk_1", "gsk_2", "gsk_3"]',
+      "cerebras:",
+      '  - "csk_1"',
+      "  - 'csk_2'",
+      "  - csk_3",
+      "empty_list: []",
+    ].join("\n"),
+  );
+  assert.deepEqual(yaml, {
+    groq: ["gsk_1", "gsk_2", "gsk_3"],
+    cerebras: ["csk_1", "csk_2", "csk_3"],
+    empty_list: [],
   });
 });
 
@@ -76,6 +94,20 @@ test("resolveKey prefers env var over local .env over home .env over keys.yaml",
   }
 });
 
+test("resolveKeys parses comma-separated keys and array formats", () => {
+  const localDir = mkdtempSync(join(tmpdir(), "prismd-local-"));
+  writeFileSync(join(localDir, ".env"), "GROQ_API_KEY=gsk_1, gsk_2 ,gsk_3\n");
+
+  const { home } = makeHome({
+    "keys.yaml": "cerebras:\n  - csk_1\n  - csk_2\nopenrouter: ['sk-1', 'sk-2']\n",
+  });
+  const store = loadKeyStore(home, localDir);
+
+  assert.deepEqual(resolveKeys(store, "groq"), ["gsk_1", "gsk_2", "gsk_3"]);
+  assert.deepEqual(resolveKeys(store, "cerebras"), ["csk_1", "csk_2"]);
+  assert.deepEqual(resolveKeys(store, "openrouter"), ["sk-1", "sk-2"]);
+});
+
 test("resolveKey falls back to keys.yaml when .env has no entry", () => {
   const { home, localDir } = makeHome({
     ".env": "OTHER_API_KEY=whatever\n",
@@ -98,6 +130,7 @@ test("empty values do not count as configured", () => {
   });
   const store = loadKeyStore(home, localDir);
   assert.equal(resolveKey(store, "openrouter"), undefined);
+  assert.deepEqual(resolveKeys(store, "openrouter"), []);
 });
 
 test("loadKeyStore tolerates missing or unreadable files", () => {

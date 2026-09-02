@@ -13,7 +13,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { rmSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { GATEWAY_TOKEN, logTail, parseSse, postResponses, startGateway, sleep, type GatewayHandle } from "./harness.js";
 import { makeValidConfig } from "../helpers.js";
 import { startMockUpstream } from "../mock-upstream.js";
@@ -229,3 +229,56 @@ test("旅程 10：额度落盘（周期 flush + 优雅退出强制 flush），�
     assert.equal(row.estimated, 0, "real usage must not be flagged as estimated");
   }
 });
+
+test("旅程 11：SIGHUP 动态热加载配置，新增别名立即生效且无请求中断", async (t) => {
+  const mock = await startMockUpstream({
+    status: 200,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: "hot-reload-ok" }),
+  });
+  t.after(() => mock.close());
+
+  const initialConfig = singleCandidateConfig(mock.url);
+  const gateway = await startGateway(initialConfig);
+  t.after(async () => {
+    await gateway.stop();
+  });
+
+  // Alias `free-new` is not configured initially -> 404
+  const resBefore = await postResponses(gateway.url, { model: "free-new", input: "hi" });
+  assert.equal(resBefore.status, 404, logTail(gateway));
+
+  // Write updated config with `free-new` alias
+  const updatedConfig = {
+    ...initialConfig,
+    models: {
+      ...initialConfig.models,
+      "free-new": {
+        candidates: [
+          {
+            provider: "openrouter",
+            providerModelId: C1,
+            contextWindow: 262144,
+            maxOutputTokens: 32768,
+            supportsTools: true,
+            supportsReasoning: true,
+            limits: { dailyRequests: 50, rpm: 20, maxConcurrent: 2 },
+            tags: ["free"],
+          },
+        ],
+      },
+    },
+  };
+  writeFileSync(gateway.configPath, JSON.stringify(updatedConfig));
+
+  // Send SIGHUP to the gateway process
+  gateway.signal("SIGHUP");
+  await sleep(300);
+
+  // Alias `free-new` is now immediately routable -> 200
+  const resAfter = await postResponses(gateway.url, { model: "free-new", input: "hi" });
+  assert.equal(resAfter.status, 200, logTail(gateway));
+  const data = (await resAfter.json()) as { id: string };
+  assert.equal(data.id, "hot-reload-ok");
+});
+

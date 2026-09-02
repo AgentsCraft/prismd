@@ -52,6 +52,14 @@
       "auth": {
         "type": "api_key"
       }
+    },
+    "ollama": {
+      "type": "chat",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeyField": "ollama",
+      "auth": {
+        "type": "none"
+      }
     }
   },
   "models": {
@@ -209,6 +217,28 @@
       "tags": ["free", "github", "llama"],
       "source": "https://github.com/marketplace/models",
       "checkedAt": "2026-09-01"
+    },
+    "qwen2.5-coder:7b": {
+      "provider": "ollama",
+      "contextWindow": 32768,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": null, "rpm": 0, "maxConcurrent": 4 },
+      "tags": ["local", "code", "offline"],
+      "source": "http://127.0.0.1:11434",
+      "checkedAt": "2026-09-02"
+    },
+    "deepseek-r1:8b": {
+      "provider": "ollama",
+      "contextWindow": 32768,
+      "maxOutputTokens": 8192,
+      "supportsTools": false,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": null, "rpm": 0, "maxConcurrent": 2 },
+      "tags": ["local", "reasoning", "offline"],
+      "source": "http://127.0.0.1:11434",
+      "checkedAt": "2026-09-02"
     }
   },
   "aliases": {
@@ -221,7 +251,8 @@
         "meta/llama-3.3-70b-instruct",
         "gpt-4o-mini",
         "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free"
+        "poolside/laguna-s-2.1:free",
+        "qwen2.5-coder:7b"
       ]
     },
     "free-fast": {
@@ -230,7 +261,8 @@
         "gemini-2.0-flash-lite",
         "llama3.1-8b",
         "llama-3.1-8b-instant",
-        "poolside/laguna-xs-2.1:free"
+        "poolside/laguna-xs-2.1:free",
+        "qwen2.5-coder:7b"
       ]
     },
     "free-code": {
@@ -240,7 +272,8 @@
         "cohere/north-mini-code:free",
         "llama-3.3-70b",
         "llama-3.3-70b-versatile",
-        "poolside/laguna-s-2.1:free"
+        "poolside/laguna-s-2.1:free",
+        "qwen2.5-coder:7b"
       ]
     }
   }

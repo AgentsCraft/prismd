@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getConfig, loadConfig, resetConfigForTests } from "../src/config.js";
+import { getConfig, loadConfig, reloadConfig, resetConfigForTests } from "../src/config.js";
 import type { PrismdConfig } from "../src/types/config.js";
 import { makeValidConfig } from "./helpers.js";
 
@@ -73,6 +73,29 @@ test("getConfig caches and resetConfigForTests forces a reload", () => {
     resetConfigForTests();
     const reloaded = getConfig() as PrismdConfig;
     assert.equal(reloaded.server.port, 9999);
+  } finally {
+    resetConfigForTests();
+    if (previous === undefined) {
+      delete process.env.PRISMD_CONFIG_PATH;
+    } else {
+      process.env.PRISMD_CONFIG_PATH = previous;
+    }
+  }
+});
+
+test("reloadConfig dynamically updates config in-place without resetConfigForTests", () => {
+  const path = writeConfig(makeValidConfig({ server: { port: 8787 } }));
+  const previous = process.env.PRISMD_CONFIG_PATH;
+  process.env.PRISMD_CONFIG_PATH = path;
+  try {
+    resetConfigForTests();
+    assert.equal(getConfig().server.port, 8787);
+
+    // Modify file and call reloadConfig
+    writeFileSync(path, JSON.stringify(makeValidConfig({ server: { port: 9000 } })));
+    const updated = reloadConfig();
+    assert.equal(updated.server.port, 9000);
+    assert.equal(getConfig().server.port, 9000);
   } finally {
     resetConfigForTests();
     if (previous === undefined) {
