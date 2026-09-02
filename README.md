@@ -83,14 +83,21 @@ prismd
 # Or from source: npm run generate:config && npm run dev
 ```
 
+> 📖 **Provider Setup Guides**: See [Model Provider Integration Guides](docs/providers/README.md) for detailed key generation and model lists for [OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), and [Ollama](docs/providers/ollama.md).
+
 ### Step 3: Configure Your Agent
 
-| Client | Quick Setup |
-|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` (See [Codex Setup](examples/codex/README.md)) |
-| **Cursor** | Settings → Models → Enable OpenAI API Key (enter `my-local-secret`)<br>Check **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Add model: `free-auto` |
-| **OpenCode** | Set `baseUrl: "http://127.0.0.1:8787/v1"` in `~/.config/opencode/config.json` (See [OpenCode Setup](examples/opencode/README.md)) |
+| Client | Quick Setup | Guide |
+|---|---|---|
+| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [Guide](examples/claude-code/README.md) |
+| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [Guide](examples/codex/README.md) |
+| **Cursor** | Settings → Models → Enable OpenAI API Key (`my-local-secret`)<br>Override OpenAI Base URL: `http://127.0.0.1:8787/v1`<br>Add model: `free-auto` | [Guide](examples/cursor/README.md) |
+| **OpenCode** | Set `baseUrl: "http://127.0.0.1:8787/v1"` in `~/.config/opencode/config.json` | [Guide](examples/opencode/README.md) |
+| **DeepSeek Harness (dsh)** | Set `base_url = "http://127.0.0.1:8787/v1"` in `~/.dsh/config.toml`<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [Guide](examples/dsh/README.md) |
+| **Pi Agent** | Set `endpoint: "http://127.0.0.1:8787/v1"` in `~/.pi/config.json`<br>`pi run` | [Guide](examples/pi/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [Guide](examples/aider/README.md) |
+
+> 📖 **Full documentation**: See [Client Integration Guide](docs/clients/README.md) for detailed protocol breakdowns and advanced setups.
 
 ---
 
