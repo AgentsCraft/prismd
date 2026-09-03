@@ -3,7 +3,7 @@ import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
-import { routeAlias, shouldFailover } from "../core/router.js";
+import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callRawHttpUpstream } from "../egress/raw.js";
 import {
@@ -78,11 +78,22 @@ export async function chatCompletions(c: Context): Promise<Response> {
   const keyPool = getKeyPool();
   const inputChars = JSON.stringify(body).length;
 
+  const rawTags = c.req.header("x-prismd-tags") ?? c.req.query("tags");
+  const tags = parseTagsHeader(rawTags);
+  const requireTools = Array.isArray(body.tools) && body.tools.length > 0;
+  const requireReasoning =
+    body.reasoning_effort !== undefined ||
+    body.thinking !== undefined ||
+    c.req.header("x-prismd-require-reasoning") === "true";
+
   const routed = routeAlias(config.models, body.model, {
     inputChars,
     dailyRequests: (provider, model) => quota.getDailyRequests(provider, model),
     isHealthy: (provider, model) => health.isHealthy(provider, model),
     quotaSoftLimitRatio: config.policies.quotaSoftLimitRatio,
+    requireTools,
+    requireReasoning,
+    tags,
   });
   if (!routed) {
     return c.json(gatewayError(404, "model_not_found", `model alias "${body.model}" is not defined`), 404);
@@ -107,6 +118,24 @@ export async function chatCompletions(c: Context): Promise<Response> {
     );
   }
   if (!selection.selected) {
+    const onlyCapabilityFiltered =
+      selection.filtered.length > 0 &&
+      selection.filtered.every(
+        (f) => f.reason === "tools_unsupported" || f.reason === "reasoning_unsupported",
+      );
+
+    if (onlyCapabilityFiltered) {
+      return c.json(
+        gatewayError(
+          400,
+          "capability_unsupported",
+          `all candidates for alias "${body.model}" do not support the required capabilities (tools/reasoning)`,
+          { candidates: selection.filtered },
+        ),
+        400,
+      );
+    }
+
     return c.json(
       gatewayError(
         429,

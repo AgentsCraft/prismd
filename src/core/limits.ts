@@ -15,7 +15,12 @@
 import type { Candidate } from "../types/config.js";
 import { estimateTokens } from "./quota.js";
 
-export type FilterReason = "quota_exhausted" | "context_window_exceeded" | "unhealthy";
+export type FilterReason =
+  | "quota_exhausted"
+  | "context_window_exceeded"
+  | "unhealthy"
+  | "tools_unsupported"
+  | "reasoning_unsupported";
 
 export interface FilteredCandidate {
   provider: string;
@@ -32,6 +37,12 @@ export interface SelectionContext {
   /** Health gate for a (provider, model); false = excluded. */
   isHealthy: (provider: string, model: string) => boolean;
   quotaSoftLimitRatio: number;
+  /** Hard filter: requires candidate to support tools / function calling. */
+  requireTools?: boolean;
+  /** Hard filter: requires candidate to support reasoning / thinking. */
+  requireReasoning?: boolean;
+  /** Preferred tags (e.g. ['coding', 'fast']). Candidates matching more tags are prioritized. */
+  tags?: string[];
 }
 
 export interface SelectionResult {
@@ -39,7 +50,7 @@ export interface SelectionResult {
   selected?: Candidate;
   /** All eligible candidates in attempt order (survivors + demoted tail). */
   ordered: Candidate[];
-  /** Candidates excluded for quota/health reasons (metadata for 429). */
+  /** Candidates excluded for quota/health/capability reasons. */
   filtered: FilteredCandidate[];
   /** True when every candidate's window is smaller than the input estimate. */
   allWindowExceeded: boolean;
@@ -49,6 +60,19 @@ export interface SelectionResult {
 
 export function estimateInputTokens(inputChars: number): number {
   return estimateTokens(inputChars);
+}
+
+function computeTagScore(candidate: Candidate, requestedTags?: string[]): number {
+  if (!requestedTags || requestedTags.length === 0) return 0;
+  if (!candidate.tags || candidate.tags.length === 0) return 0;
+  const candidateTagSet = new Set(candidate.tags.map((t) => t.toLowerCase()));
+  let score = 0;
+  for (const tag of requestedTags) {
+    if (candidateTagSet.has(tag.toLowerCase())) {
+      score += 1;
+    }
+  }
+  return score;
 }
 
 /**
@@ -62,12 +86,14 @@ export function selectCandidate(
   const windowExceeded: SelectionResult["windowExceeded"] = [];
   const filtered: FilteredCandidate[] = [];
 
-  const survivors: Candidate[] = [];
-  const demoted: Candidate[] = [];
+  const rawSurvivors: { candidate: Candidate; index: number; tagScore: number }[] = [];
+  const rawDemoted: { candidate: Candidate; index: number; tagScore: number }[] = [];
   const softThreshold = ctx.quotaSoftLimitRatio;
   const inputTokens = estimateInputTokens(ctx.inputChars);
 
-  for (const candidate of candidates) {
+  for (let i = 0; i < candidates.length; i += 1) {
+    const candidate = candidates[i];
+
     if (inputTokens > candidate.contextWindow) {
       windowExceeded.push({
         provider: candidate.provider,
@@ -87,6 +113,26 @@ export function selectCandidate(
       continue;
     }
 
+    if (ctx.requireTools && !candidate.supportsTools) {
+      filtered.push({
+        provider: candidate.provider,
+        model: candidate.providerModelId,
+        reason: "tools_unsupported",
+        contextWindow: candidate.contextWindow,
+      });
+      continue;
+    }
+
+    if (ctx.requireReasoning && !candidate.supportsReasoning) {
+      filtered.push({
+        provider: candidate.provider,
+        model: candidate.providerModelId,
+        reason: "reasoning_unsupported",
+        contextWindow: candidate.contextWindow,
+      });
+      continue;
+    }
+
     const daily = candidate.limits.dailyRequests;
     const used = ctx.dailyRequests(candidate.provider, candidate.providerModelId);
     if (daily !== null && used >= daily) {
@@ -99,13 +145,34 @@ export function selectCandidate(
       continue;
     }
 
+    const tagScore = computeTagScore(candidate, ctx.tags);
+
     // Soft demotion: quota nearly exhausted -> try other candidates first.
     if (daily !== null && softThreshold > 0 && used >= daily * softThreshold) {
-      demoted.push(candidate);
+      rawDemoted.push({ candidate, index: i, tagScore });
     } else {
-      survivors.push(candidate);
+      rawSurvivors.push({ candidate, index: i, tagScore });
     }
   }
+
+  // Stable sort by tagScore descending if tags are specified
+  const sortByScore = (
+    a: { candidate: Candidate; index: number; tagScore: number },
+    b: { candidate: Candidate; index: number; tagScore: number },
+  ) => {
+    if (b.tagScore !== a.tagScore) {
+      return b.tagScore - a.tagScore;
+    }
+    return a.index - b.index;
+  };
+
+  if (ctx.tags && ctx.tags.length > 0) {
+    rawSurvivors.sort(sortByScore);
+    rawDemoted.sort(sortByScore);
+  }
+
+  const survivors = rawSurvivors.map((item) => item.candidate);
+  const demoted = rawDemoted.map((item) => item.candidate);
 
   const allWindowExceeded = windowExceeded.length === candidates.length && candidates.length > 0;
   const ordered = [...survivors, ...demoted];

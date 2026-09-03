@@ -146,3 +146,71 @@ test("works with the makeValidConfig fixture candidates", () => {
   const result = selectCandidate(candidates, ctx(40, { daily: {}, healthy: {} }));
   assert.equal(result.selected?.providerModelId, "poolside/laguna-s-2.1:free");
 });
+
+test("hard-excludes candidates that do not support tools when requireTools is true", () => {
+  const candidates = [
+    candidate({ provider: "a", providerModelId: "no-tools", supportsTools: false }),
+    candidate({ provider: "b", providerModelId: "has-tools", supportsTools: true }),
+  ];
+  const context = {
+    ...ctx(100, { daily: {}, healthy: {} }),
+    requireTools: true,
+  };
+  const result = selectCandidate(candidates, context);
+  assert.equal(result.selected?.providerModelId, "has-tools");
+  assert.deepEqual(result.filtered, [
+    { provider: "a", model: "no-tools", reason: "tools_unsupported", contextWindow: 10000 },
+  ]);
+});
+
+test("hard-excludes candidates that do not support reasoning when requireReasoning is true", () => {
+  const candidates = [
+    candidate({ provider: "a", providerModelId: "no-reasoning", supportsReasoning: false }),
+    candidate({ provider: "b", providerModelId: "has-reasoning", supportsReasoning: true }),
+  ];
+  const context = {
+    ...ctx(100, { daily: {}, healthy: {} }),
+    requireReasoning: true,
+  };
+  const result = selectCandidate(candidates, context);
+  assert.equal(result.selected?.providerModelId, "has-reasoning");
+  assert.deepEqual(result.filtered, [
+    { provider: "a", model: "no-reasoning", reason: "reasoning_unsupported", contextWindow: 10000 },
+  ]);
+});
+
+test("prioritizes candidates matching requested tags", () => {
+  const candidates = [
+    candidate({ provider: "a", providerModelId: "generic", tags: ["general"] }),
+    candidate({ provider: "b", providerModelId: "fast-coder", tags: ["coding", "fast"] }),
+    candidate({ provider: "c", providerModelId: "slow-coder", tags: ["coding"] }),
+  ];
+  const context = {
+    ...ctx(100, { daily: {}, healthy: {} }),
+    tags: ["coding", "fast"],
+  };
+  const result = selectCandidate(candidates, context);
+  assert.equal(result.selected?.providerModelId, "fast-coder");
+  assert.deepEqual(
+    result.ordered.map((c) => c.providerModelId),
+    ["fast-coder", "slow-coder", "generic"],
+  );
+});
+
+test("preserves stable order for candidates with identical tag match scores", () => {
+  const candidates = [
+    candidate({ provider: "a", providerModelId: "m1", tags: ["coding"] }),
+    candidate({ provider: "b", providerModelId: "m2", tags: ["coding"] }),
+    candidate({ provider: "c", providerModelId: "m3", tags: ["other"] }),
+  ];
+  const context = {
+    ...ctx(100, { daily: {}, healthy: {} }),
+    tags: ["coding"],
+  };
+  const result = selectCandidate(candidates, context);
+  assert.deepEqual(
+    result.ordered.map((c) => c.providerModelId),
+    ["m1", "m2", "m3"],
+  );
+});
+

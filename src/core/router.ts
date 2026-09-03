@@ -112,3 +112,13 @@ export function shouldFailover(status: number, failoverOn: string[]): boolean {
   }
   return false;
 }
+
+/**
+ * Parses tags from header or query string (e.g. "coding,fast" or ["coding", "fast"]).
+ */
+export function parseTagsHeader(raw?: string | string[] | null): string[] | undefined {
+  if (!raw) return undefined;
+  const items = Array.isArray(raw) ? raw : raw.split(",");
+  const cleaned = items.map((s) => s.trim().toLowerCase()).filter((s) => s.length > 0);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
