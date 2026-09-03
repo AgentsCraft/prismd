@@ -2,8 +2,9 @@ import type { Context } from "hono";
 import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
-import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
-import { routeAlias, shouldFailover } from "../core/router.js";
+import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
+import { statusBroadcaster } from "../core/status-events.js";
+import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callRawHttpUpstream } from "../egress/raw.js";
 import {
@@ -78,11 +79,25 @@ export async function chatCompletions(c: Context): Promise<Response> {
   const keyPool = getKeyPool();
   const inputChars = JSON.stringify(body).length;
 
+  const rawTags = c.req.header("x-prismd-tags") ?? c.req.query("tags");
+  const tags = parseTagsHeader(rawTags);
+  const requireTools = Array.isArray(body.tools) && body.tools.length > 0;
+  const requireReasoning =
+    body.reasoning_effort !== undefined ||
+    body.thinking !== undefined ||
+    c.req.header("x-prismd-require-reasoning") === "true";
+
+  const rateLimiter = getRateLimiter();
+
   const routed = routeAlias(config.models, body.model, {
     inputChars,
     dailyRequests: (provider, model) => quota.getDailyRequests(provider, model),
     isHealthy: (provider, model) => health.isHealthy(provider, model),
     quotaSoftLimitRatio: config.policies.quotaSoftLimitRatio,
+    requireTools,
+    requireReasoning,
+    tags,
+    checkRateLimit: (cand) => rateLimiter.check(cand),
   });
   if (!routed) {
     return c.json(gatewayError(404, "model_not_found", `model alias "${body.model}" is not defined`), 404);
@@ -107,6 +122,42 @@ export async function chatCompletions(c: Context): Promise<Response> {
     );
   }
   if (!selection.selected) {
+    const onlyCapabilityFiltered =
+      selection.filtered.length > 0 &&
+      selection.filtered.every(
+        (f) => f.reason === "tools_unsupported" || f.reason === "reasoning_unsupported",
+      );
+
+    if (onlyCapabilityFiltered) {
+      return c.json(
+        gatewayError(
+          400,
+          "capability_unsupported",
+          `all candidates for alias "${body.model}" do not support the required capabilities (tools/reasoning)`,
+          { candidates: selection.filtered },
+        ),
+        400,
+      );
+    }
+
+    const onlyRateLimitFiltered =
+      selection.filtered.length > 0 &&
+      selection.filtered.every(
+        (f) => f.reason === "concurrency_exceeded" || f.reason === "rpm_exceeded",
+      );
+
+    if (onlyRateLimitFiltered) {
+      return c.json(
+        gatewayError(
+          429,
+          "rate_limit_exceeded",
+          `all candidates for alias "${body.model}" exceeded concurrency or RPM limits`,
+          { candidates: selection.filtered },
+        ),
+        429,
+      );
+    }
+
     return c.json(
       gatewayError(
         429,
@@ -134,8 +185,23 @@ export async function chatCompletions(c: Context): Promise<Response> {
 
   for (let i = 0; i < attempts; i += 1) {
     const candidate = selection.ordered[i];
+    if (!rateLimiter.acquire(candidate)) {
+      failovers += 1;
+      attemptStatuses.push({ candidate, status: 429 });
+      continue;
+    }
+    let handedOff = false;
+    statusBroadcaster.notifyRequestActive({
+      requestId,
+      alias: body.model,
+      provider: candidate.provider,
+      model: candidate.providerModelId,
+      failovers,
+    });
+
     const provider = config.providers[candidate.provider];
     if (!provider) {
+      rateLimiter.release(candidate);
       return c.json(
         gatewayError(
           500,
@@ -146,6 +212,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
       );
     }
     if (!keyPool.hasKeys(candidate.provider)) {
+      rateLimiter.release(candidate);
       return c.json(
         gatewayError(
           500,
@@ -200,7 +267,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
           if (provider.auth?.type !== "none" && apiKey && apiKey !== "none") {
             headers.authorization = `Bearer ${apiKey}`;
           }
-          const adaptedBody: Record<string, any> = {
+          const adaptedBody: Record<string, unknown> = {
             ...body,
             model: candidate.providerModelId,
           };
@@ -289,6 +356,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
 
       if (result.kind === "stream" || result.kind === "json") {
         keyPool.recordSuccess(candidate.provider, candidate.providerModelId, apiKey);
+        handedOff = true;
         return relaySuccess({
           requestId,
           startedAt,
@@ -303,6 +371,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
       }
 
       if (!shouldFailover(result.status, config.policies.failoverOn)) {
+        handedOff = true;
         return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
       }
 
@@ -313,6 +382,9 @@ export async function chatCompletions(c: Context): Promise<Response> {
       void result.response.body?.cancel();
       attemptStatuses.push({ candidate, status: result.status });
       failovers += 1;
+    }
+    if (!handedOff) {
+      rateLimiter.release(candidate);
     }
   }
 
@@ -342,6 +414,15 @@ export async function chatCompletions(c: Context): Promise<Response> {
       failover: failovers,
       durationMs: Date.now() - startedAt,
       usage: { inputChars, outputChars: 0 },
+    });
+    statusBroadcaster.notifyRequestFailed({
+      requestId,
+      alias: body.model,
+      provider: finalCandidate.provider,
+      model: finalCandidate.providerModelId,
+      status: 502,
+      durationMs: Date.now() - startedAt,
+      failovers,
     });
   }
   exporter.onRequestEnd({
@@ -394,6 +475,12 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
   for (const name of RELAY_HEADERS) {
     const value = result.response.headers.get(name);
     if (value !== null) headers[name] = value;
+  }
+  headers["x-prismd-provider"] = ctx.candidate.provider;
+  headers["x-prismd-model"] = ctx.candidate.providerModelId;
+  headers["x-prismd-alias"] = ctx.alias;
+  if (ctx.failovers > 0) {
+    headers["x-prismd-failovers"] = String(ctx.failovers);
   }
 
   if (result.kind === "stream") {
@@ -454,6 +541,12 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
     const value = result.response.headers.get(name);
     if (value !== null) headers[name] = value;
   }
+  headers["x-prismd-provider"] = ctx.candidate.provider;
+  headers["x-prismd-model"] = ctx.candidate.providerModelId;
+  headers["x-prismd-alias"] = ctx.alias;
+  if (ctx.failovers > 0) {
+    headers["x-prismd-failovers"] = String(ctx.failovers);
+  }
   const response = new Response(result.response.body, {
     status: result.status,
     headers,
@@ -463,10 +556,20 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
     outputChars: 0,
     aborted: false,
   });
+  statusBroadcaster.notifyRequestFailed({
+    requestId: ctx.requestId,
+    alias: ctx.alias,
+    provider: ctx.candidate.provider,
+    model: ctx.candidate.providerModelId,
+    status: result.status,
+    durationMs: Date.now() - ctx.startedAt,
+    failovers: ctx.failovers,
+  });
   return response;
 }
 
 function finalize(ctx: RelayContext & { status: number }, accounting: StreamAccounting): void {
+  getRateLimiter().release(ctx.candidate);
   const usage = {
     inputTokens: accounting.realUsage?.inputTokens,
     outputTokens: accounting.realUsage?.outputTokens,
@@ -483,6 +586,15 @@ function finalize(ctx: RelayContext & { status: number }, accounting: StreamAcco
     failover: ctx.failovers,
     durationMs: Date.now() - ctx.startedAt,
     usage,
+  });
+  statusBroadcaster.notifyRequestCompleted({
+    requestId: ctx.requestId,
+    alias: ctx.alias,
+    provider: ctx.candidate.provider,
+    model: ctx.candidate.providerModelId,
+    status: ctx.status,
+    durationMs: Date.now() - ctx.startedAt,
+    failovers: ctx.failovers,
   });
   exporter.onRequestEnd({
     requestId: ctx.requestId,

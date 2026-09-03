@@ -44,8 +44,10 @@ prismd が開発時間やクォータの節約に役立ちましたら、ぜひ�
 ### ステップ 1: インストールと起動
 
 ```bash
-# 方法 A: npm グローバルインストール（推奨）
-npm install -g @prismd/prismd
+# 方法 A: npm グローバルインストール
+npm install -g @prismd/prismd              # 安定版（Stable）
+# または RC プレビュー版（最新 develop に追従）：
+npm install -g @agentscraft/prismd         # RC 版
 
 # 方法 B: ソースコードから実行
 git clone https://github.com/AgentsCraft/prismd.git

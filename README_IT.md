@@ -44,8 +44,10 @@ Se prismd ti fa risparmiare tempo o costi di API, puoi offrire un caffè all'aut
 ### Passaggio 1: Installazione e Avvio
 
 ```bash
-# Opzione A: Installazione globale npm (Consigliato)
-npm install -g @prismd/prismd
+# Opzione A: Installazione globale npm
+npm install -g @prismd/prismd              # Versione stabile
+# Oppure canale di anteprima RC (allineato a develop):
+npm install -g @agentscraft/prismd         # Canale RC
 
 # Opzione B: Esecuzione dal codice sorgente
 git clone https://github.com/AgentsCraft/prismd.git

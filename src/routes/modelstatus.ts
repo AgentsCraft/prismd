@@ -3,7 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { getConfig } from "../config.js";
 import { selectCandidate, type SelectionContext } from "../core/limits.js";
 import { getHealth, getQuota } from "../core/runtime.js";
-import { statusBroadcaster, type CandidateChangedEvent } from "../core/status-events.js";
+import { statusBroadcaster, type CandidateChangedEvent, type RequestActivityEvent } from "../core/status-events.js";
 import type { HealthManager } from "../core/health.js";
 import type { QuotaManager } from "../core/quota.js";
 import type { PrismdConfig } from "../types/config.js";
@@ -46,6 +46,8 @@ export interface ModelStatusResponse {
   timestamp: string;
   uptime: number;
   aliases: Record<string, AliasStatusInfo>;
+  latestActivity?: RequestActivityEvent | null;
+  inFlightCount?: number;
 }
 
 export function computeCandidateStatus(
@@ -156,6 +158,8 @@ export function buildModelStatus(
     timestamp: new Date(now).toISOString(),
     uptime: Math.floor(process.uptime()),
     aliases,
+    latestActivity: statusBroadcaster.getLatestActivity(),
+    inFlightCount: statusBroadcaster.getInFlightCount(),
   };
 }
 
@@ -204,7 +208,20 @@ modelstatusRoute.get("/v1/modelstatus/stream", async (c) => {
       }
     };
 
+    const activityListener = async (event: RequestActivityEvent) => {
+      if (done || stream.aborted || signal?.aborted) return;
+      try {
+        await stream.writeSSE({
+          event: "request_activity",
+          data: JSON.stringify(event),
+        });
+      } catch {
+        done = true;
+      }
+    };
+
     statusBroadcaster.on("candidate_changed", listener);
+    statusBroadcaster.on("request_activity", activityListener);
 
     // 3. Heartbeat every 30s
     const timer = setInterval(async () => {
@@ -242,5 +259,6 @@ modelstatusRoute.get("/v1/modelstatus/stream", async (c) => {
 
     clearInterval(timer);
     statusBroadcaster.off("candidate_changed", listener);
+    statusBroadcaster.off("request_activity", activityListener);
   });
 });

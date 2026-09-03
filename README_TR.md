@@ -44,8 +44,10 @@ prismd size zaman veya kota tasarrufu sağladıysa, geliştiriciye bir kahve ıs
 ### 1. Adım: Kurulum ve Başlatma
 
 ```bash
-# Seçenek A: Global npm kurulumu (Önerilen)
-npm install -g @prismd/prismd
+# Seçenek A: Global npm kurulumu
+npm install -g @prismd/prismd              # Kararlı sürüm (Stable)
+# Veya RC önizleme kanalını kurun (en güncel develop ile uyumlu):
+npm install -g @agentscraft/prismd         # RC kanalı
 
 # Seçenek B: Kaynak koddan çalıştırma
 git clone https://github.com/AgentsCraft/prismd.git

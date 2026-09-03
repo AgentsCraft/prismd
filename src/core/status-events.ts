@@ -11,13 +11,110 @@ export interface CandidateChangedEvent {
   at: string;
 }
 
+export interface RequestActivityEvent {
+  type?: "request_activity";
+  requestId: string;
+  alias: string;
+  provider: string;
+  model: string;
+  status: "in_flight" | "completed" | "failed";
+  statusCode?: number;
+  durationMs?: number;
+  failovers: number;
+  at: string;
+}
+
 export class StatusBroadcaster extends EventEmitter {
   private lastHealthStates = new Map<string, string>();
   private lastQuotaRatios = new Map<string, number>();
+  private latestActivity: RequestActivityEvent | null = null;
+  private inFlightCount = 0;
 
   constructor() {
     super();
     this.setMaxListeners(0);
+  }
+
+  notifyRequestActive(info: {
+    requestId: string;
+    alias: string;
+    provider: string;
+    model: string;
+    failovers: number;
+  }): void {
+    this.inFlightCount += 1;
+    const event: RequestActivityEvent = {
+      type: "request_activity",
+      requestId: info.requestId,
+      alias: info.alias,
+      provider: info.provider,
+      model: info.model,
+      status: "in_flight",
+      failovers: info.failovers,
+      at: new Date().toISOString(),
+    };
+    this.latestActivity = event;
+    this.emit("request_activity", event);
+  }
+
+  notifyRequestCompleted(info: {
+    requestId: string;
+    alias: string;
+    provider: string;
+    model: string;
+    status: number;
+    durationMs: number;
+    failovers: number;
+  }): void {
+    this.inFlightCount = Math.max(0, this.inFlightCount - 1);
+    const event: RequestActivityEvent = {
+      type: "request_activity",
+      requestId: info.requestId,
+      alias: info.alias,
+      provider: info.provider,
+      model: info.model,
+      status: info.status >= 200 && info.status < 400 ? "completed" : "failed",
+      statusCode: info.status,
+      durationMs: info.durationMs,
+      failovers: info.failovers,
+      at: new Date().toISOString(),
+    };
+    this.latestActivity = event;
+    this.emit("request_activity", event);
+  }
+
+  notifyRequestFailed(info: {
+    requestId: string;
+    alias: string;
+    provider: string;
+    model: string;
+    status: number;
+    durationMs: number;
+    failovers: number;
+  }): void {
+    this.inFlightCount = Math.max(0, this.inFlightCount - 1);
+    const event: RequestActivityEvent = {
+      type: "request_activity",
+      requestId: info.requestId,
+      alias: info.alias,
+      provider: info.provider,
+      model: info.model,
+      status: "failed",
+      statusCode: info.status,
+      durationMs: info.durationMs,
+      failovers: info.failovers,
+      at: new Date().toISOString(),
+    };
+    this.latestActivity = event;
+    this.emit("request_activity", event);
+  }
+
+  getLatestActivity(): RequestActivityEvent | null {
+    return this.latestActivity;
+  }
+
+  getInFlightCount(): number {
+    return this.inFlightCount;
   }
 
   notifyHealthChange(provider: string, model: string, health: CandidateHealth): void {
@@ -79,6 +176,8 @@ export class StatusBroadcaster extends EventEmitter {
   reset(): void {
     this.lastHealthStates.clear();
     this.lastQuotaRatios.clear();
+    this.latestActivity = null;
+    this.inFlightCount = 0;
     this.removeAllListeners();
   }
 }
