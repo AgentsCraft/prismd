@@ -122,6 +122,9 @@ test("POST /v1/chat/completions accepts valid request and returns Chat response"
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "application/json");
   assert.ok(res.headers.get("x-request-id"));
+  assert.equal(res.headers.get("x-prismd-provider"), "cerebras");
+  assert.equal(res.headers.get("x-prismd-model"), "llama-3.3-70b");
+  assert.equal(res.headers.get("x-prismd-alias"), "free-auto");
 
   const body = (await res.json()) as { choices: Array<{ message: { content: string } }> };
   assert.equal(body.choices[0].message.content, "hello client");
@@ -148,6 +151,9 @@ test("POST /v1/messages accepts Anthropic format with x-api-key and returns Anth
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "application/json");
   assert.ok(res.headers.get("x-request-id"));
+  assert.equal(res.headers.get("x-prismd-provider"), "cerebras");
+  assert.equal(res.headers.get("x-prismd-model"), "llama-3.3-70b");
+  assert.equal(res.headers.get("x-prismd-alias"), "claude-3-5-sonnet-20241022");
 
   const body = (await res.json()) as {
     id: string;

@@ -311,25 +311,112 @@ export function renderUiHtml(): string {
     .event-arrow { color: var(--text-muted); }
     .event-reason { color: var(--yellow); }
 
-    .btn-reset {
-      background: transparent;
+    .active-model-banner {
+      background: var(--card-bg);
       border: 1px solid var(--card-border);
-      color: var(--text-muted);
-      padding: 3px 8px;
-      border-radius: 4px;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .active-model-banner.in-flight {
+      border-color: var(--active-border);
+      box-shadow: 0 0 8px rgba(56, 139, 253, 0.2);
+    }
+    .active-banner-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       font-size: 0.75rem;
-      cursor: pointer;
-      line-height: 1.2;
-      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      font-weight: 600;
     }
-    .btn-reset:hover {
+    .active-banner-content {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .active-provider-pill {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #21262d;
       color: var(--heading);
-      border-color: #8b949e;
-      background: var(--badge-bg);
+      border: 1px solid var(--card-border);
+      letter-spacing: 0.5px;
     }
-    .btn-reset:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    .active-arrow {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    .active-model-name {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--heading);
+      word-break: break-all;
+    }
+    .active-alias-badge {
+      font-size: 0.75rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--badge-bg);
+      color: var(--text-muted);
+      border: 1px solid var(--card-border);
+    }
+    .active-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .active-status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    .tag-in-flight {
+      background: rgba(56, 139, 253, 0.15);
+      color: var(--accent);
+      border: 1px solid var(--active-border);
+    }
+    .tag-completed {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--green);
+    }
+    .tag-idle {
+      background: rgba(139, 148, 158, 0.15);
+      color: var(--text-muted);
+    }
+    .tag-failed {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--red);
+    }
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.7; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.7; }
     }
   </style>
 </head>
@@ -356,6 +443,8 @@ export function renderUiHtml(): string {
       </select>
     </div>
   </header>
+
+  <section id="active-model-card" class="active-model-banner"></section>
 
   <main id="aliases-container"></main>
 
@@ -389,7 +478,16 @@ export function renderUiHtml(): string {
         noEvents: 'No state changes recorded yet.',
         resetUsage: 'Reset usage',
         resetConfirm: 'Reset all usage counters and request logs?',
-        resetting: 'Resetting...'
+        resetting: 'Resetting...',
+        currentModel: 'Current Model',
+        inFlight: 'In Flight',
+        idle: 'Ready / Idle',
+        completed: 'Completed',
+        failed: 'Failed',
+        activeRequests: 'Active requests',
+        noRequestsYet: 'Waiting for incoming requests...',
+        latestRoute: 'Latest Route',
+        failoverCount: 'failovers'
       },
       'zh-CN': {
         uptime: '运行时间',
@@ -412,7 +510,16 @@ export function renderUiHtml(): string {
         noEvents: '暂无状态变更记录。',
         resetUsage: '重置用量',
         resetConfirm: '确定要重置所有用量计数器和请求日志吗？',
-        resetting: '重置中...'
+        resetting: '重置中...',
+        currentModel: '当前使用模型',
+        inFlight: '处理中',
+        idle: '就绪 (待命)',
+        completed: '已完成',
+        failed: '请求失败',
+        activeRequests: '活跃请求',
+        noRequestsYet: '等待请求接入中...',
+        latestRoute: '最新路由',
+        failoverCount: '故障转移'
       },
       ja: {
         uptime: '稼働時間',
@@ -435,7 +542,16 @@ export function renderUiHtml(): string {
         noEvents: '記録された状態変更はまだありません。',
         resetUsage: '使用量をリセット',
         resetConfirm: 'すべての使用量カウンターとリクエストログをリセットしますか？',
-        resetting: 'リセット中...'
+        resetting: 'リセット中...',
+        currentModel: '現在の使用モデル',
+        inFlight: '処理中',
+        idle: '待機中',
+        completed: '完了',
+        failed: 'リクエスト失敗',
+        activeRequests: 'アクティブなリクエスト',
+        noRequestsYet: 'リクエスト待機中...',
+        latestRoute: '最新のルーティング',
+        failoverCount: 'フェイルオーバー'
       },
       ko: {
         uptime: '가동 시간',
@@ -458,7 +574,16 @@ export function renderUiHtml(): string {
         noEvents: '기록된 상태 변경이 아직 없습니다.',
         resetUsage: '사용량 초기화',
         resetConfirm: '모든 사용량 카운터 및 요청 로그를 초기화하시겠습니까?',
-        resetting: '초기화 중...'
+        resetting: '초기화 중...',
+        currentModel: '현재 사용 모델',
+        inFlight: '처리 중',
+        idle: '대기 중',
+        completed: '완료',
+        failed: '요청 실패',
+        activeRequests: '활성 요청',
+        noRequestsYet: '요청 대기 중...',
+        latestRoute: '최신 라우팅',
+        failoverCount: '장애 조치'
       },
       de: {
         uptime: 'Betriebszeit',
@@ -481,7 +606,16 @@ export function renderUiHtml(): string {
         noEvents: 'Noch keine Statusänderungen aufgezeichnet.',
         resetUsage: 'Nutzung zurücksetzen',
         resetConfirm: 'Möchten Sie wirklich alle Nutzungszähler und Protokolle zurücksetzen?',
-        resetting: 'Wird zurückgesetzt...'
+        resetting: 'Wird zurückgesetzt...',
+        currentModel: 'Aktuelles Modell',
+        inFlight: 'In Bearbeitung',
+        idle: 'Bereit',
+        completed: 'Abgeschlossen',
+        failed: 'Fehlgeschlagen',
+        activeRequests: 'Aktive Anfragen',
+        noRequestsYet: 'Warten auf eingehende Anfragen...',
+        latestRoute: 'Neueste Route',
+        failoverCount: 'Failovers'
       },
       fr: {
         uptime: 'Temps de fonctionnement',
@@ -504,7 +638,16 @@ export function renderUiHtml(): string {
         noEvents: 'Aucun changement d\\'état enregistré pour le moment.',
         resetUsage: 'Réinitialiser l\\'utilisation',
         resetConfirm: 'Voulez-vous vraiment réinitialiser tous les compteurs d\\'utilisation et journaux ?',
-        resetting: 'Réinitialisation...'
+        resetting: 'Réinitialisation...',
+        currentModel: 'Modèle actuel',
+        inFlight: 'En cours',
+        idle: 'Prêt',
+        completed: 'Terminé',
+        failed: 'Échec',
+        activeRequests: 'Requêtes actives',
+        noRequestsYet: 'En attente de requêtes entrantes...',
+        latestRoute: 'Dernière route',
+        failoverCount: 'basculements'
       },
       es: {
         uptime: 'Tiempo de actividad',
@@ -527,7 +670,16 @@ export function renderUiHtml(): string {
         noEvents: 'Aún no se han registrado cambios de estado.',
         resetUsage: 'Restablecer uso',
         resetConfirm: '¿Está seguro de que desea restablecer todos los contadores de uso y registros?',
-        resetting: 'Restableciendo...'
+        resetting: 'Restableciendo...',
+        currentModel: 'Modelo actual',
+        inFlight: 'En curso',
+        idle: 'Listo',
+        completed: 'Completado',
+        failed: 'Fallido',
+        activeRequests: 'Solicitudes activas',
+        noRequestsYet: 'Esperando solicitudes entrantes...',
+        latestRoute: 'Última ruta',
+        failoverCount: 'conmutaciones'
       },
       it: {
         uptime: 'Tempo di attività',
@@ -550,7 +702,16 @@ export function renderUiHtml(): string {
         noEvents: 'Nessun cambio di stato registrato.',
         resetUsage: 'Ripristina utilizzo',
         resetConfirm: 'Sei sicuro di voler ripristinare tutti i contatori e i log di utilizzo?',
-        resetting: 'Ripristino in corso...'
+        resetting: 'Ripristino in corso...',
+        currentModel: 'Modello attuale',
+        inFlight: 'In elaborazione',
+        idle: 'Pronto',
+        completed: 'Completato',
+        failed: 'Non riuscito',
+        activeRequests: 'Richieste attive',
+        noRequestsYet: 'In attesa di richieste in arrivo...',
+        latestRoute: 'Ultimo instradamento',
+        failoverCount: 'failover'
       },
       ar: {
         uptime: 'وقت التشغيل',
@@ -573,7 +734,16 @@ export function renderUiHtml(): string {
         noEvents: 'لم يتم تسجيل أي تغييرات في الحالة بعد.',
         resetUsage: 'إعادة تعيين الاستخدام',
         resetConfirm: 'هل أنت متأكد من رغبتك في إعادة تعيين جميع عدادات وسجلات الاستخدام؟',
-        resetting: 'جارٍ إعادة التعيين...'
+        resetting: 'جارٍ إعادة التعيين...',
+        currentModel: 'النموذج الحالي',
+        inFlight: 'قيد المعالجة',
+        idle: 'جاهز',
+        completed: 'مكتمل',
+        failed: 'فشل',
+        activeRequests: 'الطلبات النشطة',
+        noRequestsYet: 'في انتظار الطلبات الواردة...',
+        latestRoute: 'أحدث مسار',
+        failoverCount: 'التبديل عند الفشل'
       },
       tr: {
         uptime: 'Çalışma süresi',
@@ -596,7 +766,16 @@ export function renderUiHtml(): string {
         noEvents: 'Henüz kaydedilmiş durum değişikliği yok.',
         resetUsage: 'Kullanımı Sıfırla',
         resetConfirm: 'Tüm kullanım sayaçlarını ve günlükleri sıfırlamak istediğinizden emin misiniz?',
-        resetting: 'Sıfırlanıyor...'
+        resetting: 'Sıfırlanıyor...',
+        currentModel: 'Geçerli Model',
+        inFlight: 'İşleniyor',
+        idle: 'Hazır',
+        completed: 'Tamamlandı',
+        failed: 'Başarısız',
+        activeRequests: 'Aktif istekler',
+        noRequestsYet: 'Gelen istekler bekleniyor...',
+        latestRoute: 'Son Rota',
+        failoverCount: 'yük devretme'
       }
     };
 
@@ -622,7 +801,9 @@ export function renderUiHtml(): string {
       lang: detectLanguage(),
       events: [],
       status: null,
-      lastConnStatus: null
+      lastConnStatus: null,
+      latestActivity: null,
+      inFlightCount: 0
     };
 
     function t(key) {
@@ -654,6 +835,91 @@ export function renderUiHtml(): string {
       return s + 's';
     }
 
+    function renderActiveModel() {
+      const el = document.getElementById('active-model-card');
+      if (!el) return;
+
+      const act = state.latestActivity;
+      const inFlight = state.inFlightCount > 0 || (act && act.status === 'in_flight');
+
+      if (!act) {
+        let defaultCand = null;
+        if (state.status && state.status.aliases) {
+          const firstAlias = Object.keys(state.status.aliases)[0];
+          if (firstAlias) {
+            const aliasData = state.status.aliases[firstAlias];
+            if (aliasData && aliasData.activeCandidate) {
+              const parts = aliasData.activeCandidate.split('/');
+              defaultCand = { alias: firstAlias, provider: parts[0], model: parts.slice(1).join('/') };
+            }
+          }
+        }
+
+        if (defaultCand) {
+          el.className = 'active-model-banner';
+          el.innerHTML =
+            '<div class="active-banner-header">' +
+              '<span>' + escapeHtml(t('currentModel')) + '</span>' +
+              '<span class="active-status-tag tag-idle"><span class="dot dot-yellow"></span> ' + escapeHtml(t('idle')) + '</span>' +
+            '</div>' +
+            '<div class="active-banner-content">' +
+              '<span class="active-provider-pill">' + escapeHtml(defaultCand.provider) + '</span>' +
+              '<span class="active-arrow">→</span>' +
+              '<span class="active-model-name">' + escapeHtml(defaultCand.model) + '</span>' +
+              '<span class="active-alias-badge">alias: ' + escapeHtml(defaultCand.alias) + '</span>' +
+            '</div>' +
+            '<div class="active-meta"><span>' + escapeHtml(t('noRequestsYet')) + '</span></div>';
+        } else {
+          el.className = 'active-model-banner';
+          el.innerHTML =
+            '<div class="active-banner-header">' +
+              '<span>' + escapeHtml(t('currentModel')) + '</span>' +
+              '<span class="active-status-tag tag-idle"><span class="dot dot-yellow"></span> ' + escapeHtml(t('idle')) + '</span>' +
+            '</div>' +
+            '<div class="active-meta"><span>' + escapeHtml(t('noRequestsYet')) + '</span></div>';
+        }
+        return;
+      }
+
+      el.className = 'active-model-banner' + (inFlight ? ' in-flight' : '');
+
+      let statusBadge = '';
+      if (inFlight) {
+        statusBadge = '<span class="active-status-tag tag-in-flight"><span class="pulse-dot"></span> ' + escapeHtml(t('inFlight')) + '</span>';
+      } else if (act.status === 'completed') {
+        const dur = act.durationMs ? ' • ' + act.durationMs + 'ms' : '';
+        statusBadge = '<span class="active-status-tag tag-completed"><span class="dot dot-green"></span> ' + (act.statusCode || 200) + ' OK' + dur + '</span>';
+      } else {
+        statusBadge = '<span class="active-status-tag tag-failed"><span class="dot dot-red"></span> ' + (act.statusCode || 502) + ' ' + escapeHtml(t('failed')) + '</span>';
+      }
+
+      const timeStr = act.at ? new Date(act.at).toLocaleTimeString() : '';
+      const failoverHtml = act.failovers > 0
+        ? '<span class="active-alias-badge" style="color: var(--yellow);">' + escapeHtml(t('failoverCount')) + ': ' + act.failovers + '</span>'
+        : '';
+
+      const inFlightText = state.inFlightCount > 0
+        ? '<span>• ' + escapeHtml(t('activeRequests')) + ': ' + state.inFlightCount + '</span>'
+        : '';
+
+      el.innerHTML =
+        '<div class="active-banner-header">' +
+          '<span>' + escapeHtml(t('currentModel')) + '</span>' +
+          statusBadge +
+        '</div>' +
+        '<div class="active-banner-content">' +
+          '<span class="active-provider-pill">' + escapeHtml(act.provider) + '</span>' +
+          '<span class="active-arrow">→</span>' +
+          '<span class="active-model-name">' + escapeHtml(act.model) + '</span>' +
+          '<span class="active-alias-badge">alias: ' + escapeHtml(act.alias) + '</span>' +
+          failoverHtml +
+        '</div>' +
+        '<div class="active-meta">' +
+          '<span>' + (inFlight ? escapeHtml(t('inFlight')) : escapeHtml(t('latestRoute'))) + ': ' + timeStr + '</span>' +
+          inFlightText +
+        '</div>';
+    }
+
     function updateStaticTexts() {
       document.documentElement.lang = state.lang;
       const eventsTitle = document.querySelector('.events-title');
@@ -673,11 +939,19 @@ export function renderUiHtml(): string {
       if (state.lastConnStatus) {
         setConnectionStatus(state.lastConnStatus);
       }
+      renderActiveModel();
     }
 
     function renderStatus(data) {
       state.status = data;
+      if (data.latestActivity) {
+        state.latestActivity = data.latestActivity;
+      }
+      if (data.inFlightCount !== undefined) {
+        state.inFlightCount = data.inFlightCount;
+      }
       document.getElementById('uptime-text').textContent = t('uptime') + ': ' + formatUptime(data.uptime);
+      renderActiveModel();
 
       const container = document.getElementById('aliases-container');
       container.innerHTML = '';
@@ -696,6 +970,9 @@ export function renderUiHtml(): string {
 
         for (const c of aliasInfo.candidates || []) {
           const isActive = aliasInfo.activeCandidate === c.provider + '/' + c.model;
+          const isLatest = state.latestActivity && state.latestActivity.provider === c.provider && state.latestActivity.model === c.model;
+          const isCandInFlight = isLatest && (state.inFlightCount > 0 || state.latestActivity.status === 'in_flight');
+
           const card = document.createElement('div');
           card.className = 'card' + (isActive ? ' active-candidate' : '');
 
@@ -734,7 +1011,13 @@ export function renderUiHtml(): string {
                 '</div>' +
                 '<div class="model-name">' + escapeHtml(c.model) + '</div>' +
               '</div>' +
-              (isActive ? '<span class="active-pill">' + escapeHtml(t('active')) + '</span>' : '') +
+              (isCandInFlight
+                ? '<span class="active-pill" style="background: rgba(56, 139, 253, 0.25); border-color: var(--active-border); color: var(--accent);"><span class="pulse-dot" style="display:inline-block; margin-right:4px;"></span>' + escapeHtml(t('inFlight')) + '</span>'
+                : isLatest && !isActive
+                  ? '<span class="active-pill" style="background: rgba(63, 185, 80, 0.15); border-color: var(--green); color: var(--green);"><span class="dot dot-green" style="display:inline-block; margin-right:4px;"></span>' + escapeHtml(t('latestRoute')) + '</span>'
+                  : isActive
+                    ? '<span class="active-pill">' + escapeHtml(t('active')) + '</span>'
+                    : '') +
             '</div>' +
             '<div class="quota-block">' +
               '<div class="quota-header">' +
@@ -893,6 +1176,24 @@ export function renderUiHtml(): string {
         }
       });
 
+      es.addEventListener('request_activity', function(e) {
+        try {
+          const act = JSON.parse(e.data);
+          state.latestActivity = act;
+          if (act.status === 'in_flight') {
+            state.inFlightCount = (state.inFlightCount || 0) + 1;
+          } else {
+            state.inFlightCount = Math.max(0, (state.inFlightCount || 1) - 1);
+          }
+          renderActiveModel();
+          if (state.status) {
+            renderStatus(state.status);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
       es.onerror = function() {
         es.close();
         if (!receivedStatus) {
@@ -919,30 +1220,6 @@ export function renderUiHtml(): string {
       }
       poll();
       setInterval(poll, 5000);
-    }
-
-    const resetBtn = document.getElementById('btn-reset-usage');
-    if (resetBtn) {
-      resetBtn.addEventListener('click', function() {
-        if (!confirm('Reset all usage counters and request logs?')) return;
-        resetBtn.disabled = true;
-        resetBtn.textContent = 'Resetting...';
-        fetch('/v1/usage/reset', { method: 'POST' })
-          .then(function(r) { return r.json(); })
-          .then(function() {
-            return fetch('/v1/modelstatus').then(function(r) { return r.json(); });
-          })
-          .then(function(data) {
-            renderStatus(data);
-            resetBtn.textContent = 'Reset usage';
-            resetBtn.disabled = false;
-          })
-          .catch(function(err) {
-            alert('Failed to reset: ' + err.message);
-            resetBtn.textContent = 'Reset usage';
-            resetBtn.disabled = false;
-          });
-      });
     }
 
     startSSE();

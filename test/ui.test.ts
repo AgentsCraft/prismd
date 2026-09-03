@@ -46,4 +46,17 @@ test("renderUiHtml contains 10-language selector and complete dictionary", () =>
   assert.ok(html.includes("outputTokens"));
   assert.ok(html.includes("recentEvents"));
   assert.ok(html.includes("noEvents"));
+  assert.ok(html.includes("currentModel"));
+  assert.ok(html.includes("inFlight"));
+  assert.ok(html.includes("latestRoute"));
+  assert.ok(html.includes("failoverCount"));
 });
+
+test("renderUiHtml contains active model banner element and SSE listener", () => {
+  const html = renderUiHtml();
+  assert.ok(html.includes('id="active-model-card"'));
+  assert.ok(html.includes('active-model-banner'));
+  assert.ok(html.includes('request_activity'));
+  assert.ok(html.includes('renderActiveModel'));
+});
+

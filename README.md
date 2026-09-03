@@ -44,8 +44,10 @@ If prismd saves you time or API costs, consider buying the author a coffee:
 ### Step 1: Install and Start Gateway
 
 ```bash
-# Option A: Global npm install (Recommended)
-npm install -g @prismd/prismd
+# Option A: Global npm install
+npm install -g @prismd/prismd              # Stable release
+# Or install RC preview channel (aligned with latest develop):
+npm install -g @agentscraft/prismd         # RC channel
 
 # Option B: Run from source
 git clone https://github.com/AgentsCraft/prismd.git
