@@ -120,5 +120,6 @@ export function parseTagsHeader(raw?: string | string[] | null): string[] | unde
   if (!raw) return undefined;
   const items = Array.isArray(raw) ? raw : raw.split(",");
   const cleaned = items.map((s) => s.trim().toLowerCase()).filter((s) => s.length > 0);
-  return cleaned.length > 0 ? cleaned : undefined;
+  const deduped = Array.from(new Set(cleaned));
+  return deduped.length > 0 ? deduped : undefined;
 }

@@ -58,24 +58,30 @@ export function startConfigWatcher(options: WatcherOptions = {}): ConfigWatcher 
     }, debounceMs);
   };
 
-  const watchTarget = (targetPath: string) => {
-    if (!existsSync(targetPath)) return;
-    const targetDir = dirname(targetPath);
-    const targetBase = basename(targetPath);
+  // Aggregate targets by directory to avoid duplicate watchers and detect newly created files
+  const dirTargets = new Map<string, Set<string>>();
+  for (const targetPath of [configPath, keysYamlPath]) {
+    const dir = dirname(targetPath);
+    const base = basename(targetPath);
+    if (!dirTargets.has(dir)) {
+      dirTargets.set(dir, new Set());
+    }
+    dirTargets.get(dir)!.add(base);
+  }
+
+  for (const [dir, bases] of dirTargets.entries()) {
+    if (!existsSync(dir)) continue;
     try {
-      const w = watch(targetDir, (_eventType, filename) => {
-        if (!filename || filename === targetBase) {
+      const w = watch(dir, (_eventType, filename) => {
+        if (!filename || bases.has(filename)) {
           triggerReload();
         }
       });
       watchers.push(w);
     } catch (err) {
-      logger.debug({ path: targetPath, error: (err as Error).message }, "could not attach fs.watch to target");
+      logger.debug({ path: dir, error: (err as Error).message }, "could not attach fs.watch to directory");
     }
-  };
-
-  watchTarget(configPath);
-  watchTarget(keysYamlPath);
+  }
 
   return {
     close: () => {

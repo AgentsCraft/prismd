@@ -23,6 +23,10 @@ export class RateLimiter {
    */
   public check(candidate: Candidate, now = Date.now()): RateLimitCheckResult {
     const k = this.key(candidate.provider, candidate.providerModelId);
+    const windowStart = now - 60_000;
+    const tsList = (this.timestamps.get(k) ?? []).filter((t) => t > windowStart);
+    this.timestamps.set(k, tsList);
+
     const curConcurrent = this.concurrent.get(k) ?? 0;
     const maxConcurrent = candidate.limits.maxConcurrent;
     if (maxConcurrent > 0 && curConcurrent >= maxConcurrent) {
@@ -31,16 +35,12 @@ export class RateLimiter {
         reason: "concurrency_exceeded",
         currentConcurrent: curConcurrent,
         maxConcurrent,
-        currentRpm: (this.timestamps.get(k) ?? []).length,
+        currentRpm: tsList.length,
         maxRpm: candidate.limits.rpm,
       };
     }
 
     const maxRpm = candidate.limits.rpm;
-    const windowStart = now - 60_000;
-    const tsList = (this.timestamps.get(k) ?? []).filter((t) => t > windowStart);
-    this.timestamps.set(k, tsList);
-
     if (maxRpm > 0 && tsList.length >= maxRpm) {
       return {
         allowed: false,

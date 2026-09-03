@@ -184,8 +184,16 @@ export async function chatCompletions(c: Context): Promise<Response> {
 
   for (let i = 0; i < attempts; i += 1) {
     const candidate = selection.ordered[i];
+    if (!rateLimiter.acquire(candidate)) {
+      failovers += 1;
+      attemptStatuses.push({ candidate, status: 429 });
+      continue;
+    }
+    let handedOff = false;
+
     const provider = config.providers[candidate.provider];
     if (!provider) {
+      rateLimiter.release(candidate);
       return c.json(
         gatewayError(
           500,
@@ -196,6 +204,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
       );
     }
     if (!keyPool.hasKeys(candidate.provider)) {
+      rateLimiter.release(candidate);
       return c.json(
         gatewayError(
           500,
@@ -250,7 +259,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
           if (provider.auth?.type !== "none" && apiKey && apiKey !== "none") {
             headers.authorization = `Bearer ${apiKey}`;
           }
-          const adaptedBody: Record<string, any> = {
+          const adaptedBody: Record<string, unknown> = {
             ...body,
             model: candidate.providerModelId,
           };
@@ -339,6 +348,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
 
       if (result.kind === "stream" || result.kind === "json") {
         keyPool.recordSuccess(candidate.provider, candidate.providerModelId, apiKey);
+        handedOff = true;
         return relaySuccess({
           requestId,
           startedAt,
@@ -353,6 +363,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
       }
 
       if (!shouldFailover(result.status, config.policies.failoverOn)) {
+        handedOff = true;
         return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
       }
 
@@ -363,6 +374,9 @@ export async function chatCompletions(c: Context): Promise<Response> {
       void result.response.body?.cancel();
       attemptStatuses.push({ candidate, status: result.status });
       failovers += 1;
+    }
+    if (!handedOff) {
+      rateLimiter.release(candidate);
     }
   }
 
@@ -517,6 +531,7 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
 }
 
 function finalize(ctx: RelayContext & { status: number }, accounting: StreamAccounting): void {
+  getRateLimiter().release(ctx.candidate);
   const usage = {
     inputTokens: accounting.realUsage?.inputTokens,
     outputTokens: accounting.realUsage?.outputTokens,
