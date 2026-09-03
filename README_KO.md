@@ -44,8 +44,10 @@ prismd가 시간이나 토큰 비용을 절약하는 데 도움이 되었다면,
 ### 1단계: 설치 및 실행
 
 ```bash
-# 옵션 A: npm 글로벌 설치 (권장)
-npm install -g @prismd/prismd
+# 옵션 A: npm 글로벌 설치
+npm install -g @prismd/prismd              # 안정화 정식 버전 (Stable)
+# 또는 RC 미리보기 버전 설치 (최신 develop 브랜치 연동):
+npm install -g @agentscraft/prismd         # RC 채널
 
 # 옵션 B: 소스코드 실행
 git clone https://github.com/AgentsCraft/prismd.git

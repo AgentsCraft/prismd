@@ -44,8 +44,10 @@
 ### الخطوة 1: التثبيت والتشغيل
 
 ```bash
-# الخيار أ: التثبيت العام عبر npm (موصى به)
-npm install -g @prismd/prismd
+# الخيار أ: التثبيت العام عبر npm
+npm install -g @prismd/prismd              # الإصدار المستقر
+# أو تثبيت إصدار المعاينة RC (متوافق مع أحدث develop):
+npm install -g @agentscraft/prismd         # قناة RC
 
 # الخيار ب: التشغيل من المصدر
 git clone https://github.com/AgentsCraft/prismd.git

@@ -44,8 +44,10 @@
 ### 步骤 1：安装并启动网关
 
 ```bash
-# 方式 A：npm 全局安装（推荐）
-npm install -g @prismd/prismd
+# 方式 A：npm 全局安装
+npm install -g @prismd/prismd              # 正式稳定版
+# 或安装 RC 尝鲜预览版（对齐 develop 最新分支）：
+npm install -g @agentscraft/prismd         # RC 预览版
 
 # 方式 B：从源码运行
 git clone https://github.com/AgentsCraft/prismd.git
