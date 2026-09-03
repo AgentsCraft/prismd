@@ -2,8 +2,8 @@ import type { Context } from "hono";
 import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
-import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
-import { routeAlias, shouldFailover } from "../core/router.js";
+import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
+import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
 import { callUpstream as chatCallUpstream } from "../egress/chat.js";
@@ -52,11 +52,24 @@ export async function responses(c: Context): Promise<Response> {
   const keyPool = getKeyPool();
   const inputChars = JSON.stringify(body).length;
 
+  const rawTags = c.req.header("x-prismd-tags") ?? c.req.query("tags");
+  const tags = parseTagsHeader(rawTags);
+  const requireTools = Array.isArray(body.tools) && body.tools.length > 0;
+  const requireReasoning =
+    body.reasoning_effort !== undefined ||
+    c.req.header("x-prismd-require-reasoning") === "true";
+
+  const rateLimiter = getRateLimiter();
+
   const routed = routeAlias(config.models, body.model, {
     inputChars,
     dailyRequests: (provider, model) => quota.getDailyRequests(provider, model),
     isHealthy: (provider, model) => health.isHealthy(provider, model),
     quotaSoftLimitRatio: config.policies.quotaSoftLimitRatio,
+    requireTools,
+    requireReasoning,
+    tags,
+    checkRateLimit: (cand) => rateLimiter.check(cand),
   });
   if (!routed) {
     return c.json(gatewayError(404, "model_not_found", `model alias "${body.model}" is not defined`), 404);
@@ -81,6 +94,42 @@ export async function responses(c: Context): Promise<Response> {
     );
   }
   if (!selection.selected) {
+    const onlyCapabilityFiltered =
+      selection.filtered.length > 0 &&
+      selection.filtered.every(
+        (f) => f.reason === "tools_unsupported" || f.reason === "reasoning_unsupported",
+      );
+
+    if (onlyCapabilityFiltered) {
+      return c.json(
+        gatewayError(
+          400,
+          "capability_unsupported",
+          `all candidates for alias "${body.model}" do not support the required capabilities (tools/reasoning)`,
+          { candidates: selection.filtered },
+        ),
+        400,
+      );
+    }
+
+    const onlyRateLimitFiltered =
+      selection.filtered.length > 0 &&
+      selection.filtered.every(
+        (f) => f.reason === "concurrency_exceeded" || f.reason === "rpm_exceeded",
+      );
+
+    if (onlyRateLimitFiltered) {
+      return c.json(
+        gatewayError(
+          429,
+          "rate_limit_exceeded",
+          `all candidates for alias "${body.model}" exceeded concurrency or RPM limits`,
+          { candidates: selection.filtered },
+        ),
+        429,
+      );
+    }
+
     return c.json(
       gatewayError(
         429,
@@ -108,8 +157,16 @@ export async function responses(c: Context): Promise<Response> {
 
   for (let i = 0; i < attempts; i += 1) {
     const candidate = selection.ordered[i];
+    if (!rateLimiter.acquire(candidate)) {
+      failovers += 1;
+      attemptStatuses.push({ candidate, status: 429 });
+      continue;
+    }
+    let handedOff = false;
+
     const provider = config.providers[candidate.provider];
     if (!provider) {
+      rateLimiter.release(candidate);
       return c.json(
         gatewayError(
           500,
@@ -120,6 +177,7 @@ export async function responses(c: Context): Promise<Response> {
       );
     }
     if (!keyPool.hasKeys(candidate.provider)) {
+      rateLimiter.release(candidate);
       return c.json(
         gatewayError(
           500,
@@ -192,6 +250,7 @@ export async function responses(c: Context): Promise<Response> {
 
       if (result.kind === "stream" || result.kind === "json") {
         keyPool.recordSuccess(candidate.provider, candidate.providerModelId, apiKey);
+        handedOff = true;
         return relaySuccess({
           requestId,
           startedAt,
@@ -208,6 +267,7 @@ export async function responses(c: Context): Promise<Response> {
       // kind === "error": failover or passthrough, decided by status.
       if (!shouldFailover(result.status, config.policies.failoverOn)) {
         // Request-class 4xx and any non-listed status: relay verbatim, no switch.
+        handedOff = true;
         return relayUpstreamError({ requestId, startedAt, method, path, alias: body.model, candidate, result, inputChars, failovers });
       }
 
@@ -219,6 +279,9 @@ export async function responses(c: Context): Promise<Response> {
       void result.response.body?.cancel();
       attemptStatuses.push({ candidate, status: result.status });
       failovers += 1;
+    }
+    if (!handedOff) {
+      rateLimiter.release(candidate);
     }
   }
 
@@ -374,6 +437,7 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
 }
 
 function finalize(ctx: RelayContext & { status: number }, accounting: StreamAccounting): void {
+  getRateLimiter().release(ctx.candidate);
   const usage = {
     inputTokens: accounting.realUsage?.inputTokens,
     outputTokens: accounting.realUsage?.outputTokens,
