@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveAlias, resolveClaudeModelAlias, shouldFailover } from "../src/core/router.js";
+import { resolveAlias, resolveClaudeModelAlias, shouldFailover, parseTagsHeader } from "../src/core/router.js";
 import type { AliasModel } from "../src/types/config.js";
 import { makeValidConfig } from "./helpers.js";
 
@@ -88,3 +88,11 @@ test("shouldFailover matches specific codes, 4xx/5xx classes, and wildcards", ()
   assert.equal(shouldFailover(429, ["all"]), true);
   assert.equal(shouldFailover(200, ["*"]), false);
 });
+
+test("parseTagsHeader parses comma-delimited strings and arrays with deduplication", () => {
+  assert.equal(parseTagsHeader(undefined), undefined);
+  assert.equal(parseTagsHeader(""), undefined);
+  assert.deepEqual(parseTagsHeader("coding, fast, coding"), ["coding", "fast"]);
+  assert.deepEqual(parseTagsHeader(["CODING", "  tool-call  ", "coding"]), ["coding", "tool-call"]);
+});
+

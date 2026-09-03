@@ -122,6 +122,9 @@ test("POST /v1/chat/completions accepts valid request and returns Chat response"
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "application/json");
   assert.ok(res.headers.get("x-request-id"));
+  assert.equal(res.headers.get("x-prismd-provider"), "cerebras");
+  assert.equal(res.headers.get("x-prismd-model"), "llama-3.3-70b");
+  assert.equal(res.headers.get("x-prismd-alias"), "free-auto");
 
   const body = (await res.json()) as { choices: Array<{ message: { content: string } }> };
   assert.equal(body.choices[0].message.content, "hello client");
@@ -148,6 +151,9 @@ test("POST /v1/messages accepts Anthropic format with x-api-key and returns Anth
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-type"), "application/json");
   assert.ok(res.headers.get("x-request-id"));
+  assert.equal(res.headers.get("x-prismd-provider"), "cerebras");
+  assert.equal(res.headers.get("x-prismd-model"), "llama-3.3-70b");
+  assert.equal(res.headers.get("x-prismd-alias"), "claude-3-5-sonnet-20241022");
 
   const body = (await res.json()) as {
     id: string;
@@ -381,3 +387,237 @@ test("POST /v1/messages converts and relays responses from Responses upstream", 
   assert.ok(streamText.includes("hello from responses upstream"));
   assert.ok(streamText.includes("event: message_stop"));
 });
+
+test("POST /v1/chat/completions returns 400 capability_unsupported when no candidates support tools", async (t) => {
+  const mock = await startMultiClientMock();
+  t.after(() => new Promise((r) => mock.server.close(r)));
+
+  const cfg = makeValidConfig();
+  const dir = mkdtempSync(join(tmpdir(), "prismd-cap-test-"));
+  const cfgPath = join(dir, "config.json");
+  // Configure candidates with supportsTools: false
+  cfg.models["no-tool-model"] = {
+    candidates: [
+      {
+        provider: "openrouter",
+        providerModelId: "test-model-no-tool",
+        contextWindow: 128000,
+        maxOutputTokens: 4096,
+        supportsTools: false,
+        supportsReasoning: false,
+        limits: { dailyRequests: null, rpm: 60, maxConcurrent: 4 },
+        tags: ["text-only"],
+      },
+    ],
+  };
+  writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+  process.env.PRISMD_CONFIG_PATH = cfgPath;
+  useTempDataPath(t);
+  resetConfigForTests();
+  resetRuntimeForTests();
+
+  const res = await app.request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer local-token-test",
+    },
+    body: JSON.stringify({
+      model: "no-tool-model",
+      messages: [{ role: "user", content: "call a tool" }],
+      tools: [{ type: "function", function: { name: "test_fn" } }],
+    }),
+  });
+
+  assert.equal(res.status, 400);
+  const json = (await res.json()) as { error: { code: string } };
+  assert.equal(json.error.code, "capability_unsupported");
+});
+
+test("POST /v1/chat/completions prioritizes candidate matching x-prismd-tags header", async (t) => {
+  let requestedModel = "";
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c.toString()));
+    req.on("end", () => {
+      const parsed = JSON.parse(raw) as { model: string };
+      requestedModel = parsed.model;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "chat-tag",
+          choices: [{ message: { role: "assistant", content: "ok" } }],
+        }),
+      );
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  t.after(() => new Promise((r) => server.close(r)));
+  const port = (server.address() as AddressInfo).port;
+
+  const cfg = makeValidConfig();
+  const dir = mkdtempSync(join(tmpdir(), "prismd-tag-test-"));
+  const cfgPath = join(dir, "config.json");
+  cfg.providers["tag-prov"] = {
+    type: "chat",
+    baseUrl: `http://127.0.0.1:${port}/v1`,
+    apiKeyField: "prismd",
+  };
+  cfg.models["tagged-alias"] = {
+    candidates: [
+      {
+        provider: "tag-prov",
+        providerModelId: "model-generic",
+        contextWindow: 128000,
+        maxOutputTokens: 4096,
+        supportsTools: true,
+        supportsReasoning: false,
+        limits: { dailyRequests: null, rpm: 60, maxConcurrent: 4 },
+        tags: ["general"],
+      },
+      {
+        provider: "tag-prov",
+        providerModelId: "model-coding-fast",
+        contextWindow: 128000,
+        maxOutputTokens: 4096,
+        supportsTools: true,
+        supportsReasoning: false,
+        limits: { dailyRequests: null, rpm: 60, maxConcurrent: 4 },
+        tags: ["coding", "fast"],
+      },
+    ],
+  };
+  writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+  process.env.PRISMD_CONFIG_PATH = cfgPath;
+  useTempDataPath(t);
+  resetConfigForTests();
+  resetRuntimeForTests();
+
+  const res = await app.request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer local-token-test",
+      "x-prismd-tags": "coding,fast",
+    },
+    body: JSON.stringify({
+      model: "tagged-alias",
+      messages: [{ role: "user", content: "code something" }],
+    }),
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(requestedModel, "model-coding-fast");
+});
+
+test("POST /v1/chat/completions enforces maxConcurrent limit and returns 429 rate_limit_exceeded", async (t) => {
+  let releaseUpstream: (() => void) | null = null;
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c.toString()));
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write('data: {"choices":[{"delta":{"content":"streaming"}}]}\n\n');
+      // Hold the stream open until triggered
+      const interval = setInterval(() => {
+        if (releaseUpstream) {
+          clearInterval(interval);
+          res.write("data: [DONE]\n\n");
+          res.end();
+        }
+      }, 20);
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  t.after(() => new Promise((r) => server.close(r)));
+  const port = (server.address() as AddressInfo).port;
+
+  const cfg = makeValidConfig();
+  const dir = mkdtempSync(join(tmpdir(), "prismd-rl-test-"));
+  const cfgPath = join(dir, "config.json");
+  cfg.providers["rl-prov"] = {
+    type: "chat",
+    baseUrl: `http://127.0.0.1:${port}/v1`,
+    apiKeyField: "prismd",
+  };
+  cfg.models["rl-alias"] = {
+    candidates: [
+      {
+        provider: "rl-prov",
+        providerModelId: "model-single-concurrency",
+        contextWindow: 128000,
+        maxOutputTokens: 4096,
+        supportsTools: true,
+        supportsReasoning: false,
+        limits: { dailyRequests: null, rpm: 60, maxConcurrent: 1 },
+        tags: [],
+      },
+    ],
+  };
+  writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+  process.env.PRISMD_CONFIG_PATH = cfgPath;
+  useTempDataPath(t);
+  resetConfigForTests();
+  resetRuntimeForTests();
+
+  // First request occupies maxConcurrent=1
+  const req1Promise = app.request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer local-token-test",
+    },
+    body: JSON.stringify({
+      model: "rl-alias",
+      messages: [{ role: "user", content: "req1" }],
+      stream: true,
+    }),
+  });
+
+  // Wait briefly for req1 to acquire concurrency slot
+  await new Promise((r) => setTimeout(r, 60));
+
+  // Second concurrent request should be rejected with 429 rate_limit_exceeded
+  const res2 = await app.request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer local-token-test",
+    },
+    body: JSON.stringify({
+      model: "rl-alias",
+      messages: [{ role: "user", content: "req2" }],
+    }),
+  });
+
+  assert.equal(res2.status, 429);
+  const json2 = (await res2.json()) as { error: { code: string } };
+  assert.equal(json2.error.code, "rate_limit_exceeded");
+
+  // Now release req1
+  releaseUpstream = () => {};
+  const res1 = await req1Promise;
+  assert.equal(res1.status, 200);
+  await res1.text();
+
+  // Wait briefly for stream finalize to release concurrency slot
+  await new Promise((r) => setTimeout(r, 60));
+
+  // Third request should now succeed
+  const res3 = await app.request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer local-token-test",
+    },
+    body: JSON.stringify({
+      model: "rl-alias",
+      messages: [{ role: "user", content: "req3" }],
+      stream: true,
+    }),
+  });
+  assert.equal(res3.status, 200);
+  await res3.text();
+});
+
+

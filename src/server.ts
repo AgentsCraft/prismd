@@ -10,6 +10,7 @@ import { printHelpCli } from "./cli/help.js";
 import { logger } from "./observability/logger.js";
 import { validateUpstreamModels } from "./core/catalog-sync.js";
 import { getHealth, getKeyPool, initRuntime, shutdownRuntime } from "./core/runtime.js";
+import { startConfigWatcher, type ConfigWatcher } from "./core/watcher.js";
 
 const cliCommand = process.argv[2];
 
@@ -57,6 +58,15 @@ initRuntime();
 
 const SHUTDOWN_GRACE_MS = 30_000;
 
+let configWatcher: ConfigWatcher | null = null;
+if (process.env.PRISMD_DISABLE_WATCHER !== "1") {
+  try {
+    configWatcher = startConfigWatcher();
+  } catch (err) {
+    logger.debug({ error: (err as Error).message }, "failed to initialize config watcher");
+  }
+}
+
 const server: ServerType = serve(
   { fetch: app.fetch, port: config.server.port, hostname: config.server.host },
   (info) => {
@@ -77,6 +87,10 @@ const server: ServerType = serve(
  */
 function shutdown(signal: string): void {
   logger.info({ signal }, "shutting down");
+  if (configWatcher) {
+    configWatcher.close();
+    configWatcher = null;
+  }
   server.close();
 
   void (async () => {

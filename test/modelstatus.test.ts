@@ -68,6 +68,8 @@ test("GET /v1/modelstatus returns full status structure matching 14.webui.md", a
   assert.equal(c1.quota.outputTokens, 50);
   assert.equal(c1.contextWindow, 262144);
   assert.equal(c1.supportsTools, true);
+  assert.equal(body.latestActivity, null);
+  assert.equal(body.inFlightCount, 0);
 });
 
 import { serve, type ServerType } from "@hono/node-server";
@@ -130,6 +132,22 @@ test("GET /v1/modelstatus/stream delivers initial status and updates over SSE", 
   assert.ok(text3.includes("event: candidate_changed"));
   assert.ok(text3.includes("quota.dailyRequests"));
   assert.ok(text3.includes("80%"));
+
+  // Trigger request activity event
+  const { statusBroadcaster } = await import("../src/core/status-events.js");
+  statusBroadcaster.notifyRequestActive({
+    requestId: "req-active-test",
+    alias: "free-auto",
+    provider: "groq",
+    model: "llama-3.3-70b-versatile",
+    failovers: 0,
+  });
+
+  const { value: chunk4 } = await reader.read();
+  const text4 = decoder.decode(chunk4);
+  assert.ok(text4.includes("event: request_activity"));
+  assert.ok(text4.includes("llama-3.3-70b-versatile"));
+  assert.ok(text4.includes("in_flight"));
 
   controller.abort();
   try {
