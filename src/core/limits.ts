@@ -20,7 +20,9 @@ export type FilterReason =
   | "context_window_exceeded"
   | "unhealthy"
   | "tools_unsupported"
-  | "reasoning_unsupported";
+  | "reasoning_unsupported"
+  | "concurrency_exceeded"
+  | "rpm_exceeded";
 
 export interface FilteredCandidate {
   provider: string;
@@ -43,6 +45,8 @@ export interface SelectionContext {
   requireReasoning?: boolean;
   /** Preferred tags (e.g. ['coding', 'fast']). Candidates matching more tags are prioritized. */
   tags?: string[];
+  /** Optional rate limit check (concurrency semaphore & rolling RPM). */
+  checkRateLimit?: (candidate: Candidate) => { allowed: boolean; reason?: "concurrency_exceeded" | "rpm_exceeded" };
 }
 
 export interface SelectionResult {
@@ -131,6 +135,19 @@ export function selectCandidate(
         contextWindow: candidate.contextWindow,
       });
       continue;
+    }
+
+    if (ctx.checkRateLimit) {
+      const rateLimitRes = ctx.checkRateLimit(candidate);
+      if (!rateLimitRes.allowed && rateLimitRes.reason) {
+        filtered.push({
+          provider: candidate.provider,
+          model: candidate.providerModelId,
+          reason: rateLimitRes.reason,
+          contextWindow: candidate.contextWindow,
+        });
+        continue;
+      }
     }
 
     const daily = candidate.limits.dailyRequests;

@@ -11,12 +11,14 @@ import { KeyPool } from "./key-pool.js";
 import { QuotaManager } from "./quota.js";
 import { StateStore } from "./state.js";
 import { statusBroadcaster } from "./status-events.js";
+import { RateLimiter } from "./rate-limit.js";
 
 const DEFAULT_DATA_PATH = join(process.cwd(), "data", "prismd.sqlite");
 
 let keyPool: KeyPool | undefined;
 let health: HealthManager | undefined;
 let quota: QuotaManager | undefined;
+let rateLimiter: RateLimiter | undefined;
 
 function makeKeyPool(): KeyPool {
   const policies = getConfig().policies;
@@ -84,6 +86,12 @@ export function getQuota(): QuotaManager {
   return quota;
 }
 
+/** Shared rate limiter managing concurrent semaphores and rolling RPM windows. */
+export function getRateLimiter(): RateLimiter {
+  rateLimiter ??= new RateLimiter();
+  return rateLimiter;
+}
+
 /** Flush pending quota data and close the store (graceful shutdown). */
 export function shutdownRuntime(): void {
   quota?.shutdown();
@@ -91,6 +99,8 @@ export function shutdownRuntime(): void {
   health = undefined;
   keyPool?.reset();
   keyPool = undefined;
+  rateLimiter?.reset();
+  rateLimiter = undefined;
   statusBroadcaster.reset();
 }
 
@@ -101,5 +111,7 @@ export function resetRuntimeForTests(): void {
   health = undefined;
   keyPool?.reset();
   keyPool = undefined;
+  rateLimiter?.reset();
+  rateLimiter = undefined;
   statusBroadcaster.reset();
 }

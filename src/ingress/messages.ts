@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
-import { getHealth, getKeyPool, getQuota } from "../core/runtime.js";
+import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
 import { routeAlias, shouldFailover, resolveClaudeModelAlias, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import {
@@ -69,6 +69,8 @@ export async function messages(c: Context): Promise<Response> {
     body.thinking !== undefined ||
     c.req.header("x-prismd-require-reasoning") === "true";
 
+  const rateLimiter = getRateLimiter();
+
   const routed = routeAlias(config.models, aliasKey, {
     inputChars,
     dailyRequests: (provider, model) => quota.getDailyRequests(provider, model),
@@ -77,6 +79,7 @@ export async function messages(c: Context): Promise<Response> {
     requireTools,
     requireReasoning,
     tags,
+    checkRateLimit: (cand) => rateLimiter.check(cand),
   });
   if (!routed) {
     return c.json(gatewayError(404, "model_not_found", `model alias "${body.model}" is not defined`), 404);
@@ -116,6 +119,24 @@ export async function messages(c: Context): Promise<Response> {
           { candidates: selection.filtered },
         ),
         400,
+      );
+    }
+
+    const onlyRateLimitFiltered =
+      selection.filtered.length > 0 &&
+      selection.filtered.every(
+        (f) => f.reason === "concurrency_exceeded" || f.reason === "rpm_exceeded",
+      );
+
+    if (onlyRateLimitFiltered) {
+      return c.json(
+        gatewayError(
+          429,
+          "rate_limit_exceeded",
+          `all candidates for alias "${body.model}" exceeded concurrency or RPM limits`,
+          { candidates: selection.filtered },
+        ),
+        429,
       );
     }
 
