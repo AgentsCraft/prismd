@@ -3,6 +3,7 @@ import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
+import { statusBroadcaster } from "../core/status-events.js";
 import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
@@ -163,6 +164,13 @@ export async function responses(c: Context): Promise<Response> {
       continue;
     }
     let handedOff = false;
+    statusBroadcaster.notifyRequestActive({
+      requestId,
+      alias: body.model,
+      provider: candidate.provider,
+      model: candidate.providerModelId,
+      failovers,
+    });
 
     const provider = config.providers[candidate.provider];
     if (!provider) {
@@ -313,6 +321,15 @@ export async function responses(c: Context): Promise<Response> {
       durationMs: Date.now() - startedAt,
       usage: { inputChars, outputChars: 0 },
     });
+    statusBroadcaster.notifyRequestFailed({
+      requestId,
+      alias: body.model,
+      provider: finalCandidate.provider,
+      model: finalCandidate.providerModelId,
+      status: 502,
+      durationMs: Date.now() - startedAt,
+      failovers,
+    });
   }
   exporter.onRequestEnd({
     requestId,
@@ -364,6 +381,12 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
   for (const name of RELAY_HEADERS) {
     const value = result.response.headers.get(name);
     if (value !== null) headers[name] = value;
+  }
+  headers["x-prismd-provider"] = ctx.candidate.provider;
+  headers["x-prismd-model"] = ctx.candidate.providerModelId;
+  headers["x-prismd-alias"] = ctx.alias;
+  if (ctx.failovers > 0) {
+    headers["x-prismd-failovers"] = String(ctx.failovers);
   }
 
   if (result.kind === "stream") {
@@ -424,6 +447,12 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
     const value = result.response.headers.get(name);
     if (value !== null) headers[name] = value;
   }
+  headers["x-prismd-provider"] = ctx.candidate.provider;
+  headers["x-prismd-model"] = ctx.candidate.providerModelId;
+  headers["x-prismd-alias"] = ctx.alias;
+  if (ctx.failovers > 0) {
+    headers["x-prismd-failovers"] = String(ctx.failovers);
+  }
   const response = new Response(result.response.body, {
     status: result.status,
     headers,
@@ -432,6 +461,15 @@ function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Re
     firstTokenMs: 0,
     outputChars: 0,
     aborted: false,
+  });
+  statusBroadcaster.notifyRequestFailed({
+    requestId: ctx.requestId,
+    alias: ctx.alias,
+    provider: ctx.candidate.provider,
+    model: ctx.candidate.providerModelId,
+    status: result.status,
+    durationMs: Date.now() - ctx.startedAt,
+    failovers: ctx.failovers,
   });
   return response;
 }
@@ -454,6 +492,15 @@ function finalize(ctx: RelayContext & { status: number }, accounting: StreamAcco
     failover: ctx.failovers,
     durationMs: Date.now() - ctx.startedAt,
     usage,
+  });
+  statusBroadcaster.notifyRequestCompleted({
+    requestId: ctx.requestId,
+    alias: ctx.alias,
+    provider: ctx.candidate.provider,
+    model: ctx.candidate.providerModelId,
+    status: ctx.status,
+    durationMs: Date.now() - ctx.startedAt,
+    failovers: ctx.failovers,
   });
   exporter.onRequestEnd({
     requestId: ctx.requestId,
