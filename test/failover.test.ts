@@ -665,6 +665,15 @@ test("completed requests are flushed to sqlite with real usage and request log",
 });
 
 test("SIGTERM drains in-flight work and flushes pending quota to sqlite", { timeout: 30_000 }, async (t) => {
+  if (process.platform === "win32") {
+    // Windows has no catchable cross-process signal: process.kill("SIGTERM")
+    // hard-terminates the child (TerminateProcess), so its shutdown handler
+    // never runs and graceful drain cannot be observed. The drain/flush
+    // logic itself is covered cross-platform by drain.test.ts and the quota
+    // tests; the POSIX e2e signal path runs on Linux/macOS (incl. CI).
+    t.skip("Windows cannot deliver a catchable SIGTERM to a child process");
+    return;
+  }
   const mock = await startMockUpstream(
     byModel({
       "poolside/laguna-s-2.1:free": {
