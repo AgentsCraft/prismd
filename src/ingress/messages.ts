@@ -1,6 +1,17 @@
 import type { Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { getConfig } from "../config.js";
-import { gatewayError } from "../core/errors.js";
+import {
+  buildFailoverProblem,
+  buildNoCandidatesProblem,
+  describeConnectFailure,
+  readUpstreamErrorSnippet,
+  renderProblemJson,
+  rewriteUpstreamErrorBody,
+  type FailedAttempt,
+  type GatewayProblem,
+  type UnavailableCandidate,
+} from "../core/error-contract.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
 import { statusBroadcaster } from "../core/status-events.js";
@@ -45,13 +56,18 @@ export async function messages(c: Context): Promise<Response> {
   try {
     body = await c.req.json<AnthropicRequestBody>();
   } catch {
-    return c.json(
-      gatewayError(400, "invalid_request_error", "request body must be valid JSON"),
-      400,
-    );
+    return anthropicProblem(c, {
+      status: 400,
+      code: "invalid_request_error",
+      message: "request body must be valid JSON",
+    });
   }
   if (typeof body.model !== "string" || body.model === "") {
-    return c.json(gatewayError(400, "invalid_request_error", 'missing "model" field'), 400);
+    return anthropicProblem(c, {
+      status: 400,
+      code: "invalid_request_error",
+      message: 'missing "model" field',
+    });
   }
 
   const config = getConfig();
@@ -83,26 +99,28 @@ export async function messages(c: Context): Promise<Response> {
     checkRateLimit: (cand) => rateLimiter.check(cand),
   });
   if (!routed) {
-    return c.json(gatewayError(404, "model_not_found", `model alias "${body.model}" is not defined`), 404);
+    return anthropicProblem(c, {
+      status: 404,
+      code: "model_not_found",
+      message: `model alias "${body.model}" is not defined`,
+    });
   }
   const { selection, candidates } = routed;
 
   if (selection.allWindowExceeded) {
-    return c.json(
-      gatewayError(
-        422,
-        "context_window_exceeded",
-        `input exceeds the context window of every candidate for alias "${body.model}"`,
-        { candidates: selection.windowExceeded },
-      ),
-      422,
-    );
+    return anthropicProblem(c, {
+      status: 422,
+      code: "context_window_exceeded",
+      message: `input exceeds the context window of every candidate for alias "${body.model}"`,
+      metadata: { candidates: selection.windowExceeded },
+    });
   }
   if (candidates.length === 0) {
-    return c.json(
-      gatewayError(500, "gateway_internal_error", `alias "${body.model}" has no candidates defined`),
-      500,
-    );
+    return anthropicProblem(c, {
+      status: 500,
+      code: "gateway_internal_error",
+      message: `alias "${body.model}" has no candidates defined`,
+    });
   }
   if (!selection.selected) {
     const onlyCapabilityFiltered =
@@ -112,15 +130,12 @@ export async function messages(c: Context): Promise<Response> {
       );
 
     if (onlyCapabilityFiltered) {
-      return c.json(
-        gatewayError(
-          400,
-          "capability_unsupported",
-          `all candidates for alias "${body.model}" do not support the required capabilities (tools/reasoning)`,
-          { candidates: selection.filtered },
-        ),
-        400,
-      );
+      return anthropicProblem(c, {
+        status: 400,
+        code: "capability_unsupported",
+        message: `all candidates for alias "${body.model}" do not support the required capabilities (tools/reasoning)`,
+        metadata: { candidates: selection.filtered },
+      });
     }
 
     const onlyRateLimitFiltered =
@@ -130,30 +145,35 @@ export async function messages(c: Context): Promise<Response> {
       );
 
     if (onlyRateLimitFiltered) {
-      return c.json(
-        gatewayError(
-          429,
-          "rate_limit_exceeded",
-          `all candidates for alias "${body.model}" exceeded concurrency or RPM limits`,
-          { candidates: selection.filtered },
-        ),
-        429,
-      );
+      return anthropicProblem(c, {
+        status: 429,
+        code: "rate_limit_exceeded",
+        message: `all candidates for alias "${body.model}" exceeded concurrency or RPM limits`,
+        metadata: { candidates: selection.filtered },
+      });
     }
 
-    return c.json(
-      gatewayError(
-        429,
-        "quota_exceeded",
-        `all candidates for alias "${body.model}" are filtered by quota or health`,
-        {
-          candidates: [
-            ...selection.filtered,
-            ...selection.windowExceeded.map((w) => ({ ...w, reason: "context_window_exceeded" })),
-          ],
-        },
-      ),
-      429,
+    // Nothing selectable: quota exhausted, candidates cooling down after
+    // upstream failures, or unhealthy. Tell the client the real reasons and
+    // when the first candidate recovers instead of blind 429s.
+    const unavailable: UnavailableCandidate[] = [
+      ...selection.filtered,
+      ...selection.windowExceeded.map((w) => ({
+        provider: w.provider,
+        model: w.model,
+        reason: "context_window_exceeded",
+        contextWindow: w.contextWindow,
+      })),
+    ];
+    let earliestRecovery: number | null = null;
+    for (const candidate of candidates) {
+      const at = health.earliestRecoveryAt(candidate.provider, candidate.providerModelId);
+      if (at !== null && (earliestRecovery === null || at < earliestRecovery)) earliestRecovery = at;
+    }
+    const retryAfterMs = earliestRecovery !== null ? Math.max(1000, earliestRecovery - Date.now()) : undefined;
+    return anthropicProblem(
+      c,
+      buildNoCandidatesProblem(body.model, unavailable, retryAfterMs),
     );
   }
 
@@ -164,7 +184,12 @@ export async function messages(c: Context): Promise<Response> {
     : 1;
 
   let failovers = 0;
-  const attemptStatuses: { candidate: Candidate; status: number | null }[] = [];
+  const attemptStatuses: {
+    candidate: Candidate;
+    status: number | null;
+    retryAfterMs?: number;
+    snippet?: string;
+  }[] = [];
 
   for (let i = 0; i < attempts; i += 1) {
     const candidate = selection.ordered[i];
@@ -185,25 +210,19 @@ export async function messages(c: Context): Promise<Response> {
     const provider = config.providers[candidate.provider];
     if (!provider) {
       rateLimiter.release(candidate);
-      return c.json(
-        gatewayError(
-          500,
-          "gateway_internal_error",
-          `candidate "${candidate.providerModelId}" references unknown provider "${candidate.provider}"`,
-        ),
-        500,
-      );
+      return anthropicProblem(c, {
+        status: 500,
+        code: "gateway_internal_error",
+        message: `candidate "${candidate.providerModelId}" references unknown provider "${candidate.provider}"`,
+      });
     }
     if (!keyPool.hasKeys(candidate.provider)) {
       rateLimiter.release(candidate);
-      return c.json(
-        gatewayError(
-          500,
-          "gateway_internal_error",
-          `missing API key for provider "${candidate.provider}" (field "${provider.apiKeyField}")`,
-        ),
-        500,
-      );
+      return anthropicProblem(c, {
+        status: 500,
+        code: "gateway_internal_error",
+        message: `missing API key for provider "${candidate.provider}" (field "${provider.apiKeyField}")`,
+      });
     }
 
     const options = {
@@ -315,7 +334,11 @@ export async function messages(c: Context): Promise<Response> {
           },
           "upstream connection failed",
         );
-        attemptStatuses.push({ candidate, status: null });
+        attemptStatuses.push({
+          candidate,
+          status: null,
+          snippet: describeConnectFailure((err as Error).message, isTimeout),
+        });
         failovers += 1;
         continue;
       }
@@ -345,8 +368,15 @@ export async function messages(c: Context): Promise<Response> {
         status: result.status,
         retryAfterMs: result.retryAfterMs,
       });
-      void result.response.body?.cancel();
-      attemptStatuses.push({ candidate, status: result.status });
+      // Read (then release) the upstream error body so the final problem can
+      // carry a real reason snippet instead of a bare status code.
+      const snippet = await readUpstreamErrorSnippet(result.response);
+      attemptStatuses.push({
+        candidate,
+        status: result.status,
+        retryAfterMs: result.retryAfterMs,
+        snippet,
+      });
       failovers += 1;
     }
     if (!handedOff) {
@@ -354,17 +384,25 @@ export async function messages(c: Context): Promise<Response> {
     }
   }
 
-  const metadata = attemptStatuses.map(({ candidate, status }) => ({
+  // Every attempt failed: classify the outcome (any 429 -> 429 with the max
+  // Retry-After, all connect failures -> 503, otherwise 502) and render the
+  // per-attempt reasons instead of a bare status code.
+  const failedAttempts: FailedAttempt[] = attemptStatuses.map(({ candidate, status, retryAfterMs, snippet }) => ({
     provider: candidate.provider,
     model: candidate.providerModelId,
-    status: status ?? "connection_error",
+    status,
+    retryAfterMs,
+    snippet,
   }));
+  const problem = buildFailoverProblem(body.model, failedAttempts, requestId);
+  const finalStatus = problem.status;
+
   exporter.onError({
     requestId,
     ts: Date.now(),
     alias: body.model,
-    code: "gateway_all_candidates_failed",
-    message: `all candidates for alias "${body.model}" failed`,
+    code: problem.code,
+    message: problem.message,
   });
 
   const fallbackCandidate = selection.selected ?? selection.ordered[0];
@@ -376,7 +414,7 @@ export async function messages(c: Context): Promise<Response> {
       alias: body.model,
       provider: finalCandidate.provider,
       model: finalCandidate.providerModelId,
-      status: 502,
+      status: finalStatus,
       failover: failovers,
       durationMs: Date.now() - startedAt,
       usage: { inputChars, outputChars: 0 },
@@ -386,7 +424,7 @@ export async function messages(c: Context): Promise<Response> {
       alias: body.model,
       provider: finalCandidate.provider,
       model: finalCandidate.providerModelId,
-      status: 502,
+      status: finalStatus,
       durationMs: Date.now() - startedAt,
       failovers,
     });
@@ -399,7 +437,7 @@ export async function messages(c: Context): Promise<Response> {
     alias: body.model,
     provider: finalCandidate?.provider ?? "unknown",
     model: finalCandidate?.providerModelId ?? "unknown",
-    status: 502,
+    status: finalStatus,
     durationMs: Date.now() - startedAt,
     usage: {
       inputTokens: Math.ceil(inputChars / 4),
@@ -409,15 +447,13 @@ export async function messages(c: Context): Promise<Response> {
     failovers,
   });
 
-  return c.json(
-    gatewayError(
-      502,
-      "gateway_all_candidates_failed",
-      `all candidates for alias "${body.model}" failed`,
-      { candidates: metadata },
-    ),
-    502,
-  );
+  return anthropicProblem(c, problem);
+}
+
+/** Render a gateway problem in the native Anthropic error shape. */
+function anthropicProblem(c: Context, problem: GatewayProblem): Response {
+  const { body, headers } = renderProblemJson(problem, "anthropic");
+  return c.json(body, problem.status as ContentfulStatusCode, headers);
 }
 
 interface RelayContext {
@@ -552,20 +588,36 @@ async function relayAnthropicSuccess(ctx: RelayContext & { result: OkResult }): 
   });
 }
 
-function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Response {
+/**
+ * Relay a non-failover upstream error to the Anthropic client. The upstream
+ * body is parsed and rewritten into the Anthropic error shape (the message
+ * is prefixed with provider/model so the failing upstream stays visible);
+ * status and relay headers are preserved. chat/responses keep relaying the
+ * OpenAI-shaped body verbatim.
+ */
+async function relayUpstreamError(ctx: RelayContext & { result: HttpErrorResult }): Promise<Response> {
   const { result } = ctx;
   const headers: Record<string, string> = {};
   for (const name of RELAY_HEADERS) {
     const value = result.response.headers.get(name);
     if (value !== null) headers[name] = value;
   }
+  // The body is rewritten by us, so the content type is ours to set.
+  headers["content-type"] = "application/json";
   headers["x-prismd-provider"] = ctx.candidate.provider;
   headers["x-prismd-model"] = ctx.candidate.providerModelId;
   headers["x-prismd-alias"] = ctx.alias;
   if (ctx.failovers > 0) {
     headers["x-prismd-failovers"] = String(ctx.failovers);
   }
-  const response = new Response(result.response.body, {
+  const rawText = await result.response.text().catch(() => "");
+  const anthropicBody = rewriteUpstreamErrorBody(
+    rawText,
+    result.status,
+    ctx.candidate.provider,
+    ctx.candidate.providerModelId,
+  );
+  const response = new Response(JSON.stringify(anthropicBody), {
     status: result.status,
     headers,
   });

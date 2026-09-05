@@ -165,7 +165,7 @@ test("旅程 5a：上游挂起触发连接超时，网关切到候选 2", async 
   assert.equal(mockB.requests.length, 1);
 });
 
-test("旅程 5b：全部候选挂起返回 502，metadata 附各候选连接错误", async (t) => {
+test("旅程 5b：全部候选连接失败返回 503 upstream_unreachable，metadata 附各候选连接错误", async (t) => {
   // 前置条件：单候选，上游挂起 5s 不响应；connectTimeoutMs 调到 500ms。
   const mock = await startMockUpstream({ status: 200, body: "never", startDelayMs: 5_000 });
   t.after(() => mock.close());
@@ -199,15 +199,19 @@ test("旅程 5b：全部候选挂起返回 502，metadata 附各候选连接错�
 
   const res = await postResponses(gateway.url, { model: "free-auto", input: "hi" });
   const body = (await res.json()) as {
-    error: { code: string; metadata: { candidates: { provider: string; model: string; status: string }[] } };
+    error: { code: string; message: string; metadata: { candidates: { provider: string; model: string; status: string; snippet?: string }[] } };
   };
 
-  // 断言点：502 gateway_all_candidates_failed，metadata 定位到具体候选与连接错误。
-  assert.equal(res.status, 502, logTail(gateway));
-  assert.equal(body.error.code, "gateway_all_candidates_failed");
-  assert.deepEqual(body.error.metadata.candidates, [
-    { provider: "openrouter", model: C1, status: "connection_error" },
-  ]);
+  // 断言点：连接级失败定性为 503 upstream_unreachable（不再是 502 服务器故障），
+  // metadata 定位到具体候选与连接错误摘要，message 自包含。
+  assert.equal(res.status, 503, logTail(gateway));
+  assert.equal(body.error.code, "upstream_unreachable");
+  assert.match(body.error.message, /connection timeout/);
+  assert.equal(body.error.metadata.candidates.length, 1);
+  assert.equal(body.error.metadata.candidates[0].provider, "openrouter");
+  assert.equal(body.error.metadata.candidates[0].model, C1);
+  assert.equal(body.error.metadata.candidates[0].status, "connection_error");
+  assert.match(body.error.metadata.candidates[0].snippet ?? "", /connection timeout/);
   assert.equal(mock.requests.length, 1);
 });
 
