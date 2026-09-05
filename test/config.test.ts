@@ -56,6 +56,23 @@ test("loadConfig throws on invalid JSON", () => {
   assert.throws(() => loadConfig(path), /invalid JSON/);
 });
 
+test("loadConfig tolerates unknown top-level keys from other prismd versions", () => {
+  // A field an older prismd wrote (e.g. presetsHash) must not brick startup:
+  // it is dropped with a warning, the rest validates normally.
+  const withLegacy = makeValidConfig() as Record<string, unknown>;
+  withLegacy.presetsHash = "abc123";
+  const path = writeConfig(withLegacy);
+  const config = loadConfig(path);
+  assert.equal(config.server.port, 8787);
+  assert.equal("presetsHash" in config, false, "the unknown key must not leak into the typed config");
+
+  // Nested unknown keys stay strict: only root-level drift is tolerated.
+  // (ajv reports additionalProperties violations at the parent path.)
+  const nested = makeValidConfig({ server: { bogus: true } } as Parameters<typeof makeValidConfig>[0]);
+  const nestedPath = writeConfig(nested);
+  assert.throws(() => loadConfig(nestedPath), /\/server must NOT have additional properties/);
+});
+
 test("getConfig caches and resetConfigForTests forces a reload", () => {
   const path = writeConfig(makeValidConfig());
   const previous = process.env.PRISMD_CONFIG_PATH;
