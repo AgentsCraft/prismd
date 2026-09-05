@@ -18,6 +18,7 @@ import { statusBroadcaster } from "../core/status-events.js";
 import { routeAlias, shouldFailover, resolveClaudeModelAlias, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import {
+  addSseKeepAlive,
   callRawHttpUpstream,
   SseEventSplitter,
   dataPayloads,
@@ -543,7 +544,7 @@ async function relayAnthropicSuccess(ctx: RelayContext & { result: OkResult }): 
     };
     if (ctx.failovers > 0) streamHeaders["x-prismd-failovers"] = String(ctx.failovers);
 
-    return new Response(bodyStream, {
+    return new Response(addSseKeepAlive(bodyStream, "anthropic"), {
       status: result.response.status,
       headers: streamHeaders,
     });

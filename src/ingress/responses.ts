@@ -16,6 +16,7 @@ import { statusBroadcaster } from "../core/status-events.js";
 import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
+import { addSseKeepAlive } from "../egress/raw.js";
 import { callUpstream as chatCallUpstream } from "../egress/chat.js";
 import { exporter } from "../observability/exporter.js";
 import { logger } from "../observability/logger.js";
@@ -443,7 +444,7 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
         return relayed.cancel(reason);
       },
     });
-    return new Response(body, { status: result.response.status, headers });
+    return new Response(addSseKeepAlive(body, "responses"), { status: result.response.status, headers });
   }
 
   finalize({ ...ctx, status: result.response.status }, accounting);
