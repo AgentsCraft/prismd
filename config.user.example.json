@@ -6,18 +6,6 @@
         "llama-3.3-70b",
         "poolside/laguna-s-2.1:free"
       ]
-    },
-    "free-fast": {
-      "candidates": [
-        "llama3.1-8b",
-        "poolside/laguna-xs-2.1:free"
-      ]
-    },
-    "free-code": {
-      "candidates": [
-        "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free"
-      ]
     }
   },
   "policies": {

@@ -17,8 +17,6 @@ OpenCode 支持配置自定义 OpenAI 兼容 Provider 接入本地 prismd 网关
       "apiKey": "my-local-secret",
       "models": [
         "free-auto",
-        "free-fast",
-        "free-code"
       ]
     }
   }

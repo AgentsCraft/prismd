@@ -25,7 +25,7 @@
 
 1. **Einheitlicher Modell-Alias (`free-auto`)**: Keine manuelle Modellauswahl nötig; prismd wählt automatisch das beste verfügbare Modell.
 2. **Multi-Key-Pool & Single-Key-Isolierung (Key Pool)**: Ratenbegrenzungen (RPM) umgehen. Konfigurieren Sie mehrere Keys für Round-Robin-Scheduling. Bei einem 429-Fehler wird nur dieser eine Key pausiert und der Datenverkehr sofort auf den nächsten Key verlagert.
-3. **Lokales Ollama Zero-Downtime Offline-Fallback**: Wenn Cloud-APIs erschöpft sind oder das Internet ausfällt, schalten Anfragen nahtlos auf lokales Ollama (`qwen2.5-coder:7b`, `deepseek-r1:8b`) um.
+3. **Optionaler lokaler Fallback (Ollama / LM Studio)**: Standard-Aliase enthalten nur Cloud-Kandidaten. Läuft lokal ein Backend? Hängen Sie es über `config.user.json` an eine Warteschlange an — wenn Cloud-Modelle erschöpft sind oder das Internet ausfällt, weichen Anfragen auf Ihre lokalen Modelle aus.
 4. **Protokollübergreifende Streaming-Konvertierung**: Vollständige bidirektionale Unterstützung zwischen Claude Code (Messages), Codex (Responses) und Cursor/OpenCode (Chat Completions).
 5. **Eingebettetes Web-Dashboard & SIGHUP-Hot-Reload**: Überwachen Sie den Status unter `http://127.0.0.1:8787/ui`. Aktualisieren Sie Konfigurationen nahtlos per `SIGHUP` ohne Neustart.
 
@@ -111,9 +111,7 @@ prismd wählt für jede Anfrage dynamisch den optimalen Modellkandidaten über e
 - **Quotenbasierte Soft-Limits (Quota-Weighted Soft Limit)**: Erreicht ein Kandidat 80 % seiner Tagesquote (`quotaSoftLimitRatio`), wird er ans Ende der Warteschlange verschoben, um Restkontingente zu schonen.
 - **Unterbrechungsfreies 429 Failover (Zero-Crash Failover)**: Bei 429-Ratenbegrenzungen oder 5xx-Fehlern wechselt prismd nahtlos zum nächsten gesunden Kandidaten in der Alias-Warteschlange.
 - **Standard-Aliase**:
-  - `free-auto`: Haupt-Coding-Warteschlange (bevorzugt Gemini 2.0 Flash / Llama 3.3 70B, automatischer Fallback auf Ollama `qwen2.5-coder:7b`).
-  - `free-fast`: Leichtgewichtige Highspeed-Warteschlange (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code`: Spezialisierte Codegenerierungs-Warteschlange.
+  - `free-auto`: Haupt-Coding-Warteschlange (bevorzugt Gemini 2.0 Flash / Llama 3.3 70B, standardmäßig nur Cloud).
 
 ### 2. Multi-Key-Pooling & Circuit Breaking (Key Pool)
 
@@ -136,9 +134,9 @@ Alle Cloud-Provider (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitH
   ```
 - **Funktionsweise**: Anfragen werden per Round-Robin über funktionierende Keys verteilt. Wenn ein Key (z. B. `gsk_key1`) einen 429-Fehler erhält, wird nur dieser Key isoliert gekühlt (unter Beachtung von `Retry-After`), während nachfolgende Anfragen sofort auf `gsk_key2` oder das nächste Modell übergehen.
 
-### 3. Lokaler LLM Offline-Fallback (Ollama & LM Studio)
+### 3. Lokaler LLM-Fallback (Ollama & LM Studio, optional)
 
-Bei Quotenerschöpfung oder Verbindungsabbruch leitet prismd den Datenverkehr automatisch auf lokale Inferenz-Backends um:
+prismd bringt Ollama und LM Studio als integrierte Provider mit, hält die Standard-Aliase aber reine Cloud-Kandidaten. Läuft lokal eines davon? Hängen Sie es über `config.user.json` als Kandidaten an:
 
 - **Ollama**: Integrierter Zero-Config-Provider (`http://127.0.0.1:11434/v1`):
   ```bash
@@ -207,6 +205,6 @@ kill -HUP $(pgrep -f "prismd")
 - **Q: Fehler `missing API key for provider`?**
   - Überprüfen Sie `~/.prismd/keys.yaml` oder `.env` und führen Sie `npm run generate:config` aus.
 - **Q: Häufige 429-Fehler bei kostenlosen Modellen?**
-  - Fügen Sie mehrere Keys hinzu oder starten Sie `ollama run qwen2.5-coder:7b` als Offline-Backup.
+  - Fügen Sie mehrere Keys hinzu oder hängen Sie über `config.user.json` einen lokalen Ollama-Kandidaten an die Warteschlange an.
 - **Q: Tägliche Nutzungszähler zurücksetzen?**
   - Klicken Sie im Web-Dashboard auf „Reset usage“ oder löschen Sie `data/prismd.sqlite`.

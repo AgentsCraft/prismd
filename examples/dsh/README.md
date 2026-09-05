@@ -15,8 +15,6 @@ base_url = "http://127.0.0.1:8787/v1"
 api_key_env = "PRISMD_API_KEY"
 models = [
   "free-auto",
-  "free-fast",
-  "free-code"
 ]
 ```
 

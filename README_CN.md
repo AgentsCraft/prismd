@@ -25,7 +25,7 @@
 
 1. **统一模型别名（`free-auto`）**：不再纠结选哪个模型，一个别名自动从上游数十个免费模型中优选最合适候选。
 2. **多 Key 轮询与单 Key 熔断（Key Pool）**：单账号限流不够用？填多个 Key，网关自动 Round-Robin 轮询分发；单 Key 429 自动冷却并切到次 Key，吞吐翻倍。
-3. **本地 Ollama 零宕机离线兜底**：云端免费 API 突发全挂或断网？请求自动无缝回落到本地 Ollama（`qwen2.5-coder:7b`、`deepseek-r1:8b`），编码 Agent 任务永不崩溃中断。
+3. **可选本地兜底（Ollama / LM Studio）**：默认别名为纯云端队列。本地跑有推理后端？通过 `config.user.json` 把它追加进别名队列——云端免费 API 全挂或断网时，请求即回落到本地模型，编码 Agent 任务永不崩溃中断。
 4. **全协议跨端透明中继**：无论是 Claude Code（Messages）、Codex（Responses）还是 Cursor/OpenCode（Chat），全自动双向流式转换。
 5. **内嵌 Web 控制台与热重载**：访问 `http://127.0.0.1:8787/ui` 直观查看健康状态与配额进度条；修改配置后发送 `SIGHUP` 信号无缝热更新。
 
@@ -111,9 +111,7 @@ prismd 通过多维评估管道，对每次请求动态决策最优候选模型�
 - **软配额平滑降权 (Quota-Weighted Soft Limit)**：当云端候选模型当日调用量达到 80% 软限（`quotaSoftLimitRatio`）时，自动将其优先级软降至队列尾部，为高优先级任务留存配额。
 - **零中断 429 故障转移 (Zero-Crash Failover)**：若上游服务商返回 429 限流或 5xx 故障，网关自动透明重试别名队列中的下一候选模型，客户端会话完全无感知。
 - **默认模型别名**：
-  - `free-auto`：全能自动编码模型。优先优选 Gemini 2.0 Flash / Llama 3.3 70B 等大模型，云端不可用时自动回退到本地 Ollama `qwen2.5-coder:7b`。
-  - `free-fast`：极速轻量模型（Gemini Flash Lite / Llama 3.1 8B）。
-  - `free-code`：代码生成特化模型队列。
+  - `free-auto`：全能自动编码模型。优先优选 Gemini 2.0 Flash / Llama 3.3 70B 等大模型，默认纯云端队列。
 
 ### 2. 多 Key 轮询与单 Key 熔断隔离 (Key Pool)
 
@@ -136,16 +134,26 @@ prismd 通过多维评估管道，对每次请求动态决策最优候选模型�
   ```
 - **工作机制**：网关按 Round-Robin 算法在可用 Key 之间轮询。若某个 Key（如 `gsk_key1`）收到 429 限流响应，网关仅将该 Key 标记进入冷却期（严格尊重上游返回的 `Retry-After`），后续请求立即透明分发至同提供商的健康 Key（`gsk_key2`）或切换上游候选，使单提供商吞吐量成倍提升且不中断业务。
 
-### 3. 本地 LLM 零宕机离线兜底 (Ollama & LM Studio)
+### 3. 本地 LLM 兜底 (Ollama & LM Studio，可选)
 
-当云端 API 额度耗尽或发生网络中断时，网关透明将请求路由至本地推理后端：
+prismd 内置 Ollama 与 LM Studio 提供商，但默认别名只含云端候选——没装本地后端的机器不会生成永远连不上的死候选。本地跑有推理服务？通过 `config.user.json` 把它追加进别名队列（候选数组为整体替换，需一并保留想保留的云端候选）：
+
+```json
+{
+  "aliases": {
+    "free-auto": {
+      "candidates": ["gemini-2.0-flash", "cohere/north-mini-code:free", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
 
 - **Ollama**：内置零配置支持（默认 `http://127.0.0.1:11434/v1`）：
   ```bash
   ollama run qwen2.5-coder:7b
   ```
 - **LM Studio**：支持通过本地 OpenAI 兼容服务器（`http://127.0.0.1:1234/v1`）加载 GGUF 模型。详见 [LM Studio 配置指南](docs/providers/lmstudio.md)。
-- 本地兜底过程无需重启网关，编码智能体任务永不中断。
+- 本地候选位于队列末位，云端模型全部耗尽时请求自动回落，编码智能体任务永不中断。
 
 ### 4. 全协议跨端透明中继
 
@@ -208,6 +216,6 @@ kill -HUP $(pgrep -f "prismd")
 - **Q: 为什么提示 `missing API key for provider`？**
   - 请检查 `~/.prismd/keys.yaml` 或 `.env` 中是否配置了对应提供方的 Key，配置后运行 `prismd generate`（或源码模式下运行 `npm run generate:config`）更新配置。
 - **Q: 云端模型频繁 429 怎么办？**
-  - 为该提供方配置多个账号 Key 开启轮询，或者本地启动 `ollama run qwen2.5-coder:7b` 开启本地离线兜底。
+  - 为该提供方配置多个账号 Key 开启轮询，或将本地 Ollama 候选追加进别名队列（见[本地 LLM 兜底](#3-本地-llm-兜底-ollama--lm-studio可选)）。
 - **Q: 如何重置当天的调用配额记录？**
   - 在 Web 控制台右上角点击「Reset usage」按钮，或删除本地数据库文件 `data/prismd.sqlite`。
