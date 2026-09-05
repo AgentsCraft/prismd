@@ -280,6 +280,7 @@ export async function messages(c: Context): Promise<Response> {
             bodyStr,
             body.stream === true,
             options,
+            "chat",
           );
         } else {
           const responsesReq = convertChatToResponsesRequest(chatRequest, candidate.providerModelId);

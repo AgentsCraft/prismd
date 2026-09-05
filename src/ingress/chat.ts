@@ -296,6 +296,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
             bodyStr,
             body.stream === true,
             options,
+            "chat",
           );
         } else {
           // Responses upstream: convert Chat request to Responses request

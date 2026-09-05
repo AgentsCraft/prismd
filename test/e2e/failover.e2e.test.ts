@@ -126,7 +126,8 @@ test("旅程 4：流开始后断流不重试，客户端收到 SSE error 事件�
   // 断言点：已流出的数据保留 + 网关追加 SSE error 事件结束流；不重试候选 2。
   assert.equal(res.status, 200, logTail(gateway));
   assert.ok(text.startsWith(firstEvent), `partial upstream data must be preserved, got:\n${text}`);
-  assert.ok(text.includes('"type":"error"'), "broken stream must end with an SSE error event");
+  assert.ok(text.includes("event: response.failed"), "broken stream must end with a Responses SSE error event");
+  assert.ok(text.includes('"type":"response.failed"'));
   assert.ok(text.includes("stream_error"), "error event carries the stream_error code");
   assert.ok(!text.includes("from-candidate-2"), "no candidate 2 output may appear");
   assert.equal(mockA.requests.length, 1);

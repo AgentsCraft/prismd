@@ -255,3 +255,30 @@ test("chat provider real usage is saved to SQLite usage_daily", async (t) => {
     db.close();
   }
 });
+
+test("mid-stream chat upstream error surfaces as a Responses response.failed event without normal completion", async (t) => {
+  const mock = await startChatMock((body, res) => {
+    if (body?.stream === true) {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write('data: {"id":"chatcmpl-err","choices":[{"delta":{"role":"assistant","content":"par"}}]}\n\n');
+      setTimeout(() => {
+        res.write('data: {"error":{"code":"server_error","message":"mid-stream chat failure"}}\n\n');
+        res.end();
+      }, 10);
+    }
+  });
+  t.after(() => new Promise((r) => mock.server.close(r)));
+  await setupChat(mock.port);
+
+  const res = await post({ model: "cerebras-chat", input: "ping", stream: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/event-stream");
+
+  const text = await res.text();
+  assert.ok(text.includes("event: response.failed"), "mid-stream failure must reach the client as response.failed");
+  assert.ok(text.includes('"type":"response.failed"'));
+  assert.ok(text.includes('"code":"server_error"'));
+  assert.ok(text.includes("mid-stream chat failure"));
+  assert.ok(!text.includes('"type":"response.completed"'), "no normal completion after a mid-stream failure");
+  assert.ok(!text.includes("[DONE]"), "no [DONE] after a mid-stream failure");
+});

@@ -322,3 +322,37 @@ test("cooled-down candidates produce a 429 with Retry-After and the earliest rec
   assert.match(body.error.message, /earliest recovery in ~/);
   assert.equal(mock.requests.length, 0);
 });
+
+test("mid-stream upstream failure reaches Claude Code as an Anthropic error event with no normal completion", async (t) => {
+  const mock = await startMockUpstream(
+    byModel({
+      "poolside/laguna-s-2.1:free": {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        events: [
+          'data: {"type":"response.output_text.delta","delta":"working"}\n\n',
+          'data: {"type":"response.failed","response":{"id":"resp_mid","error":{"code":"server_error","message":"mid-stream responses failure"}}}\n\n',
+        ],
+        eventDelayMs: 5,
+      },
+      "llama-3.3-70b-versatile": SSE_OK,
+    }),
+  );
+  t.after(() => mock.close());
+  await setup(mock.url);
+
+  const res = await postClaude({
+    model: "claude-3-5-sonnet-20241022",
+    messages: [{ role: "user", content: "hi" }],
+    stream: true,
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/event-stream");
+
+  const text = await res.text();
+  assert.ok(text.includes("event: error"), "mid-stream failure must end with an Anthropic error event");
+  assert.ok(text.includes("mid-stream responses failure"), "the error must carry the upstream's own message");
+  assert.ok(text.includes('"code":"server_error"'));
+  assert.ok(!text.includes("event: message_delta"), "no message_delta after a mid-stream failure");
+  assert.ok(!text.includes("event: message_stop"), "no message_stop after a mid-stream failure");
+});

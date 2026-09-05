@@ -113,8 +113,31 @@ export function tryExtractUsage(payloadOrText: string): { inputTokens?: number; 
   return undefined;
 }
 
-/** SSE error event terminating a broken stream. */
-export function sseErrorEvent(code: string, message: string): string {
+/** Protocol of an SSE stream output, deciding the mid-stream error event shape. */
+export type SseErrorProtocol = "chat" | "responses" | "anthropic";
+
+/** Protocol of the upstream API a raw egress call talks to (providers are chat or responses only). */
+export type UpstreamProtocol = "chat" | "responses";
+
+/**
+ * SSE error event terminating a broken stream, rendered in the protocol of the
+ * stream it is injected into: every stream wrapper emits errors in its OUTPUT
+ * protocol, and converters translate upstream error events into theirs.
+ * - chat: bare `data: {"error":{...}}` (no event name, no [DONE] — the SDK
+ *   throws as soon as it parses the error object; the stream closes after).
+ * - responses: `event: response.failed` with the Responses error envelope.
+ * - anthropic: `event: error` with the Anthropic error envelope.
+ */
+export function sseErrorEvent(code: string, message: string, protocol: SseErrorProtocol): string {
+  if (protocol === "chat") {
+    return `data: ${JSON.stringify({ error: { message, type: "upstream_error", code } })}\n\n`;
+  }
+  if (protocol === "responses") {
+    return `event: response.failed\ndata: ${JSON.stringify({
+      type: "response.failed",
+      response: { id: "resp_error", error: { code, message } },
+    })}\n\n`;
+  }
   return `event: error\ndata: ${JSON.stringify({ type: "error", error: { message, type: "upstream_error", code } })}\n\n`;
 }
 
@@ -138,13 +161,15 @@ export function parseRetryAfter(value: string | null | undefined): number | unde
 
 /**
  * Wrap an upstream SSE body with stream-idle timeout, first token latency tracking,
- * real-time usage extraction, and mid-stream error handling.
+ * real-time usage extraction, and mid-stream error handling. The stream is a raw
+ * passthrough, so injected error events use the upstream's own protocol.
  */
 function wrapRawStream(
   upstream: Response,
   accounting: StreamAccounting,
   options: UpstreamCallOptions,
   startedAtMs: number,
+  upstreamProtocol: UpstreamProtocol,
 ): Response {
   const reader = upstream.body!.getReader();
   const isSse = (upstream.headers.get("content-type") ?? "").includes("text/event-stream");
@@ -174,7 +199,7 @@ function wrapRawStream(
     accounting.aborted = true;
     if (isSse) {
       try {
-        controller.enqueue(encoder.encode(sseErrorEvent(code, message)));
+        controller.enqueue(encoder.encode(sseErrorEvent(code, message, upstreamProtocol)));
       } catch {
         /* already closed */
       }
@@ -286,7 +311,8 @@ async function bufferRawJson(
 
 /**
  * Execute raw HTTP upstream call with connection timeout, stream idle timeout,
- * and unified StreamAccounting.
+ * and unified StreamAccounting. `upstreamProtocol` decides the shape of the
+ * error event injected into a broken passthrough SSE stream.
  */
 export async function callRawHttpUpstream(
   providerName: string,
@@ -295,6 +321,7 @@ export async function callRawHttpUpstream(
   bodyStr: string,
   wantsStream: boolean,
   options: UpstreamCallOptions,
+  upstreamProtocol: UpstreamProtocol,
 ): Promise<UpstreamResult> {
   const startedAtMs = Date.now();
   const controller = new AbortController();
@@ -329,7 +356,12 @@ export async function callRawHttpUpstream(
   const isSse = (upstream.headers.get("content-type") ?? "").includes("text/event-stream");
 
   if (wantsStream && isSse && upstream.body) {
-    return { kind: "stream", response: wrapRawStream(upstream, accounting, options, startedAtMs), accounting, retryAfterMs };
+    return {
+      kind: "stream",
+      response: wrapRawStream(upstream, accounting, options, startedAtMs, upstreamProtocol),
+      accounting,
+      retryAfterMs,
+    };
   }
   if (upstream.body === null) {
     return { kind: "json", response: upstream, accounting, retryAfterMs };

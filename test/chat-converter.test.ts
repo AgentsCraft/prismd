@@ -532,3 +532,116 @@ test("ResponsesToChatStreamTransformer translates Responses SSE tool calls into 
   const finishChunk = parsed[parsed.length - 1] as { choices: Array<{ finish_reason: string }> };
   assert.equal(finishChunk.choices[0].finish_reason, "tool_calls");
 });
+
+/** Parse the data payload out of a (possibly named) SSE event string. */
+function dataJson(event: string): Record<string, unknown> {
+  const line = event.split("\n").find((l) => l.startsWith("data:"));
+  assert.ok(line, `event must carry a data line: ${JSON.stringify(event)}`);
+  return JSON.parse(line.slice(5).trim()) as Record<string, unknown>;
+}
+
+test("ResponsesToChatStreamTransformer converts upstream response.failed into a chat error event and suppresses completion", () => {
+  const transformer = new ResponsesToChatStreamTransformer("free-auto");
+  const events: string[] = [];
+  events.push(
+    ...transformer.processDataPayload(JSON.stringify({ type: "response.created", response: { id: "resp_x" } })),
+  );
+  events.push(
+    ...transformer.processDataPayload(JSON.stringify({ type: "response.output_text.delta", delta: "partial" })),
+  );
+  events.push(
+    ...transformer.processDataPayload(
+      JSON.stringify({
+        type: "response.failed",
+        response: { id: "resp_x", error: { code: "server_error", message: "upstream blew up" } },
+      }),
+    ),
+  );
+
+  // The failure is relayed as a bare chat error data event (no event name, no [DONE]).
+  const errorEvents = events.filter((e) => e.includes('"error"'));
+  assert.equal(errorEvents.length, 1);
+  const errorEvent = errorEvents[0];
+  assert.ok(!errorEvent.startsWith("event:"), "chat error events carry no SSE event name");
+  const parsed = dataJson(errorEvent) as { error: { message: string; type: string; code: string } };
+  assert.equal(parsed.error.message, "upstream blew up");
+  assert.equal(parsed.error.type, "upstream_error");
+  assert.equal(parsed.error.code, "server_error");
+
+  // No normal completion: no finish_reason chunk and no [DONE].
+  assert.ok(!events.some((e) => e.includes('"finish_reason":"stop"')));
+  assert.ok(!events.some((e) => e.includes('"finish_reason":"tool_calls"')));
+  assert.ok(!events.some((e) => e.includes("[DONE]")));
+
+  // After the failure, finish() and any later payload emit nothing.
+  assert.deepEqual(transformer.finish(), []);
+  assert.deepEqual(transformer.processDataPayload("[DONE]"), []);
+  assert.deepEqual(transformer.processDataPayload(JSON.stringify({ type: "response.completed" })), []);
+  assert.equal(transformer.completed, true);
+});
+
+test("ResponsesToChatStreamTransformer falls back when response.failed carries no error details", () => {
+  const transformer = new ResponsesToChatStreamTransformer("free-auto");
+  const events = transformer.processDataPayload(JSON.stringify({ type: "response.failed", response: {} }));
+  assert.equal(events.length, 1);
+  const parsed = dataJson(events[0]) as { error: { message: string; code: string } };
+  assert.equal(parsed.error.message, "upstream response failed");
+  assert.equal(parsed.error.code, "upstream_error");
+});
+
+test("ResponsesToChatStreamTransformer converts upstream error events into a chat error event", () => {
+  const transformer = new ResponsesToChatStreamTransformer("free-auto");
+  const events = transformer.processDataPayload(
+    JSON.stringify({ type: "error", error: { code: "rate_limit", message: "slow down" } }),
+  );
+  // Error as the very first payload: only the error event, no role chunk.
+  assert.equal(events.length, 1);
+  const parsed = dataJson(events[0]) as { error: { message: string; code: string } };
+  assert.equal(parsed.error.message, "slow down");
+  assert.equal(parsed.error.code, "rate_limit");
+  assert.deepEqual(transformer.finish(), []);
+});
+
+test("ChatToResponsesStreamTransformer converts an upstream chat error into response.failed and suppresses completion", () => {
+  const transformer = new ChatToResponsesStreamTransformer("free-auto");
+  const events: string[] = [];
+  events.push(
+    ...transformer.processDataPayload(
+      JSON.stringify({ id: "chatcmpl-1", choices: [{ delta: { role: "assistant", content: "par" } }] }),
+    ),
+  );
+  events.push(
+    ...transformer.processDataPayload(JSON.stringify({ error: { code: "overloaded", message: "upstream overloaded" } })),
+  );
+
+  const failedEvents = events.filter((e) => e.includes("response.failed"));
+  assert.equal(failedEvents.length, 1);
+  const parsed = dataJson(failedEvents[0]) as {
+    type: string;
+    response: { error: { code: string; message: string } };
+  };
+  assert.equal(parsed.type, "response.failed");
+  assert.equal(parsed.response.error.code, "overloaded");
+  assert.equal(parsed.response.error.message, "upstream overloaded");
+
+  // No normal completion after the failure.
+  assert.ok(!events.some((e) => e.includes("response.completed")));
+  assert.ok(!events.some((e) => e.includes("[DONE]")));
+  assert.deepEqual(transformer.finish(), []);
+  assert.deepEqual(transformer.processDataPayload("[DONE]"), []);
+  assert.deepEqual(
+    transformer.processDataPayload(JSON.stringify({ id: "chatcmpl-1", choices: [{ delta: { content: "x" } }] })),
+    [],
+  );
+  assert.equal(transformer.completed, true);
+});
+
+test("ChatToResponsesStreamTransformer falls back when the chat error has no details", () => {
+  const transformer = new ChatToResponsesStreamTransformer("free-auto");
+  const events = transformer.processDataPayload(JSON.stringify({ error: {} }));
+  assert.equal(events.length, 1);
+  const parsed = dataJson(events[0]) as { type: string; response: { error: { code: string; message: string } } };
+  assert.equal(parsed.type, "response.failed");
+  assert.equal(parsed.response.error.code, "upstream_error");
+  assert.equal(parsed.response.error.message, "upstream response failed");
+});

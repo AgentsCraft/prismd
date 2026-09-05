@@ -304,8 +304,10 @@ test("broken stream ends with an SSE error event and is never retried", async (t
   const res = await post({ model: "free-auto", input: "hi", stream: true });
   assert.equal(res.status, 200);
   const text = await res.text();
-  assert.ok(text.includes('"type":"error"'), "broken stream must end with an SSE error event");
+  assert.ok(text.includes("event: response.failed"), "broken stream must end with a Responses SSE error event");
+  assert.ok(text.includes('"type":"response.failed"'));
   assert.ok(text.includes("stream_error"), "error event carries the stream_error code");
+  assert.ok(!text.includes('"type":"response.completed"'), "no normal completion after a broken stream");
   assert.equal(mock.requests.length, 1, "stream breaks after start are never retried");
 });
 

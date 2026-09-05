@@ -320,6 +320,7 @@ export class ChatToAnthropicStreamTransformer {
   }
 
   processDataPayload(payload: string): string[] {
+    if (this.allCompleted) return [];
     const trimmed = payload.trim();
     if (trimmed === "[DONE]") {
       return this.finish();
@@ -335,7 +336,10 @@ export class ChatToAnthropicStreamTransformer {
       return [];
     }
 
+    // Mid-stream upstream error (data: {"error":{...}}): relay as an Anthropic
+    // error event and suppress the normal message_delta/message_stop ending.
     if (chunk.error && typeof chunk.error === "object") {
+      this.allCompleted = true;
       return [this.formatEvent("error", { type: "error", error: chunk.error })];
     }
 

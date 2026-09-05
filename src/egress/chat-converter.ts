@@ -391,11 +391,17 @@ export class ChatToResponsesStreamTransformer {
     return undefined;
   }
 
+  /** True once the stream has been terminated (completed or errored). */
+  get completed(): boolean {
+    return this.allCompleted;
+  }
+
   /**
    * Process a single Chat SSE data payload (raw JSON string or '[DONE]').
    * Returns zero or more formatted Responses SSE event strings (each ending with \n\n).
    */
   processDataPayload(payload: string): string[] {
+    if (this.allCompleted) return [];
     const trimmed = payload.trim();
     if (trimmed === "[DONE]") {
       return this.finish();
@@ -409,6 +415,16 @@ export class ChatToResponsesStreamTransformer {
       chunk = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
       return [];
+    }
+
+    // Mid-stream upstream error (data: {"error":{...}}): translate into a
+    // Responses response.failed event and suppress all normal completion.
+    if (chunk.error && typeof chunk.error === "object") {
+      const err = chunk.error as Record<string, unknown>;
+      const message = typeof err.message === "string" && err.message.length > 0 ? err.message : "upstream response failed";
+      const code = typeof err.code === "string" && err.code.length > 0 ? err.code : "upstream_error";
+      this.allCompleted = true;
+      return [sseErrorEvent(code, message, "responses")];
     }
 
     const events: string[] = [];
@@ -1022,7 +1038,13 @@ export class ResponsesToChatStreamTransformer {
     return undefined;
   }
 
+  /** True once the stream has been terminated (completed or errored). */
+  get completed(): boolean {
+    return this.allCompleted;
+  }
+
   processDataPayload(payload: string): string[] {
+    if (this.allCompleted) return [];
     const trimmed = payload.trim();
     if (trimmed === "[DONE]") {
       return this.finish();
@@ -1036,6 +1058,26 @@ export class ResponsesToChatStreamTransformer {
       chunk = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
       return [];
+    }
+
+    const type = String(chunk.type ?? "");
+
+    // Mid-stream upstream failure (response.failed, or an error event relayed
+    // by the upstream): translate into a chat-shaped error data event and
+    // suppress all normal completion.
+    if (type === "response.failed" || type === "error") {
+      const source = (
+        type === "response.failed"
+          ? (chunk.response as Record<string, unknown> | undefined)?.error
+          : chunk.error
+      ) as Record<string, unknown> | undefined;
+      const message =
+        typeof source?.message === "string" && source.message.length > 0
+          ? source.message
+          : "upstream response failed";
+      const code = typeof source?.code === "string" && source.code.length > 0 ? source.code : "upstream_error";
+      this.allCompleted = true;
+      return [sseErrorEvent(code, message, "chat")];
     }
 
     const events: string[] = [];
@@ -1086,8 +1128,6 @@ export class ResponsesToChatStreamTransformer {
       if (typeof u.prompt_tokens === "number") this.usage.inputTokens = u.prompt_tokens;
       if (typeof u.completion_tokens === "number") this.usage.outputTokens = u.completion_tokens;
     }
-
-    const type = String(chunk.type ?? "");
 
     // 1. Initial role event
     if (!this.roleSent) {
@@ -1310,10 +1350,15 @@ export function wrapResponsesStreamToChat(
   function abort(controller: ReadableStreamDefaultController<Uint8Array>, code: string, message: string): void {
     clearIdle();
     accounting.aborted = true;
-    try {
-      controller.enqueue(encoder.encode(sseErrorEvent(code, message)));
-    } catch {
-      /* controller already closed */
+    // This wrapper's output is a Chat Completions SSE stream, so the injected
+    // error must use the chat shape (bare error data event). Skip if the
+    // transformer already emitted an error or completion of its own.
+    if (!transformer.completed) {
+      try {
+        controller.enqueue(encoder.encode(sseErrorEvent(code, message, "chat")));
+      } catch {
+        /* controller already closed */
+      }
     }
     try {
       controller.close();
