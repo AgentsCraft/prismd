@@ -314,9 +314,23 @@ export const UPSTREAM_ERROR_MESSAGE_MAX_CHARS = 500;
 /** Upper bound for the error-body read deadline (also clamps streamIdleTimeoutMs). */
 export const ERROR_BODY_READ_TIMEOUT_MS = 2000;
 
-/** Collapse whitespace and truncate so snippets stay one readable line. */
+/** API-key shapes that must never survive into client-visible snippets. */
+const SECRET_PATTERNS: RegExp[] = [
+  /(sk|gsk|rk)-[A-Za-z0-9_-]{6,}/g,
+  /Bearer\s+[A-Za-z0-9._-]{6,}/gi,
+  /[?&](?:key|api_?key|token)=[^&\s]{4,}/gi,
+];
+
+/**
+ * Collapse whitespace, mask credential-shaped substrings (a misbehaving
+ * upstream may echo keys back in error bodies), and truncate so snippets
+ * stay one readable line.
+ */
 export function truncateSnippet(text: string, maxChars = ERROR_SNIPPET_MAX_CHARS): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
+  let cleaned = text.replace(/\s+/g, " ").trim();
+  for (const pattern of SECRET_PATTERNS) {
+    cleaned = cleaned.replace(pattern, (match) => `${match.slice(0, 5)}***`);
+  }
   return cleaned.length > maxChars ? cleaned.slice(0, maxChars) : cleaned;
 }
 

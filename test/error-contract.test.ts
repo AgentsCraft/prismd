@@ -240,6 +240,19 @@ test("truncateSnippet collapses whitespace and caps the length", () => {
   assert.equal(truncateSnippet("", 10), "");
 });
 
+test("truncateSnippet masks credential-shaped substrings before relaying", () => {
+  assert.equal(
+    truncateSnippet("invalid key sk-or-v1-abcdef1234567890 for model x"),
+    "invalid key sk-or*** for model x",
+  );
+  const bearer = truncateSnippet("bad credentials: Bearer eyJhbGciOiJIUzI1NiJ9.e30.signature rejected");
+  assert.ok(!bearer.includes("eyJhbGciOiJIUzI1NiJ9"), "bearer tokens must not survive");
+  assert.ok(bearer.startsWith("bad credentials: Beare***"));
+  assert.equal(truncateSnippet("call failed: https://api.x.com/v1?key=supersecret123"), "call failed: https://api.x.com/v1?key=***");
+  // Ordinary error text passes through untouched.
+  assert.equal(truncateSnippet("rate limit exceeded: free-models-per-day"), "rate limit exceeded: free-models-per-day");
+});
+
 test("describeConnectFailure labels timeouts vs refusals for any thrown value", () => {
   assert.equal(describeConnectFailure(new Error("aborted"), true), "connection timeout: aborted");
   assert.equal(describeConnectFailure(new Error("ECONNREFUSED"), false), "connection error: ECONNREFUSED");
