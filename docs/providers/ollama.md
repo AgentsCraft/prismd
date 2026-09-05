@@ -31,7 +31,7 @@ prismd 内置了以下 Ollama 模型与路由别名：
 
 | 模型别名/ID | 上下文窗口 | 最大输出 | 特性 | 挂载别名 |
 |---|---|---|---|---|
-| `qwen2.5-coder:7b` | 32,768 | 8,192 | 支持 Tools、代码特化 | `free-auto`, `free-fast`, `free-code`（末位兜底） |
+| `qwen2.5-coder:7b` | 32,768 | 8,192 | 支持 Tools、代码特化 | `free-auto`（末位兜底） |
 | `deepseek-r1:8b` | 32,768 | 8,192 | 具备深度推理能力 | 本地离线思考备选 |
 
 - **零密钥配置**：内置 `ollama` 提供商认证模式为 `none`，无需在 `keys.yaml` 或 `.env` 中填写 Key。

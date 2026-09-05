@@ -36,7 +36,7 @@ claude
 
 ### 工作机制与模型自适应
 - Claude Code 默认请求 `claude-3-5-sonnet` 或 `claude-3-haiku` 等模型 ID。
-- prismd 内置了自适应映射机制，会自动将其解析并路由至 `free-auto` 或 `free-fast` 候选池（优先分发至 Gemini 2.0 Flash / Llama 3.3 70B 等免费云端大模型，断网或全限流时回退至本地 Ollama `qwen2.5-coder:7b`）。
+- prismd 内置了自适应映射机制，会自动将其解析并路由至 `free-auto` 候选池（优先分发至 Gemini 2.0 Flash / Llama 3.3 70B 等免费云端大模型，断网或全限流时回退至本地 Ollama `qwen2.5-coder:7b`）。
 - 原生支持 Claude Code 的 Tool Calling、文件编辑与 Thinking 块双向流式透传。
 
 ---

@@ -90,7 +90,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
   1. 打开 Cursor：`Settings` → `Models`。
   2. 启用 **OpenAI API Key**，输入网关本地令牌（如 `my-local-secret`）。
   3. 勾选 **Override OpenAI Base URL**，填写：`http://127.0.0.1:8787/v1`。
-  4. 点击 **Add Model** 添加虚拟模型别名：`free-auto`、`free-fast`、`free-code`。
+  4. 点击 **Add Model** 添加虚拟模型别名：`free-auto`。
 - **详细指引**：见 [Cursor 接入指南](../../examples/cursor/README.md)。
 
 #### 4. OpenCode
@@ -102,7 +102,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
         "type": "openai",
         "baseUrl": "http://127.0.0.1:8787/v1",
         "apiKey": "your-prismd-local-token",
-        "models": ["free-auto", "free-fast", "free-code"]
+        "models": ["free-auto"]
       }
     }
   }
@@ -120,7 +120,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
   type = "openai-completions" # 亦支持 "openai-responses"
   base_url = "http://127.0.0.1:8787/v1"
   api_key_env = "PRISMD_API_KEY"
-  models = ["free-auto", "free-fast", "free-code"]
+  models = ["free-auto"]
   ```
 - **运行命令**：
   ```bash
@@ -171,8 +171,6 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
 | 模型别名 | 调度策略 | 适用场景 | 备选回退队列 |
 |---|---|---|---|
 | **`free-auto`** | 优先云端大模型，全限流时回退至本地 Ollama | 日常主力编码、代码重构、多文件分析 | Gemini 2.0 Flash → Llama 3.3 70b → Qwen 2.5 Coder 7B (本地) |
-| **`free-fast`** | 极速响应轻量模型 | 代码补全、简单行内问答、Git 提交信息生成 | Gemini Flash Lite → Llama 3.1 8b → Qwen 2.5 Coder 7B (本地) |
-| **`free-code`** | 代码特化模型队列 | 专注函数生成、单元测试编写 | Gemini 2.0 Flash → Cohere North Mini → Llama 3.3 70b |
 
 ---
 

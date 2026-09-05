@@ -112,8 +112,6 @@ prismd seleziona dinamicamente il candidato ottimale per ciascuna richiesta tram
 - **Failover senza interruzioni (Zero-Crash Failover)**: In caso di errore 429 di rate limit o 5xx, prismd passa istantaneamente al modello candidato successivo nella coda.
 - **Alias Predefiniti**:
   - `free-auto`: Coda principale di programmazione (priorità Gemini 2.0 Flash / Llama 3.3 70B, fallback su Ollama `qwen2.5-coder:7b`).
-  - `free-fast`: Coda ultra-rapida e leggera (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code`: Coda specializzata nella generazione e nei test del codice.
 
 ### 2. Multi-Key e Isolamento Errori (Key Pool)
 

@@ -112,8 +112,6 @@ prismd sélectionne dynamiquement le meilleur modèle pour chaque requête via u
 - **Basculement sans interruption (Zero-Crash Failover)** : En cas d'erreur 429 ou 5xx d'un fournisseur, prismd bascule de manière transparente sur le candidat suivant de la file.
 - **Alias par Défaut** :
   - `free-auto` : File principale de code (priorité Gemini 2.0 Flash / Llama 3.3 70B, repli sur Ollama `qwen2.5-coder:7b`).
-  - `free-fast` : File ultra-rapide et légère (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code` : File dédiée à la génération de code et aux tests.
 
 ### 2. Multi-Clés et Disjoncteur Automatique (Key Pool)
 

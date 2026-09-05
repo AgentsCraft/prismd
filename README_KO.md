@@ -112,8 +112,6 @@ prismd는 다차원 평가 파이프라인을 통해 요청마다 최적의 후�
 - **무중단 429 장애 조치 (Zero-Crash Failover)**: 업스트림에서 429 속도 제한 또는 5xx 오류 반환 시 즉시 다음 후보 모델로 투명하게 재시도.
 - **기본 별칭 목록**:
   - `free-auto`: 범용 코딩 모델 (Gemini 2.0 Flash / Llama 3.3 70B 우선, Ollama `qwen2.5-coder:7b`로 자동 대체).
-  - `free-fast`: 초고속 경량 모델 (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code`: 코드 생성 특화 모델 큐.
 
 ### 2. 다중 Key 풀과 서킷 브레이커 (Key Pool)
 
