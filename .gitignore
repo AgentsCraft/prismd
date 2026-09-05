@@ -21,6 +21,9 @@ keys.yaml
 .env
 .env.*
 !.env.example
+keys.yaml
+keys.yaml.*
+!keys.yaml.example
 
 # Logs
 *.log

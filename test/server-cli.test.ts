@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initRuntime, getKeyPool, getHealth, getQuota } from "../src/core/runtime.js";
+import { initRuntime, getKeyPool, getHealth, getQuota, resetRuntimeForTests } from "../src/core/runtime.js";
 import { resetConfigForTests } from "../src/config.js";
 import { useTempDataPath } from "./helpers.js";
 import { printHelpCli } from "../src/cli/help.js";
@@ -16,17 +16,25 @@ import { printHelpCli } from "../src/cli/help.js";
  * os.homedir() ignores on Windows.
  */
 function isolateConfigEnv(): void {
-  const dataDir = useTempDataPath();
+  useTempDataPath();
   const home = mkdtempSync(join(tmpdir(), "prismd-runtime-home-"));
   const homePrismd = join(home, ".prismd");
   mkdirSync(homePrismd, { recursive: true });
   writeFileSync(join(homePrismd, "keys.yaml"), "openrouter: sk-test-key-123\n");
   process.env.PRISMD_HOME = home;
   resetConfigForTests();
+  resetRuntimeForTests();
 }
 
 describe("server & runtime unit tests", () => {
-  it("initRuntime initializes all singletons atomically", () => {
+  it("initRuntime initializes all singletons atomically", (t) => {
+    const previousHome = process.env.PRISMD_HOME;
+    t.after(() => {
+      if (previousHome) process.env.PRISMD_HOME = previousHome;
+      else delete process.env.PRISMD_HOME;
+      resetConfigForTests();
+      resetRuntimeForTests();
+    });
     isolateConfigEnv();
     const runtime = initRuntime();
     assert.ok(runtime.keyPool);
