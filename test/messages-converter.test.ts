@@ -203,3 +203,56 @@ test("ChatToAnthropicStreamTransformer translates Chat SSE to Anthropic SSE even
   assert.ok(rawText.includes('"stop_reason":"tool_use"'));
   assert.ok(rawText.includes('"output_tokens":12'));
 });
+
+test("ChatToAnthropicStreamTransformer relays mid-stream errors and skips the normal completion", () => {
+  const transformer = new ChatToAnthropicStreamTransformer("free-auto");
+  const events: string[] = [];
+  events.push(
+    ...transformer.processDataPayload(
+      JSON.stringify({ id: "chatcmpl-9", choices: [{ delta: { role: "assistant", content: "so far" } }] }),
+    ),
+  );
+  events.push(
+    ...transformer.processDataPayload(JSON.stringify({ error: { code: "server_error", message: "mid-stream failure" } })),
+  );
+  // After the error, [DONE] and any further chunk must produce nothing.
+  events.push(...transformer.processDataPayload("[DONE]"));
+  events.push(
+    ...transformer.processDataPayload(JSON.stringify({ id: "chatcmpl-9", choices: [{ delta: { content: "more" } }] })),
+  );
+
+  const rawText = events.join("");
+  assert.ok(rawText.includes("event: error"), "the upstream error must be relayed as an Anthropic error event");
+  assert.ok(rawText.includes("mid-stream failure"));
+  assert.ok(rawText.includes('"code":"server_error"'));
+  assert.ok(!rawText.includes("event: message_delta"), "no message_delta after a mid-stream error");
+  assert.ok(!rawText.includes("event: message_stop"), "no message_stop after a mid-stream error");
+  assert.ok(!rawText.includes('"stop_reason":"end_turn"'), "no finish stop_reason after a mid-stream error");
+});
+
+test("ChatToAnthropicStreamTransformer maps upstream error types into the Anthropic vocabulary", () => {
+  // OpenAI-flavored type names are outside the Anthropic vocabulary -> api_error.
+  const transformer = new ChatToAnthropicStreamTransformer("free-auto");
+  const events = transformer.processDataPayload(
+    JSON.stringify({ error: { code: "boom", message: "rate limited upstream", type: "upstream_error" } }),
+  );
+  assert.equal(events.length, 1);
+  const parsed = JSON.parse(events[0].replace(/^event: error\ndata: /, "").trim()) as {
+    type: string;
+    error: { type: string; message: string; code: string };
+  };
+  assert.equal(parsed.type, "error");
+  assert.equal(parsed.error.type, "api_error", "non-Anthropic type names map to api_error");
+  assert.equal(parsed.error.message, "rate limited upstream");
+  assert.equal(parsed.error.code, "boom", "the original upstream code stays for troubleshooting");
+
+  // Spec-valid Anthropic type names pass through unchanged.
+  const passthrough = new ChatToAnthropicStreamTransformer("free-auto");
+  const rateLimited = passthrough.processDataPayload(
+    JSON.stringify({ error: { code: "429", message: "slow down", type: "rate_limit_error" } }),
+  );
+  const parsedRate = JSON.parse(rateLimited[0].replace(/^event: error\ndata: /, "").trim()) as {
+    error: { type: string };
+  };
+  assert.equal(parsedRate.error.type, "rate_limit_error");
+});

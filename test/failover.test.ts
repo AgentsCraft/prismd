@@ -304,8 +304,10 @@ test("broken stream ends with an SSE error event and is never retried", async (t
   const res = await post({ model: "free-auto", input: "hi", stream: true });
   assert.equal(res.status, 200);
   const text = await res.text();
-  assert.ok(text.includes('"type":"error"'), "broken stream must end with an SSE error event");
+  assert.ok(text.includes("event: response.failed"), "broken stream must end with a Responses SSE error event");
+  assert.ok(text.includes('"type":"response.failed"'));
   assert.ok(text.includes("stream_error"), "error event carries the stream_error code");
+  assert.ok(!text.includes('"type":"response.completed"'), "no normal completion after a broken stream");
   assert.equal(mock.requests.length, 1, "stream breaks after start are never retried");
 });
 
@@ -350,17 +352,25 @@ test("silent stream triggers the stream idle timeout and ends with an SSE error 
   assert.equal(mock.requests.length, 1, "idle timeout after stream start is never retried");
 });
 
-test("all candidates failing returns 502 with per-candidate upstream statuses", async (t) => {
+test("all candidates 429 returns 429 with the max Retry-After and upstream snippets", async (t) => {
   const mock = await startMockUpstream(
     byModel({
-      "poolside/laguna-s-2.1:free": { status: 429, body: '{"error":{"message":"limited"}}' },
-      "llama-3.3-70b-versatile": { status: 500, body: '{"error":{"message":"boom"}}' },
+      "poolside/laguna-s-2.1:free": {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "5" },
+        body: '{"error":{"message":"limited"}}',
+      },
+      "llama-3.3-70b-versatile": {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "20" },
+        body: '{"error":{"message":"limited too"}}',
+      },
     }),
   );
   t.after(() => mock.close());
   const dataPath = await setup(mock.url);
 
-  // Capture request_end events to assert the 502 path closes the lifecycle.
+  // Capture request_end events to assert the classified path closes the lifecycle.
   const ends: RequestEndEvent[] = [];
   const originalEnd = exporter.onRequestEnd;
   exporter.onRequestEnd = (event) => {
@@ -372,20 +382,26 @@ test("all candidates failing returns 502 with per-candidate upstream statuses", 
   });
 
   const res = await post({ model: "free-auto", input: "hi" });
-  assert.equal(res.status, 502);
-  const body = (await res.json()) as { error: { code: string; metadata: { candidates: { model: string; status: number }[] } } };
-  assert.equal(body.error.code, "gateway_all_candidates_failed");
+  assert.equal(res.status, 429, "all-429 must not be misreported as a 502 server fault");
+  assert.equal(res.headers.get("retry-after"), "20", "Retry-After is the max across attempts");
+  const body = (await res.json()) as {
+    error: { code: string; message: string; metadata: { candidates: { model: string; status: number; snippet?: string }[] } };
+  };
+  assert.equal(body.error.code, "rate_limit_exceeded");
+  assert.match(body.error.message, /poolside\/laguna-s-2\.1:free → 429 rate limit exceeded: .*limited/);
+  assert.match(body.error.message, /llama-3\.3-70b-versatile → 429 rate limit exceeded: .*limited too.*retry after 20s/);
   assert.deepEqual(
     body.error.metadata.candidates.map((c) => [c.model, c.status]),
     [
       ["poolside/laguna-s-2.1:free", 429],
-      ["llama-3.3-70b-versatile", 500],
+      ["llama-3.3-70b-versatile", 429],
     ],
   );
+  assert.match(body.error.metadata.candidates[0].snippet ?? "", /limited/);
   assert.equal(mock.requests.length, 2);
 
-  assert.equal(ends.length, 1, "the 502 path must emit request_end");
-  assert.equal(ends[0].status, 502);
+  assert.equal(ends.length, 1, "the all-failed path must emit request_end");
+  assert.equal(ends[0].status, 429);
   assert.equal(ends[0].failovers, 2);
   assert.equal(ends[0].provider, "groq");
   assert.equal(ends[0].model, "llama-3.3-70b-versatile");
@@ -401,7 +417,81 @@ test("all candidates failing returns 502 with per-candidate upstream statuses", 
   assert.ok((usage[0].input_tokens as number) > 0, "the failed attempt consumes input quota");
   const logs = readTable(dataPath, "request_log");
   assert.equal(logs.length, 1);
+  assert.equal(logs[0].status, 429, "the log carries the classified 429, not a gateway 502");
+});
+
+test("all candidates failing with 5xx returns 502 with per-candidate statuses and snippets", async (t) => {
+  const mock = await startMockUpstream(
+    byModel({
+      "poolside/laguna-s-2.1:free": { status: 502, body: '{"error":{"message":"upstream down"}}' },
+      "llama-3.3-70b-versatile": { status: 500, body: '{"error":{"message":"boom"}}' },
+    }),
+  );
+  t.after(() => mock.close());
+  const dataPath = await setup(mock.url);
+
+  const ends: RequestEndEvent[] = [];
+  const originalEnd = exporter.onRequestEnd;
+  exporter.onRequestEnd = (event) => {
+    ends.push(event);
+    originalEnd(event);
+  };
+  t.after(() => {
+    exporter.onRequestEnd = originalEnd;
+  });
+
+  const res = await post({ model: "free-auto", input: "hi" });
+  assert.equal(res.status, 502);
+  const body = (await res.json()) as { error: { code: string; metadata: { candidates: { model: string; status: number; snippet?: string }[] } } };
+  assert.equal(body.error.code, "gateway_all_candidates_failed");
+  assert.deepEqual(
+    body.error.metadata.candidates.map((c) => [c.model, c.status]),
+    [
+      ["poolside/laguna-s-2.1:free", 502],
+      ["llama-3.3-70b-versatile", 500],
+    ],
+  );
+  assert.match(body.error.metadata.candidates[0].snippet ?? "", /upstream down/);
+  assert.match(body.error.metadata.candidates[1].snippet ?? "", /boom/);
+  assert.equal(mock.requests.length, 2);
+
+  assert.equal(ends.length, 1, "the 502 path must emit request_end");
+  assert.equal(ends[0].status, 502);
+  assert.equal(ends[0].failovers, 2);
+  assert.equal(ends[0].provider, "groq");
+  assert.equal(ends[0].model, "llama-3.3-70b-versatile");
+
+  shutdownRuntime();
+  const logs = readTable(dataPath, "request_log");
+  assert.equal(logs.length, 1);
   assert.equal(logs[0].status, 502, "the final attempt carries the gateway 502");
+});
+
+test("all candidates unreachable returns 503 upstream_unreachable", async (t) => {
+  const mock = await startMockUpstream(
+    byModel({
+      "poolside/laguna-s-2.1:free": { status: 200, destroy: true },
+      "llama-3.3-70b-versatile": { status: 200, destroy: true },
+    }),
+  );
+  t.after(() => mock.close());
+  await setup(mock.url);
+
+  const res = await post({ model: "free-auto", input: "hi" });
+  assert.equal(res.status, 503, "connection-level failures are provider unavailability, not a bad gateway");
+  const body = (await res.json()) as {
+    error: { code: string; message: string; metadata: { candidates: { model: string; status: string; snippet?: string }[] } };
+  };
+  assert.equal(body.error.code, "upstream_unreachable");
+  assert.match(body.error.message, /connection error/);
+  assert.deepEqual(
+    body.error.metadata.candidates.map((c) => [c.model, c.status]),
+    [
+      ["poolside/laguna-s-2.1:free", "connection_error"],
+      ["llama-3.3-70b-versatile", "connection_error"],
+    ],
+  );
+  assert.match(body.error.metadata.candidates[0].snippet ?? "", /connection error/);
 });
 
 test("all candidates over the context window returns 422 with window sizes", async (t) => {
@@ -509,8 +599,15 @@ test("all candidates quota-exhausted returns 429 with filter reasons", async (t)
 
   const res = await post({ model: "free-auto", input: "hi" });
   assert.equal(res.status, 429);
-  const body = (await res.json()) as { error: { code: string; metadata: { candidates: { model: string; reason: string }[] } } };
+  // Quota windows reset at local midnight (quota.msUntilNextDailyWindow), so
+  // a quota-only precheck rejection carries that recovery time on purpose.
+  const retryAfter = Number(res.headers.get("retry-after"));
+  assert.ok(retryAfter >= 1 && retryAfter <= 86_400, `retry-after should be the window reset, got ${retryAfter}`);
+  const body = (await res.json()) as {
+    error: { code: string; message: string; metadata: { candidates: { model: string; reason: string }[] } };
+  };
   assert.equal(body.error.code, "quota_exceeded");
+  assert.match(body.error.message, /earliest recovery in ~/);
   assert.deepEqual(
     body.error.metadata.candidates.map((c) => [c.model, c.reason]),
     [
@@ -568,6 +665,15 @@ test("completed requests are flushed to sqlite with real usage and request log",
 });
 
 test("SIGTERM drains in-flight work and flushes pending quota to sqlite", { timeout: 30_000 }, async (t) => {
+  if (process.platform === "win32") {
+    // Windows has no catchable cross-process signal: process.kill("SIGTERM")
+    // hard-terminates the child (TerminateProcess), so its shutdown handler
+    // never runs and graceful drain cannot be observed. The drain/flush
+    // logic itself is covered cross-platform by drain.test.ts and the quota
+    // tests; the POSIX e2e signal path runs on Linux/macOS (incl. CI).
+    t.skip("Windows cannot deliver a catchable SIGTERM to a child process");
+    return;
+  }
   const mock = await startMockUpstream(
     byModel({
       "poolside/laguna-s-2.1:free": {

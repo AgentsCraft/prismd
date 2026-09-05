@@ -346,7 +346,7 @@ function loadKeys({ env, homeDir, rootDir, warn = () => {} } = {}) {
     warnOnLoosePermissions(localEnvPath, warn);
     keys.localEnvFile = parseEnvFile(readFileSync(localEnvPath, 'utf8'));
   }
-  const dir = join(homeDir ?? homedir(), '.prismd');
+  const dir = join(homeDir ?? process.env.PRISMD_HOME ?? homedir(), '.prismd');
   const envPath = join(dir, '.env');
   if (existsSync(envPath)) {
     warnOnLoosePermissions(envPath, warn);

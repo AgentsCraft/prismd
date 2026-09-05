@@ -308,7 +308,14 @@ test("non-today accumulators flush then leave memory across midnight", () => {
   q.shutdown();
 });
 
-test("data dir and db files are locked down, including pre-existing dirs", () => {
+test("data dir and db files are locked down, including pre-existing dirs", (t) => {
+  if (process.platform === "win32") {
+    // POSIX permission bits do not exist on NTFS: fs.chmod only toggles the
+    // read-only flag, so the 0700/0600 modes are unrepresentable. The
+    // equivalent Windows protection comes from the user-profile ACLs.
+    t.skip("POSIX permission bits are not enforceable on Windows");
+    return;
+  }
   const { store, dbPath } = makeStore({ name: "perm" });
   const dir = dirname(dbPath);
   assert.equal(statSync(dir).mode & 0o777, 0o700);

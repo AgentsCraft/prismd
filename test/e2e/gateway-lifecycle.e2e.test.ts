@@ -154,6 +154,12 @@ test("旅程 9：本地 Bearer 错误返回 401，mock 上游收到 0 请求", a
 });
 
 test("旅程 10：额度落盘（周期 flush + 优雅退出强制 flush），请求日志不丢", { timeout: 60_000 }, async (t) => {
+  if (process.platform === "win32") {
+    // Windows 无法向子进程投递可捕获的 SIGTERM（process.kill 即硬杀），
+    // 优雅退出路径仅 POSIX 可测；flush 逻辑本身由 quota 单测跨平台覆盖。
+    t.skip("Windows 无法向子进程投递可捕获的 SIGTERM");
+    return;
+  }
   // 前置条件：上游返回带真实 usage 的 JSON（input 7 / output 3 个 token）；
   // 网关单候选，dailyRequests 100（不触发额度过滤）。flush 周期默认 5s。
   const mock = await startMockUpstream({
@@ -231,6 +237,12 @@ test("旅程 10：额度落盘（周期 flush + 优雅退出强制 flush），�
 });
 
 test("旅程 11：SIGHUP 动态热加载配置，新增别名立即生效且无请求中断", async (t) => {
+  if (process.platform === "win32") {
+    // Windows 没有 SIGHUP（也无法向子进程投递任何可捕获信号），热加载
+    // 仅在 POSIX 有对应的操作系统事件，跳过并注明。
+    t.skip("Windows 没有 SIGHUP 信号");
+    return;
+  }
   const mock = await startMockUpstream({
     status: 200,
     headers: { "content-type": "application/json" },

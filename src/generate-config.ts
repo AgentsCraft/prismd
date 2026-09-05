@@ -237,7 +237,7 @@ export interface GenerateOptions {
  */
 export function generateConfigObject({
   rootDir = PACKAGE_ROOT,
-  homeDir = homedir(),
+  homeDir = process.env.PRISMD_HOME ?? homedir(),
   cwd = process.cwd(),
   warn = () => {},
 }: GenerateOptions = {}): PrismdConfig {
