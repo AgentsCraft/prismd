@@ -25,7 +25,7 @@
 
 1. **Alias Unique (`free-auto`)** : Plus besoin de choisir manuellement ; prismd sélectionne automatiquement le meilleur modèle gratuit disponible.
 2. **Pool Multi-Clés & Isolation (Key Pool)** : Dépassez les limites de requêtes (RPM). Configurez plusieurs clés pour une rotation round-robin. Si une clé atteint l'erreur 429, seule cette clé est mise en pause et le trafic passe instantanément à la suivante.
-3. **Repli Local Ollama Zéro Interruption** : En cas de coupure réseau ou d'épuisement des quotas cloud, bascule automatiquement et de manière transparente vers Ollama local (`qwen2.5-coder:7b`, `deepseek-r1:8b`).
+3. **Repli local optionnel (Ollama / LM Studio)** : Les alias par défaut sont réservés au cloud. Un backend tourne en local ? Ajoutez-le à une file via `config.user.json` — quand les modèles cloud s'épuisent ou que le réseau tombe, les requêtes basculent vers vos modèles locaux.
 4. **Conversion Multi-Protocoles Bidirectionnelle** : Prise en charge native de Claude Code (Messages), Codex (Responses) et Cursor/OpenCode (Chat Completions).
 5. **Tableau de Bord Web & Rechargement à Chaud (SIGHUP)** : Visualisez l'état en direct sur `http://127.0.0.1:8787/ui`. Mettez à jour vos configurations sans redémarrage via le signal `SIGHUP`.
 
@@ -111,7 +111,7 @@ prismd sélectionne dynamiquement le meilleur modèle pour chaque requête via u
 - **Limites souples de quota (Quota-Weighted Soft Limit)** : Dès qu'un modèle atteint 80 % de son quota journalier (`quotaSoftLimitRatio`), il est rétrogradé en fin de file pour réserver les quotas restants.
 - **Basculement sans interruption (Zero-Crash Failover)** : En cas d'erreur 429 ou 5xx d'un fournisseur, prismd bascule de manière transparente sur le candidat suivant de la file.
 - **Alias par Défaut** :
-  - `free-auto` : File principale de code (priorité Gemini 2.0 Flash / Llama 3.3 70B, repli sur Ollama `qwen2.5-coder:7b`).
+  - `free-auto` : File principale de code (priorité Gemini 2.0 Flash / Llama 3.3 70B, cloud uniquement par défaut).
   - `free-fast` : File ultra-rapide et légère (Gemini Flash Lite / Llama 3.1 8B).
   - `free-code` : File dédiée à la génération de code et aux tests.
 
@@ -136,9 +136,9 @@ Tous les fournisseurs Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA N
   ```
 - **Fonctionnement** : Les requêtes sont réparties en round-robin entre les clés saines. Lorsqu'une clé (ex. `gsk_key1`) reçoit une erreur 429, seule cette clé est isolée en refroidissement (`Retry-After`), et les requêtes suivantes basculent immédiatement sur `gsk_key2` ou le candidat suivant.
 
-### 3. Repli Local LLM Hors-Ligne sans Interruption (Ollama & LM Studio)
+### 3. Repli Local LLM (Ollama & LM Studio, optionnel)
 
-En cas d'épuisement des quotas cloud ou de perte de connexion, prismd achemine automatiquement le trafic vers les moteurs locaux :
+prismd intègre Ollama et LM Studio comme fournisseurs natifs, mais les alias par défaut restent réservés au cloud. Un service local tourne ? Ajoutez-le comme candidat via `config.user.json` :
 
 - **Ollama** : Fournisseur intégré zéro-config (`http://127.0.0.1:11434/v1`) :
   ```bash
@@ -207,6 +207,6 @@ kill -HUP $(pgrep -f "prismd")
 - **Q : Erreur `missing API key for provider` ?**
   - Vérifiez vos clés dans `~/.prismd/keys.yaml` ou `.env`, puis exécutez `npm run generate:config`.
 - **Q : Erreurs 429 fréquentes ?**
-  - Ajoutez plusieurs clés pour le fournisseur concerné ou lancez `ollama run qwen2.5-coder:7b`.
+  - Ajoutez plusieurs clés pour le fournisseur concerné, ou ajoutez un candidat Ollama local à une file via `config.user.json`.
 - **Q : Comment réinitialiser les quotas du jour ?**
   - Cliquez sur « Reset usage » sur le tableau de bord Web ou supprimez `data/prismd.sqlite`.

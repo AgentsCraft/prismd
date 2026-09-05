@@ -25,7 +25,7 @@
 
 1. **통합 모델 별칭 (`free-auto`)**: 모델 선택의 번거로움 없이 단일 별칭으로 최적의 무료 모델에 자동 연결합니다.
 2. **다중 Key 라운드 로빈 및 장애 격리 (Key Pool)**: 단일 계정의 요청 제한(RPM)을 극복. 여러 Key를 등록하여 부하를 분산하고, 단일 Key가 429에 도달하면 해당 Key만 쿨다운하며 다음 Key로 즉시 전환합니다.
-3. **로컬 Ollama 제로 다운타임 오프라인 대체**: 클라우드 무료 할당량이 소진되거나 네트워크 연결이 끊기면 로컬 Ollama(`qwen2.5-coder:7b`, `deepseek-r1:8b`)로 매끄럽게 자동 대체됩니다.
+3. **로컬 폴백(선택, Ollama / LM Studio)**: 기본 별칭은 클라우드 전용입니다. 로컬 백엔드를 실행 중이라면 `config.user.json`으로 큐에 추가하세요. 클라우드 무료 모델이 소진되거나 네트워크가 끊기면 요청이 로컬 모델로 대체됩니다.
 4. **전체 프로토콜 양방향 스트리밍 변환**: Claude Code(Messages), Codex(Responses), Cursor/OpenCode(Chat Completions) 간의 투명한 중계를 완벽 지원합니다.
 5. **내장 Web 대시보드 및 SIGHUP 핫 리로드**: `http://127.0.0.1:8787/ui`에서 실시간 상태와 할당량을 모니터링하고, 설정 변경 시 `SIGHUP` 신호로 무중단 갱신이 가능합니다.
 
@@ -111,7 +111,7 @@ prismd는 다차원 평가 파이프라인을 통해 요청마다 최적의 후�
 - **소프트 할당량 우선순위 강등 (Quota-Weighted Soft Limit)**: 일일 할당량 80%(`quotaSoftLimitRatio`)에 도달한 모델은 큐의 후순위로 자동 배치되어 고우선순위 작업을 위한 잔여량을 보존.
 - **무중단 429 장애 조치 (Zero-Crash Failover)**: 업스트림에서 429 속도 제한 또는 5xx 오류 반환 시 즉시 다음 후보 모델로 투명하게 재시도.
 - **기본 별칭 목록**:
-  - `free-auto`: 범용 코딩 모델 (Gemini 2.0 Flash / Llama 3.3 70B 우선, Ollama `qwen2.5-coder:7b`로 자동 대체).
+  - `free-auto`: 범용 코딩 모델 (Gemini 2.0 Flash / Llama 3.3 70B 우선, 기본은 클라우드 전용).
   - `free-fast`: 초고속 경량 모델 (Gemini Flash Lite / Llama 3.1 8B).
   - `free-code`: 코드 생성 특화 모델 큐.
 
@@ -136,9 +136,9 @@ prismd는 다차원 평가 파이프라인을 통해 요청마다 최적의 후�
   ```
 - **작동 방식**: 라운드로빈 방식으로 정상 Key들에 요청을 분산합니다. 특정 Key(예: `gsk_key1`)가 429 속도 제한 오류를 받으면 해당 Key만 냉각 기간(`Retry-After` 준수)에 들어가며, 후속 요청은 즉시 다음 정상 Key(`gsk_key2`) 또는 다음 후보 모델로 자동 전환됩니다.
 
-### 3. 로컬 LLM 무중단 오프라인 대체 (Ollama & LM Studio)
+### 3. 로컬 LLM 대체 (Ollama & LM Studio, 선택)
 
-클라우드 할당량 소진 또는 오프라인 상태 시 자동으로 로컬 추론 백엔드로 요청을 라우팅합니다:
+prismd는 Ollama와 LM Studio를 내장 제공자로 포함하지만, 기본 별칭은 클라우드 전용입니다. 로컬 서비스를 실행 중이라면 `config.user.json`으로 후보를 추가하세요:
 
 - **Ollama**: 내장 제로 설정 제공자 (`http://127.0.0.1:11434/v1`):
   ```bash
@@ -207,6 +207,6 @@ kill -HUP $(pgrep -f "prismd")
 - **Q: `missing API key for provider` 오류 발생 시**
   - `~/.prismd/keys.yaml` 또는 `.env` 파일 설정을 확인하고 `npm run generate:config`를 실행하세요.
 - **Q: 무료 모델에서 429 오류가 빈번한 경우**
-  - 해당 제공자의 다중 Key를 등록하거나 `ollama run qwen2.5-coder:7b`를 실행해 로컬 백업을 활성화하세요.
+  - 해당 제공자의 다중 Key를 등록하거나, `config.user.json`으로 로컬 Ollama 후보를 큐에 추가하세요.
 - **Q: 일일 사용량 카운터를 초기화하려면?**
   - Web 대시보드에서 "Reset usage"를 클릭하거나 `data/prismd.sqlite` 파일을 삭제하세요.

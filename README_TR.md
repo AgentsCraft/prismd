@@ -25,7 +25,7 @@
 
 1. **Birleşik Model Takma Adı (`free-auto`)**: Model seçme derdine son; prismd mevcut en uygun ücretsiz modeli otomatik olarak seçer.
 2. **Çoklu Anahtar Havuzu ve Arıza İzolasyonu (Key Pool)**: İstek hızı (RPM) sınırlarını aşın. Round-robin dağıtımı için birden fazla anahtar tanımlayın. Bir anahtar 429 hatası aldığında yalnızca o anahtar beklemeye alınır ve trafik hemen diğer anahtara aktarılır.
-3. **Yerel Ollama Sıfır Kesintili Çevrimdışı Yedek**: Bulut kotaları bittiğinde veya internet kesildiğinde, istekler şeffaf bir şekilde yerel Ollama'ya (`qwen2.5-coder:7b`, `deepseek-r1:8b`) devredilir.
+3. **İsteğe Bağlı Yerel Yedek (Ollama / LM Studio)**: Varsayılan takma adlar yalnızca bulut modeli içerir. Yerel bir backend mi çalıştırıyorsunuz? `config.user.json` ile bir kuyruğa ekleyin — bulut modelleri tükendiğinde veya internet kesildiğinde istekler yerel modellerinize düşer.
 4. **Çift Yönlü Protokol Dönüşümü**: Claude Code (Messages), Codex (Responses) ve Cursor/OpenCode (Chat Completions) arasında tam şeffaf çift yönlü akış desteği.
 5. **Gömülü Web Paneli ve SIGHUP ile Çalışırken Yenileme**: `http://127.0.0.1:8787/ui` adresinden anlık durumu takip edin; `SIGHUP` sinyaliyle yapılandırmaları kesintisiz güncelleyin.
 
@@ -111,7 +111,7 @@ prismd çok boyutlu değerlendirme boru hattı ile her istek için en uygun mode
 - **Kota Ağırlıklı Esnek Sınırlar (Quota-Weighted Soft Limit)**: Günlük kotasının %80'ine (`quotaSoftLimitRatio`) ulaşan model otomatik olarak kuyruğun sonuna kaydırılır.
 - **Kesintisiz 429 Yük Devretme (Zero-Crash Failover)**: Sağlayıcıdan 429 veya 5xx hatası döndüğünde prismd şeffaf şekilde kuyruktaki bir sonraki modele geçer.
 - **Varsayılan Takma Adlar**:
-  - `free-auto`: Ana kodlama kuyruğu (Gemini 2.0 Flash / Llama 3.3 70B öncelikli, Ollama `qwen2.5-coder:7b` modeline otomatik düşer).
+  - `free-auto`: Ana kodlama kuyruğu (Gemini 2.0 Flash / Llama 3.3 70B öncelikli, varsayılan olarak yalnızca bulut).
   - `free-fast`: Ultra hızlı ve hafif model kuyruğu (Gemini Flash Lite / Llama 3.1 8B).
   - `free-code`: Kod üretimi ve test yazımı için özel model kuyruğu.
 
@@ -136,9 +136,9 @@ Tüm bulut sağlayıcıları (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA 
   ```
 - **Çalışma Mantığı**: İstekler sağlıklı anahtarlar arasında Round-Robin ile paylaştırılır. Bir anahtar (örn. `gsk_key1`) 429 hız sınırı hatası aldığında yalnızca o anahtar soğuma süresine (`Retry-After`) alınır, sonraki istekler hemen sonraki anahtara (`gsk_key2`) veya yedek modele aktarılır.
 
-### 3. Yerel LLM Kesintisiz Çevrimdışı Yedek (Ollama & LM Studio)
+### 3. Yerel LLM Yedeği (Ollama & LM Studio, isteğe bağlı)
 
-Bulut kotaları tükendiğinde veya internet bağlantısı kesildiğinde prismd trafiği otomatik olarak yerel çıkarım motorlarına yönlendirir:
+prismd, Ollama ve LM Studio'yu yerleşik sağlayıcı olarak içerir ancak varsayılan takma adlar yalnızca bulut modeli içerir. Yerel bir servis mi çalıştırıyorsunuz? `config.user.json` ile aday olarak ekleyin:
 
 - **Ollama**: Sıfır yapılandırmalı yerleşik sağlayıcı (`http://127.0.0.1:11434/v1`):
   ```bash
@@ -207,6 +207,6 @@ kill -HUP $(pgrep -f "prismd")
 - **Q: `missing API key for provider` hatası alıyorum?**
   - `~/.prismd/keys.yaml` veya `.env` dosyanızı kontrol edin ve `npm run generate:config` komutunu çalıştırın.
 - **Q: Ücretsiz modellerde sık sık 429 hatası çıkıyor?**
-  - İlgili sağlayıcı için birden fazla anahtar ekleyin veya `ollama run qwen2.5-coder:7b` başlatın.
+  - İlgili sağlayıcı için birden fazla anahtar ekleyin veya `config.user.json` ile yerel bir Ollama adayını kuyruğa ekleyin.
 - **Q: Günlük kota sayaçları nasıl sıfırlanır?**
   - Web panelinden «Reset usage» butonuna tıklayın veya `data/prismd.sqlite` dosyasını silin.

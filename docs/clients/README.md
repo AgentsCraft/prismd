@@ -1,6 +1,6 @@
 # 智能体客户端接入总览 (Client Integration Guide)
 
-prismd 为各类编码智能体（Agent）和 IDE 插件提供本地统一的网关入口（默认监听 `http://127.0.0.1:8787/v1`），在后台自动完成多上游聚合、多 Key 轮询、并发与限流熔断，以及本地 Ollama 离线兜底。
+prismd 为各类编码智能体（Agent）和 IDE 插件提供本地统一的网关入口（默认监听 `http://127.0.0.1:8787/v1`），在后台自动完成多上游聚合、多 Key 轮询、并发与限流熔断（本地 Ollama 兜底为可选，见模型别名说明）。
 
 ---
 
@@ -170,8 +170,8 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
 
 | 模型别名 | 调度策略 | 适用场景 | 备选回退队列 |
 |---|---|---|---|
-| **`free-auto`** | 优先云端大模型，全限流时回退至本地 Ollama | 日常主力编码、代码重构、多文件分析 | Gemini 2.0 Flash → Llama 3.3 70b → Qwen 2.5 Coder 7B (本地) |
-| **`free-fast`** | 极速响应轻量模型 | 代码补全、简单行内问答、Git 提交信息生成 | Gemini Flash Lite → Llama 3.1 8b → Qwen 2.5 Coder 7B (本地) |
+| **`free-auto`** | 优先云端大模型，默认纯云端队列 | 日常主力编码、代码重构、多文件分析 | Gemini 2.0 Flash → Llama 3.3 70b → Cohere North Mini → Poolside Laguna S |
+| **`free-fast`** | 极速响应轻量模型 | 代码补全、简单行内问答、Git 提交信息生成 | Gemini Flash Lite → Llama 3.1 8b → Poolside Laguna XS |
 | **`free-code`** | 代码特化模型队列 | 专注函数生成、单元测试编写 | Gemini 2.0 Flash → Cohere North Mini → Llama 3.3 70b |
 
 ---

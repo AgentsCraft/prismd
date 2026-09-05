@@ -25,7 +25,7 @@
 
 1. **Unified Model Alias (`free-auto`)**: Connect using a single alias; prismd automatically selects the best available free model.
 2. **Multi-Key Pooling & Single-Key Circuit Breaking**: Hit rate limits? Configure multiple keys per provider for automatic round-robin scheduling. When a single key hits 429, only that key is cooled down while traffic seamlessly shifts to the next key.
-3. **Local Ollama Zero-Downtime Fallback**: When cloud free models hit 429 or internet drops, requests automatically fall back to local Ollama (`qwen2.5-coder:7b` / `deepseek-r1:8b`), ensuring coding agent tasks never crash.
+3. **Opt-in Local Fallback (Ollama / LM Studio)**: Default aliases are cloud-only. Running a local backend? Append it to an alias queue via `config.user.json` — when cloud free models hit 429 or internet drops, requests then fall back to your local models, ensuring coding agent tasks never crash.
 4. **Transparent Multi-Protocol Conversion**: Full bi-directional streaming conversion across Claude Code (Messages), Codex (Responses), and Cursor/OpenCode (Chat Completions).
 5. **Embedded Web Dashboard & Hot Reloading**: Open `http://127.0.0.1:8787/ui` to monitor live candidate health and quota progress bars. Update configurations dynamically via `SIGHUP` without restarting.
 
@@ -111,7 +111,7 @@ prismd dynamically selects the optimal model candidate per request using an inte
 - **Quota-Weighted Soft Limits**: When a cloud candidate reaches 80% of its daily quota (`quotaSoftLimitRatio`), it is automatically demoted to the tail of the queue, reserving remaining quota for peak requirements.
 - **Zero-Crash Failover**: If an upstream provider returns a 429 rate limit or 5xx outage, prismd transparently fails over to the next healthy candidate in the alias queue without failing the client's session.
 - **Default Aliases**:
-  - `free-auto`: Primary coding queue. Prioritizes Gemini 2.0 Flash / Llama 3.3 70B, with automatic fallback to local Ollama `qwen2.5-coder:7b`.
+  - `free-auto`: Primary coding queue. Prioritizes Gemini 2.0 Flash / Llama 3.3 70B. Cloud-only by default.
   - `free-fast`: Lightweight high-speed queue (Gemini Flash Lite / Llama 3.1 8B).
   - `free-code`: Specialized code generation & test writing queue.
 
@@ -136,16 +136,26 @@ All cloud providers (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitH
   ```
 - **How it works**: Requests are distributed across healthy keys via Round-Robin. When a key (e.g. `gsk_key1`) receives a 429 rate limit error, only that key enters cooldown (respecting `Retry-After`), while subsequent requests immediately shift to the next available key (`gsk_key2`) or candidate model, multiplying throughput without failing requests.
 
-### 3. Local LLM Zero-Downtime Fallback (Ollama & LM Studio)
+### 3. Local LLM Fallback (Ollama & LM Studio, Opt-in)
 
-When cloud APIs are exhausted or internet connectivity drops, prismd automatically routes traffic to local inference backends:
+prismd ships Ollama and LM Studio as built-in providers, but default aliases stay cloud-only — machines without a local backend get no dead candidates. Running one locally? Append it to an alias queue via `config.user.json` (candidate arrays replace the preset list, so keep the cloud entries you want):
+
+```json
+{
+  "aliases": {
+    "free-auto": {
+      "candidates": ["gemini-2.0-flash", "cohere/north-mini-code:free", "qwen2.5-coder:7b"]
+    }
+  }
+}
+```
 
 - **Ollama**: Built-in zero-config provider (`http://127.0.0.1:11434/v1`):
   ```bash
   ollama run qwen2.5-coder:7b
   ```
 - **LM Studio**: Supports local OpenAI-compatible server (`http://127.0.0.1:1234/v1`) running GGUF models. See [LM Studio Guide](docs/providers/lmstudio.md).
-- Requests fall back silently to local models so coding agent tasks never crash midway.
+- With a local candidate at the tail of the queue, requests fall back to it when cloud models are exhausted so coding agent tasks never crash midway.
 
 ### 4. Transparent Multi-Protocol Bridge
 
@@ -207,6 +217,6 @@ kill -HUP $(pgrep -f "prismd")
 - **Q: `missing API key for provider` error?**
   - Verify keys in `~/.prismd/keys.yaml` or `.env`, then run `prismd generate` (or `npm run generate:config` in source mode).
 - **Q: Frequent 429s on free models?**
-  - Add multiple keys for the provider, or launch `ollama run qwen2.5-coder:7b` for local offline fallback.
+  - Add multiple keys for the provider, or append a local Ollama candidate to the alias queue (see [Local LLM Fallback](#3-local-llm-fallback-ollama--lm-studio-opt-in)).
 - **Q: Reset daily quota counters?**
   - Click "Reset usage" in the Web Dashboard (`http://127.0.0.1:8787/ui`) or delete `data/prismd.sqlite`.
