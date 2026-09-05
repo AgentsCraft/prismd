@@ -1,16 +1,14 @@
 import type { Context } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
 import {
   buildFailoverProblem,
   buildNoCandidatesProblem,
   describeConnectFailure,
+  problemResponse,
   readUpstreamErrorSnippet,
-  renderProblemJson,
-  type FailedAttempt,
-  type GatewayProblem,
-  type UnavailableCandidate,
+  toFailedAttempts,
+  type AttemptOutcome,
 } from "../core/error-contract.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
@@ -172,24 +170,12 @@ export async function chatCompletions(c: Context): Promise<Response> {
     // Nothing selectable: quota exhausted, candidates cooling down after
     // upstream failures, or unhealthy. Tell the client the real reasons and
     // when the first candidate recovers instead of blind 429s.
-    const unavailable: UnavailableCandidate[] = [
-      ...selection.filtered,
-      ...selection.windowExceeded.map((w) => ({
-        provider: w.provider,
-        model: w.model,
-        reason: "context_window_exceeded",
-        contextWindow: w.contextWindow,
-      })),
-    ];
-    let earliestRecovery: number | null = null;
-    for (const candidate of candidates) {
-      const at = health.earliestRecoveryAt(candidate.provider, candidate.providerModelId);
-      if (at !== null && (earliestRecovery === null || at < earliestRecovery)) earliestRecovery = at;
-    }
-    const retryAfterMs = earliestRecovery !== null ? Math.max(1000, earliestRecovery - Date.now()) : undefined;
     return problemResponse(
       c,
-      buildNoCandidatesProblem(body.model, unavailable, retryAfterMs),
+      buildNoCandidatesProblem(body.model, selection, candidates, (provider, model) =>
+        health.earliestRecoveryAt(provider, model),
+      ),
+      "openai",
     );
   }
 
@@ -200,12 +186,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
     : 1;
 
   let failovers = 0;
-  const attemptStatuses: {
-    candidate: Candidate;
-    status: number | null;
-    retryAfterMs?: number;
-    snippet?: string;
-  }[] = [];
+  const attemptStatuses: AttemptOutcome<Candidate>[] = [];
 
   for (let i = 0; i < attempts; i += 1) {
     const candidate = selection.ordered[i];
@@ -376,7 +357,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
         attemptStatuses.push({
           candidate,
           status: null,
-          snippet: describeConnectFailure((err as Error).message, isTimeout),
+          snippet: describeConnectFailure(err, isTimeout),
         });
         failovers += 1;
         continue;
@@ -407,9 +388,10 @@ export async function chatCompletions(c: Context): Promise<Response> {
         status: result.status,
         retryAfterMs: result.retryAfterMs,
       });
-      // Read (then release) the upstream error body so the final problem can
-      // carry a real reason snippet instead of a bare status code.
-      const snippet = await readUpstreamErrorSnippet(result.response);
+      // Read (then release) the upstream error body — bounded and under a
+      // short deadline — so the final problem can carry a real reason
+      // snippet instead of a bare status code.
+      const snippet = await readUpstreamErrorSnippet(result.response, config.policies.streamIdleTimeoutMs);
       attemptStatuses.push({
         candidate,
         status: result.status,
@@ -426,14 +408,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
   // Every attempt failed: classify the outcome (any 429 -> 429 with the max
   // Retry-After, all connect failures -> 503, otherwise 502) and render the
   // per-attempt reasons instead of a bare status code.
-  const failedAttempts: FailedAttempt[] = attemptStatuses.map(({ candidate, status, retryAfterMs, snippet }) => ({
-    provider: candidate.provider,
-    model: candidate.providerModelId,
-    status,
-    retryAfterMs,
-    snippet,
-  }));
-  const problem = buildFailoverProblem(body.model, failedAttempts, requestId);
+  const problem = buildFailoverProblem(body.model, toFailedAttempts(attemptStatuses), requestId);
   const finalStatus = problem.status;
 
   exporter.onError({
@@ -486,13 +461,7 @@ export async function chatCompletions(c: Context): Promise<Response> {
     failovers,
   });
 
-  return problemResponse(c, problem);
-}
-
-/** Render a gateway problem for the OpenAI Chat protocol. */
-function problemResponse(c: Context, problem: GatewayProblem): Response {
-  const { body, headers } = renderProblemJson(problem, "openai");
-  return c.json(body, problem.status as ContentfulStatusCode, headers);
+  return problemResponse(c, problem, "openai");
 }
 
 interface RelayContext {

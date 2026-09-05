@@ -109,7 +109,9 @@ export class HealthManager extends EventEmitter {
   /**
    * Earliest absolute timestamp (ms) at which the candidate may serve again,
    * or null when it can serve now (healthy / half-open probe) or nothing is
-   * cooling down. Merges KeyPool per-key cooldowns via get().
+   * cooling down. Delegates to get(): KeyPool per-key cooldowns are only
+   * consulted when this manager holds no local failure record for the
+   * candidate (an entry with lastError/consecutiveFailures short-circuits).
    */
   earliestRecoveryAt(provider: string, model: string): number | null {
     const health = this.get(provider, model);

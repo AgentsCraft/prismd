@@ -260,11 +260,18 @@ test("gateway precheck errors on /v1/messages are Anthropic-shaped", async (t) =
     messages: [{ role: "user", content: "hi" }],
   });
   assert.equal(limited.status, 429);
+  // Quota-only precheck rejections carry the daily window reset as Retry-After.
+  const limitedRetryAfter = Number(limited.headers.get("retry-after"));
+  assert.ok(
+    limitedRetryAfter >= 1 && limitedRetryAfter <= 86_400,
+    `retry-after should be the window reset, got ${limitedRetryAfter}`,
+  );
   const limitedBody = await parseAnthropicError(limited);
   assert.equal(limitedBody.type, "error");
   assert.equal(limitedBody.error.type, "rate_limit_error");
   assert.match(limitedBody.error.message, /openrouter\/poolside\/laguna-s-2\.1:free → quota_exhausted/);
   assert.match(limitedBody.error.message, /groq\/llama-3\.3-70b-versatile → quota_exhausted/);
+  assert.match(limitedBody.error.message, /earliest recovery in ~/);
   assert.equal(mock.requests.length, 0, "precheck rejection happens before any upstream call");
 });
 
@@ -312,6 +319,6 @@ test("cooled-down candidates produce a 429 with Retry-After and the earliest rec
   assert.equal(body.type, "error");
   assert.equal(body.error.type, "rate_limit_error");
   assert.match(body.error.message, /openrouter\/poolside\/laguna-s-2\.1:free → unhealthy/);
-  assert.match(body.error.message, /earliest recovery in ~\d+s/);
+  assert.match(body.error.message, /earliest recovery in ~/);
   assert.equal(mock.requests.length, 0);
 });

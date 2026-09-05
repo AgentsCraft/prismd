@@ -1,8 +1,8 @@
 /**
  * Unit tests for the pre-stream error contract: the Anthropic type mapping,
  * per-protocol rendering (headers included), failover outcome classification,
- * message assembly, snippet handling, and the upstream error rewrite used by
- * the /v1/messages relay path.
+ * message assembly, bounded upstream-body reading, and the upstream error
+ * rewrite used by the /v1/messages relay path.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,10 +12,13 @@ import {
   buildNoCandidatesProblem,
   classifyFailoverOutcome,
   describeConnectFailure,
+  precheckRetryAfterMs,
+  readBoundedBodyText,
   readUpstreamErrorSnippet,
   renderProblemJson,
   rewriteUpstreamErrorBody,
   truncateSnippet,
+  UPSTREAM_ERROR_MESSAGE_MAX_CHARS,
   type FailedAttempt,
 } from "../src/core/error-contract.js";
 
@@ -57,8 +60,12 @@ test("renderProblemJson keeps the OpenAI gateway error shape with candidates and
     { provider: "openrouter", model: "m1", status: 500, snippet: "boom" },
     { provider: "groq", model: "m2", status: "connection_error" },
   ]);
-  assert.equal(headers["x-prismd-request-id"], "req-123");
   assert.equal(headers["retry-after"], undefined, "no retry-after without a known recovery time");
+  assert.equal(
+    headers["x-prismd-request-id"],
+    undefined,
+    "request correlation rides the global x-request-id header only",
+  );
 });
 
 test("renderProblemJson renders the Anthropic shape with retry-after headers", () => {
@@ -80,7 +87,7 @@ test("renderProblemJson renders the Anthropic shape with retry-after headers", (
     },
   });
   assert.equal(headers["retry-after"], "21", "retry-after is whole seconds, never under-reporting");
-  assert.equal(headers["x-prismd-request-id"], "req-abc");
+  assert.equal(headers["x-prismd-request-id"], undefined);
 });
 
 test("classifyFailoverOutcome: any 429 wins with the max Retry-After", () => {
@@ -112,6 +119,10 @@ test("classifyFailoverOutcome: 5xx mixes stay 502 gateway_all_candidates_failed"
   assert.deepEqual(classifyFailoverOutcome(attempts), { status: 502, code: "gateway_all_candidates_failed" });
 });
 
+test("classifyFailoverOutcome: an empty attempt list is guarded explicitly", () => {
+  assert.deepEqual(classifyFailoverOutcome([]), { status: 502, code: "gateway_all_candidates_failed" });
+});
+
 test("buildFailoverProblem writes a self-contained per-candidate message", () => {
   const problem = buildFailoverProblem(
     "free-auto",
@@ -137,27 +148,86 @@ test("buildFailoverProblem writes a self-contained per-candidate message", () =>
   assert.equal(problem.requestId, "req-1");
 });
 
-test("buildNoCandidatesProblem names the real reasons and earliest recovery", () => {
+test("precheckRetryAfterMs: cooldown recovery wins and is at least 1s", () => {
+  const now = 1_000_000;
+  const quotaOnly = [{ provider: "a", model: "m", reason: "quota_exhausted" }];
+  assert.equal(precheckRetryAfterMs(quotaOnly, now + 25_000, now), 25_000);
+  assert.equal(precheckRetryAfterMs(quotaOnly, now + 200, now), 1000, "past-due cooldowns still back off 1s");
+});
+
+test("precheckRetryAfterMs: quota-only with no cooldown defers to the next daily window reset", () => {
+  // 2026-01-15 10:30 local -> reset at local midnight = 13.5h later.
+  const now = new Date(2026, 0, 15, 10, 30, 0, 0).getTime();
+  const expected = new Date(2026, 0, 16, 0, 0, 0, 0).getTime() - now;
+  const quotaOnly = [
+    { provider: "a", model: "m1", reason: "quota_exhausted" },
+    { provider: "b", model: "m2", reason: "quota_exhausted" },
+  ];
+  assert.equal(precheckRetryAfterMs(quotaOnly, null, now), expected);
+  assert.ok(expected > 0 && expected <= 86_400_000);
+});
+
+test("precheckRetryAfterMs: mixed reasons without cooldown get no Retry-After", () => {
+  const mixed = [
+    { provider: "a", model: "m1", reason: "quota_exhausted" },
+    { provider: "b", model: "m2", reason: "unhealthy" },
+  ];
+  assert.equal(precheckRetryAfterMs(mixed, null, 1_000_000), undefined);
+  assert.equal(precheckRetryAfterMs([], null, 1_000_000), undefined);
+});
+
+test("buildNoCandidatesProblem names the real reasons, filter details, and recovery", () => {
+  const now = new Date(2026, 0, 15, 10, 30, 0, 0).getTime();
   const problem = buildNoCandidatesProblem(
     "free-auto",
+    {
+      filtered: [
+        { provider: "openrouter", model: "m1", reason: "unhealthy", contextWindow: 1000 },
+        { provider: "groq", model: "m2", reason: "quota_exhausted", contextWindow: 1000 },
+      ],
+      windowExceeded: [{ provider: "cerebras", model: "m3", contextWindow: 20 }],
+    },
     [
-      { provider: "openrouter", model: "m1", reason: "unhealthy", contextWindow: 1000 },
-      { provider: "groq", model: "m2", reason: "quota_exhausted", contextWindow: 1000 },
+      { provider: "openrouter", providerModelId: "m1" },
+      { provider: "groq", providerModelId: "m2" },
+      { provider: "cerebras", providerModelId: "m3" },
     ],
-    25_000,
+    (provider) => (provider === "openrouter" ? now + 25_000 : null),
+    now,
   );
   assert.equal(problem.status, 429);
   assert.equal(problem.code, "quota_exceeded");
-  assert.equal(problem.retryAfterMs, 25_000);
+  assert.equal(problem.retryAfterMs, 25_000, "the cooldown recovery wins over the window reset");
   assert.match(problem.message, /openrouter\/m1 → unhealthy/);
   assert.match(problem.message, /groq\/m2 → quota_exhausted/);
+  assert.match(problem.message, /cerebras\/m3 → context_window_exceeded/);
   assert.match(problem.message, /earliest recovery in ~25s/);
   const metadata = problem.metadata as { candidates: unknown[] };
-  assert.equal(metadata.candidates.length, 2, "filter details survive in metadata");
+  assert.equal(metadata.candidates.length, 3, "filter details (incl. window overflow) survive in metadata");
 
-  const withoutRecovery = buildNoCandidatesProblem("free-auto", [
-    { provider: "openrouter", model: "m1", reason: "quota_exhausted" },
-  ]);
+  const quotaOnly = buildNoCandidatesProblem(
+    "free-auto",
+    {
+      filtered: [{ provider: "groq", model: "m2", reason: "quota_exhausted", contextWindow: 1000 }],
+      windowExceeded: [],
+    },
+    [{ provider: "groq", providerModelId: "m2" }],
+    () => null,
+    now,
+  );
+  assert.ok(quotaOnly.retryAfterMs !== undefined, "quota-only waits for the daily window reset");
+  assert.match(quotaOnly.message, /earliest recovery in ~\d+h/);
+
+  const withoutRecovery = buildNoCandidatesProblem(
+    "free-auto",
+    {
+      filtered: [{ provider: "groq", model: "m2", reason: "unhealthy", contextWindow: 1000 }],
+      windowExceeded: [],
+    },
+    [{ provider: "groq", providerModelId: "m2" }],
+    () => null,
+    now,
+  );
   assert.equal(withoutRecovery.retryAfterMs, undefined);
   assert.ok(!withoutRecovery.message.includes("earliest recovery"));
 });
@@ -170,23 +240,52 @@ test("truncateSnippet collapses whitespace and caps the length", () => {
   assert.equal(truncateSnippet("", 10), "");
 });
 
-test("describeConnectFailure labels timeouts vs refusals", () => {
-  assert.equal(describeConnectFailure("aborted", true), "connection timeout: aborted");
-  assert.equal(describeConnectFailure("ECONNREFUSED", false), "connection error: ECONNREFUSED");
+test("describeConnectFailure labels timeouts vs refusals for any thrown value", () => {
+  assert.equal(describeConnectFailure(new Error("aborted"), true), "connection timeout: aborted");
+  assert.equal(describeConnectFailure(new Error("ECONNREFUSED"), false), "connection error: ECONNREFUSED");
+  assert.equal(describeConnectFailure("boom", false), "connection error: boom", "non-Error throwables are stringified");
+  assert.equal(describeConnectFailure(42, false), "connection error: 42");
   assert.equal(describeConnectFailure("y".repeat(300), false).length, 200);
 });
 
 test("readUpstreamErrorSnippet truncates the body and tolerates unreadable bodies", async () => {
   const readable = new Response('{"error":{"message":"' + "e".repeat(300) + '"}}');
-  const snippet = await readUpstreamErrorSnippet(readable);
+  const snippet = await readUpstreamErrorSnippet(readable, 1000);
   assert.ok(snippet);
   assert.equal(snippet.length, 200);
 
-  assert.equal(await readUpstreamErrorSnippet(new Response("")), undefined);
+  assert.equal(await readUpstreamErrorSnippet(new Response(""), 1000), undefined);
 
   const cancelled = new Response("some text");
   await cancelled.body?.cancel();
-  assert.equal(await readUpstreamErrorSnippet(cancelled), undefined);
+  assert.equal(await readUpstreamErrorSnippet(cancelled, 1000), undefined);
+});
+
+test("readUpstreamErrorSnippet gives up on stalled bodies instead of hanging", async () => {
+  // A body that emits one small chunk and then stalls forever: the read must
+  // degrade to undefined under the short deadline, not block the failover.
+  const stalled = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("partial"));
+        // never closes
+      },
+    }),
+  );
+  const startedAt = Date.now();
+  const snippet = await readUpstreamErrorSnippet(stalled, 60);
+  const elapsed = Date.now() - startedAt;
+  assert.equal(snippet, undefined, "a stalled body must not produce a snippet");
+  assert.ok(elapsed < 2000, `the deadline race must fire quickly, took ${elapsed}ms`);
+});
+
+test("readBoundedBodyText stops at the character cap and releases the body", async () => {
+  const big = new Response("z".repeat(5000));
+  const text = await readBoundedBodyText(big, 1000, 100);
+  assert.equal(text, "z".repeat(100), "at most maxChars characters are buffered");
+
+  const empty = new Response("");
+  assert.equal(await readBoundedBodyText(empty, 1000, 100), "");
 });
 
 test("rewriteUpstreamErrorBody converts OpenAI shapes and prefixes provider/model", () => {
@@ -238,4 +337,21 @@ test("rewriteUpstreamErrorBody puts non-JSON and empty bodies into the message",
   const empty = rewriteUpstreamErrorBody("", 500, "groq", "m2");
   const emptyErr = (empty as { error: { message: string } }).error;
   assert.equal(emptyErr.message, "groq/m2: upstream returned status 500");
+});
+
+test("rewriteUpstreamErrorBody caps the message and survives degenerate JSON bodies", () => {
+  const longText = "w".repeat(3000);
+  const capped = rewriteUpstreamErrorBody(longText, 502, "openrouter", "m1");
+  const cappedErr = (capped as { error: { message: string } }).error;
+  assert.equal(
+    cappedErr.message,
+    `openrouter/m1: ${"w".repeat(UPSTREAM_ERROR_MESSAGE_MAX_CHARS)}`,
+    "the raw body is truncated, not relayed in full",
+  );
+
+  for (const body of ["null", JSON.stringify({ error: null }), JSON.stringify({ error: { message: "" } }), "{}"]) {
+    const rewritten = rewriteUpstreamErrorBody(body, 500, "groq", "m2") as { error: { message: string } };
+    assert.match(rewritten.error.message, /^groq\/m2: /, `degenerate body ${body} still yields a prefixed message`);
+    assert.ok(!rewritten.error.message.includes("undefined"));
+  }
 });

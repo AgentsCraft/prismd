@@ -10,9 +10,18 @@
  * Problems carry self-contained messages (per-candidate reasons), Retry-After
  * when a recovery time is known, and a truncated upstream error snippet so a
  * 429 never masquerades as a 502 "server error" for the client.
+ *
+ * Upstream error bodies are read through a bounded, deadline-bounded reader
+ * (readBoundedBodyText): reading stops at the character cap (cancelling the
+ * body) and races a short deadline, so a stalled or oversized error body can
+ * never hold the failover loop — and with it the rate limiter's concurrency
+ * slot — hostage.
  */
+import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { gatewayError } from "./errors.js";
+import type { FilteredCandidate } from "./limits.js";
+import { msUntilNextDailyWindow } from "./quota.js";
 
 export type ProblemProtocol = "openai" | "anthropic";
 
@@ -25,6 +34,14 @@ export interface FailedAttempt {
   /** Retry-After parsed from the upstream error response, in ms. */
   retryAfterMs?: number;
   /** Truncated upstream error body / connect-failure text. */
+  snippet?: string;
+}
+
+/** Loop-collected failed attempt: the candidate plus what happened to it. */
+export interface AttemptOutcome<C> {
+  candidate: C;
+  status: number | null;
+  retryAfterMs?: number;
   snippet?: string;
 }
 
@@ -83,16 +100,13 @@ export function anthropicErrorType(status: number): string {
 
 /**
  * Render a problem for one wire protocol. Headers carry retry-after
- * (whole seconds) when a recovery time is known, plus the request id for
- * correlation across client logs and gateway traces.
+ * (whole seconds) when a recovery time is known; request correlation uses
+ * the global x-request-id header set by the app middleware.
  */
 export function renderProblemJson(problem: GatewayProblem, protocol: ProblemProtocol): RenderedProblem {
   const headers: Record<string, string> = {};
   if (problem.retryAfterMs !== undefined && problem.retryAfterMs > 0) {
     headers["retry-after"] = String(Math.max(1, Math.ceil(problem.retryAfterMs / 1000)));
-  }
-  if (problem.requestId) {
-    headers["x-prismd-request-id"] = problem.requestId;
   }
 
   if (protocol === "anthropic") {
@@ -111,6 +125,12 @@ export function renderProblemJson(problem: GatewayProblem, protocol: ProblemProt
   return { body: rendered as unknown as Record<string, unknown>, headers };
 }
 
+/** Send a rendered problem as the HTTP error response, in the given protocol. */
+export function problemResponse(c: Context, problem: GatewayProblem, protocol: ProblemProtocol): Response {
+  const { body, headers } = renderProblemJson(problem, protocol);
+  return c.json(body, problem.status as ContentfulStatusCode, headers);
+}
+
 export interface FailoverOutcome {
   status: number;
   code: string;
@@ -125,6 +145,10 @@ export interface FailoverOutcome {
  * everything else (5xx mixes) -> 502.
  */
 export function classifyFailoverOutcome(attempts: FailedAttempt[]): FailoverOutcome {
+  if (attempts.length === 0) {
+    // Degenerate case (nothing was recorded): keep the legacy answer.
+    return { status: 502, code: "gateway_all_candidates_failed" };
+  }
   const anyRateLimited = attempts.some((a) => a.status === 429);
   if (anyRateLimited) {
     const maxRetryAfterMs = attempts.reduce((max, a) => Math.max(max, a.retryAfterMs ?? 0), 0);
@@ -134,7 +158,7 @@ export function classifyFailoverOutcome(attempts: FailedAttempt[]): FailoverOutc
       ...(maxRetryAfterMs > 0 ? { retryAfterMs: maxRetryAfterMs } : {}),
     };
   }
-  if (attempts.length > 0 && attempts.every((a) => a.status === null)) {
+  if (attempts.every((a) => a.status === null)) {
     return { status: 503, code: "upstream_unreachable" };
   }
   return { status: 502, code: "gateway_all_candidates_failed" };
@@ -184,6 +208,19 @@ export function buildFailoverProblem(alias: string, attempts: FailedAttempt[], r
   };
 }
 
+/** Flatten loop-collected attempt outcomes into FailedAttempts. */
+export function toFailedAttempts<C extends { provider: string; providerModelId: string }>(
+  outcomes: ReadonlyArray<AttemptOutcome<C>>,
+): FailedAttempt[] {
+  return outcomes.map(({ candidate, status, retryAfterMs, snippet }) => ({
+    provider: candidate.provider,
+    model: candidate.providerModelId,
+    status,
+    retryAfterMs,
+    snippet,
+  }));
+}
+
 /** A candidate rejected before any upstream call, with its real filter reason. */
 export interface UnavailableCandidate {
   provider: string;
@@ -192,32 +229,90 @@ export interface UnavailableCandidate {
   contextWindow?: number;
 }
 
+/** The selection pieces the precheck fallback needs (see core/limits.ts). */
+export interface PrecheckSelection {
+  filtered: FilteredCandidate[];
+  windowExceeded: { provider: string; model: string; contextWindow: number }[];
+}
+
 /**
- * Build the precheck "nothing selectable" problem (429): the message names
- * the real per-candidate reasons (cooling down / quota exhausted /
- * unhealthy) and the earliest cooldown recovery, so clients can back off
- * instead of blind-retrying.
+ * Retry-After decision for the precheck "nothing selectable" branch (ms):
+ * an actual cooldown recovery wins; with no cooldown anywhere and every
+ * candidate rejected for daily-quota exhaustion, the next daily window
+ * reset is used (quota keys are local dates, so counters roll over at
+ * local midnight — see quota.msUntilNextDailyWindow); otherwise no
+ * Retry-After. Defined values are at least 1s.
+ */
+export function precheckRetryAfterMs(
+  unavailable: UnavailableCandidate[],
+  earliestCooldownRecoveryAt: number | null,
+  nowMs: number,
+): number | undefined {
+  if (earliestCooldownRecoveryAt !== null) {
+    return Math.max(1000, earliestCooldownRecoveryAt - nowMs);
+  }
+  if (unavailable.length > 0 && unavailable.every((u) => u.reason === "quota_exhausted")) {
+    return Math.max(1000, msUntilNextDailyWindow(new Date(nowMs)));
+  }
+  return undefined;
+}
+
+/** Human-readable recovery hint for problem messages ("~20s", "~5m", "~21h"). */
+function formatRecoveryIn(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds >= 3600) return `~${Math.ceil(seconds / 3600)}h`;
+  if (seconds >= 60) return `~${Math.ceil(seconds / 60)}m`;
+  return `~${seconds}s`;
+}
+
+/**
+ * Build the precheck "nothing selectable" problem (429), shared by all
+ * three ingresses: the message names the real per-candidate reasons
+ * (cooling down / quota exhausted / unhealthy) and when the first
+ * candidate recovers, so clients can back off instead of blind-retrying.
  */
 export function buildNoCandidatesProblem(
   alias: string,
-  unavailable: UnavailableCandidate[],
-  retryAfterMs?: number,
+  selection: PrecheckSelection,
+  candidates: ReadonlyArray<{ provider: string; providerModelId: string }>,
+  earliestRecoveryAt: (provider: string, model: string) => number | null,
+  nowMs: number = Date.now(),
 ): GatewayProblem {
-  const hasRetry = retryAfterMs !== undefined && retryAfterMs > 0;
+  const unavailable: UnavailableCandidate[] = [
+    ...selection.filtered,
+    ...selection.windowExceeded.map((w) => ({
+      provider: w.provider,
+      model: w.model,
+      reason: "context_window_exceeded",
+      contextWindow: w.contextWindow,
+    })),
+  ];
+  let earliest: number | null = null;
+  for (const candidate of candidates) {
+    const at = earliestRecoveryAt(candidate.provider, candidate.providerModelId);
+    if (at !== null && (earliest === null || at < earliest)) earliest = at;
+  }
+  const retryAfterMs = precheckRetryAfterMs(unavailable, earliest, nowMs);
   const details = unavailable.map((u) => `${u.provider}/${u.model} → ${u.reason}`).join(", ");
   const message =
     `no candidates for alias "${alias}" are currently available: ${details}` +
-    (hasRetry ? `. earliest recovery in ~${Math.ceil((retryAfterMs as number) / 1000)}s` : "");
+    (retryAfterMs !== undefined ? `. earliest recovery in ${formatRecoveryIn(retryAfterMs)}` : "");
   return {
     status: 429,
     code: "quota_exceeded",
     message,
-    ...(hasRetry ? { retryAfterMs } : {}),
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     metadata: { candidates: unavailable },
   };
 }
 
 export const ERROR_SNIPPET_MAX_CHARS = 200;
+/** Hard cap (chars) when buffering an upstream error body for rewriting. */
+export const UPSTREAM_ERROR_BODY_MAX_CHARS = 4096;
+/** Cap for the detail carried inside rewritten upstream error messages. */
+export const UPSTREAM_ERROR_MESSAGE_MAX_CHARS = 500;
+/** Upper bound for the error-body read deadline (also clamps streamIdleTimeoutMs). */
+export const ERROR_BODY_READ_TIMEOUT_MS = 2000;
 
 /** Collapse whitespace and truncate so snippets stay one readable line. */
 export function truncateSnippet(text: string, maxChars = ERROR_SNIPPET_MAX_CHARS): string {
@@ -225,40 +320,86 @@ export function truncateSnippet(text: string, maxChars = ERROR_SNIPPET_MAX_CHARS
   return cleaned.length > maxChars ? cleaned.slice(0, maxChars) : cleaned;
 }
 
-/** Snippet for a connect-level failure (timeout vs refusal), from the error message. */
-export function describeConnectFailure(message: string, timeout: boolean): string {
+/** Snippet for a connect-level failure (timeout vs refusal), from any thrown value. */
+export function describeConnectFailure(err: unknown, timeout: boolean): string {
+  const message = err instanceof Error ? err.message : String(err);
   return truncateSnippet(`${timeout ? "connection timeout" : "connection error"}: ${message}`);
 }
 
 /**
- * Read the upstream error body as a truncated snippet, then release the
- * body so the upstream connection is freed. Missing/unreadable bodies
- * yield undefined, never throw.
+ * Bounded, deadline-bounded text read of an upstream error body: stops at
+ * maxChars (cancelling the body so the connection is released), races a
+ * short deadline — min(streamIdleTimeoutMs, ERROR_BODY_READ_TIMEOUT_MS) —
+ * so a stalled body cannot hold the failover loop, and degrades to
+ * undefined on timeout or read errors instead of throwing.
+ */
+export async function readBoundedBodyText(
+  response: Response,
+  streamIdleTimeoutMs: number,
+  maxChars: number,
+): Promise<string | undefined> {
+  try {
+    const body = response.body;
+    if (!body) return undefined;
+    const timeoutMs =
+      streamIdleTimeoutMs > 0 ? Math.min(streamIdleTimeoutMs, ERROR_BODY_READ_TIMEOUT_MS) : ERROR_BODY_READ_TIMEOUT_MS;
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    return await new Promise<string | undefined>((resolve) => {
+      let settled = false;
+      let text = "";
+      const timer = setTimeout(() => finish(undefined), timeoutMs);
+      timer.unref(); // never hold process shutdown for an error body
+      const finish = (value: string | undefined) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        // Release the body either way: on truncation the rest is discarded.
+        void reader.cancel().catch(() => {});
+        resolve(value);
+      };
+      void (async () => {
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            text += decoder.decode(value, { stream: true });
+            if (text.length >= maxChars) break;
+          }
+          finish(text.slice(0, maxChars));
+        } catch {
+          finish(undefined);
+        }
+      })();
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Read the upstream error body as a truncated one-line snippet (bounded
+ * read, then the body is released). Missing/unreadable bodies yield
+ * undefined, never throw.
  */
 export async function readUpstreamErrorSnippet(
   response: Response,
+  streamIdleTimeoutMs: number,
   maxChars = ERROR_SNIPPET_MAX_CHARS,
 ): Promise<string | undefined> {
-  try {
-    const snippet = truncateSnippet(await response.text(), maxChars);
-    return snippet.length > 0 ? snippet : undefined;
-  } catch {
-    return undefined;
-  } finally {
-    try {
-      void response.body?.cancel().catch(() => {});
-    } catch {
-      /* body already consumed */
-    }
-  }
+  const text = await readBoundedBodyText(response, streamIdleTimeoutMs, maxChars);
+  if (text === undefined) return undefined;
+  const snippet = truncateSnippet(text, maxChars);
+  return snippet.length > 0 ? snippet : undefined;
 }
 
 /**
  * Rewrite an upstream error body for the Anthropic protocol: OpenAI-shaped
  * bodies ({"error":{"message",...}}) become {"type":"error","error":{...}}
  * with the upstream message prefixed by provider/model; non-JSON bodies go
- * into the message verbatim. The error type follows the status unless the
- * upstream already used an Anthropic type name.
+ * into the message verbatim (capped, see UPSTREAM_ERROR_MESSAGE_MAX_CHARS).
+ * The error type follows the status unless the upstream already used an
+ * Anthropic type name.
  */
 export function rewriteUpstreamErrorBody(
   rawText: string,
@@ -281,7 +422,13 @@ export function rewriteUpstreamErrorBody(
   } catch {
     /* not JSON */
   }
-  const detail = upstreamMessage ?? (rawText.trim() !== "" ? rawText : `upstream returned status ${status}`);
+  const cap = UPSTREAM_ERROR_MESSAGE_MAX_CHARS;
+  const detail =
+    upstreamMessage !== undefined
+      ? truncateSnippet(upstreamMessage, cap)
+      : rawText.trim() !== ""
+        ? truncateSnippet(rawText, cap)
+        : `upstream returned status ${status}`;
   const type =
     upstreamType !== undefined && ANTHROPIC_ERROR_TYPE_NAMES.has(upstreamType)
       ? upstreamType

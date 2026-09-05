@@ -597,8 +597,15 @@ test("all candidates quota-exhausted returns 429 with filter reasons", async (t)
 
   const res = await post({ model: "free-auto", input: "hi" });
   assert.equal(res.status, 429);
-  const body = (await res.json()) as { error: { code: string; metadata: { candidates: { model: string; reason: string }[] } } };
+  // Quota windows reset at local midnight (quota.msUntilNextDailyWindow), so
+  // a quota-only precheck rejection carries that recovery time on purpose.
+  const retryAfter = Number(res.headers.get("retry-after"));
+  assert.ok(retryAfter >= 1 && retryAfter <= 86_400, `retry-after should be the window reset, got ${retryAfter}`);
+  const body = (await res.json()) as {
+    error: { code: string; message: string; metadata: { candidates: { model: string; reason: string }[] } };
+  };
   assert.equal(body.error.code, "quota_exceeded");
+  assert.match(body.error.message, /earliest recovery in ~/);
   assert.deepEqual(
     body.error.metadata.candidates.map((c) => [c.model, c.reason]),
     [
