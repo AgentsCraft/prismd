@@ -112,8 +112,6 @@ prismd 通过多维评估管道，对每次请求动态决策最优候选模型�
 - **零中断 429 故障转移 (Zero-Crash Failover)**：若上游服务商返回 429 限流或 5xx 故障，网关自动透明重试别名队列中的下一候选模型，客户端会话完全无感知。
 - **默认模型别名**：
   - `free-auto`：全能自动编码模型。优先优选 Gemini 2.0 Flash / Llama 3.3 70B 等大模型，默认纯云端队列。
-  - `free-fast`：极速轻量模型（Gemini Flash Lite / Llama 3.1 8B）。
-  - `free-code`：代码生成特化模型队列。
 
 ### 2. 多 Key 轮询与单 Key 熔断隔离 (Key Pool)
 

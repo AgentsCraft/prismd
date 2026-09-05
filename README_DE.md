@@ -112,8 +112,6 @@ prismd wählt für jede Anfrage dynamisch den optimalen Modellkandidaten über e
 - **Unterbrechungsfreies 429 Failover (Zero-Crash Failover)**: Bei 429-Ratenbegrenzungen oder 5xx-Fehlern wechselt prismd nahtlos zum nächsten gesunden Kandidaten in der Alias-Warteschlange.
 - **Standard-Aliase**:
   - `free-auto`: Haupt-Coding-Warteschlange (bevorzugt Gemini 2.0 Flash / Llama 3.3 70B, standardmäßig nur Cloud).
-  - `free-fast`: Leichtgewichtige Highspeed-Warteschlange (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code`: Spezialisierte Codegenerierungs-Warteschlange.
 
 ### 2. Multi-Key-Pooling & Circuit Breaking (Key Pool)
 

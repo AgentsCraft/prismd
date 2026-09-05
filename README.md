@@ -110,10 +110,7 @@ prismd dynamically selects the optimal model candidate per request using an inte
 - **Context Window Verification**: Estimates input tokens before dispatch; automatically filters out candidates whose context window is too small, preventing 400 Context Overflow errors.
 - **Quota-Weighted Soft Limits**: When a cloud candidate reaches 80% of its daily quota (`quotaSoftLimitRatio`), it is automatically demoted to the tail of the queue, reserving remaining quota for peak requirements.
 - **Zero-Crash Failover**: If an upstream provider returns a 429 rate limit or 5xx outage, prismd transparently fails over to the next healthy candidate in the alias queue without failing the client's session.
-- **Default Aliases**:
-  - `free-auto`: Primary coding queue. Prioritizes Gemini 2.0 Flash / Llama 3.3 70B. Cloud-only by default.
-  - `free-fast`: Lightweight high-speed queue (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code`: Specialized code generation & test writing queue.
+- **Default Alias**: `free-auto`: the single unified free queue. Prioritizes Gemini 2.0 Flash / Llama 3.3 70B. Cloud-only by default.
 
 ### 2. Multi-Key Pooling & Single-Key Circuit Breaking (Key Pool)
 

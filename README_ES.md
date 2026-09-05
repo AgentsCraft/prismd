@@ -112,8 +112,6 @@ prismd selecciona dinámicamente el mejor modelo candidato para cada solicitud m
 - **Conmutación sin fallos (Zero-Crash Failover)**: Ante errores 429 de límite o 5xx de caída, prismd conmuta automáticamente al siguiente candidato en cola de forma transparente.
 - **Alias por Defecto**:
   - `free-auto`: Cola principal de código (prioridad Gemini 2.0 Flash / Llama 3.3 70B, solo nube de forma predeterminada).
-  - `free-fast`: Cola ultrarrápida y ligera (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code`: Cola especializada en generación y prueba de código.
 
 ### 2. Multi-Key y Aislamiento de Errores (Key Pool)
 

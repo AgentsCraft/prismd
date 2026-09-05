@@ -112,8 +112,6 @@ prismd çok boyutlu değerlendirme boru hattı ile her istek için en uygun mode
 - **Kesintisiz 429 Yük Devretme (Zero-Crash Failover)**: Sağlayıcıdan 429 veya 5xx hatası döndüğünde prismd şeffaf şekilde kuyruktaki bir sonraki modele geçer.
 - **Varsayılan Takma Adlar**:
   - `free-auto`: Ana kodlama kuyruğu (Gemini 2.0 Flash / Llama 3.3 70B öncelikli, varsayılan olarak yalnızca bulut).
-  - `free-fast`: Ultra hızlı ve hafif model kuyruğu (Gemini Flash Lite / Llama 3.1 8B).
-  - `free-code`: Kod üretimi ve test yazımı için özel model kuyruğu.
 
 ### 2. Çoklu Anahtar ve Hata İzolasyonu (Key Pool)
 
