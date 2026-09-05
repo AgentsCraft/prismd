@@ -89,7 +89,7 @@ test("sseErrorEvent renders the error shape of each output protocol", () => {
   // Responses: named response.failed event with the Responses error envelope.
   assert.equal(
     sseErrorEvent("boom", "it broke", "responses"),
-    'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_error","error":{"code":"boom","message":"it broke"}}}\n\n',
+    'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_error","status":"failed","error":{"code":"boom","message":"it broke"}}}\n\n',
   );
   // Anthropic: named error event with the Anthropic error envelope.
   assert.equal(

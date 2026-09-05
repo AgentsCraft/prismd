@@ -71,7 +71,7 @@ export interface RenderedProblem {
 }
 
 /** Anthropic error type names (the codomain of the status mapping below). */
-const ANTHROPIC_ERROR_TYPE_NAMES = new Set([
+export const ANTHROPIC_ERROR_TYPE_NAMES = new Set([
   "invalid_request_error",
   "authentication_error",
   "permission_error",

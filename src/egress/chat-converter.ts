@@ -1066,10 +1066,13 @@ export class ResponsesToChatStreamTransformer {
     // by the upstream): translate into a chat-shaped error data event and
     // suppress all normal completion.
     if (type === "response.failed" || type === "error") {
+      // `type: "error"` carries top-level code/message per the OpenAI Responses
+      // spec (ResponseErrorEvent), but some upstreams nest an `error` object;
+      // accept both, with the spec shape as the fallback.
       const source = (
         type === "response.failed"
           ? (chunk.response as Record<string, unknown> | undefined)?.error
-          : chunk.error
+          : (chunk.error ?? chunk)
       ) as Record<string, unknown> | undefined;
       const message =
         typeof source?.message === "string" && source.message.length > 0

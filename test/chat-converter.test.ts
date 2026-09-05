@@ -602,6 +602,20 @@ test("ResponsesToChatStreamTransformer converts upstream error events into a cha
   assert.deepEqual(transformer.finish(), []);
 });
 
+test("ResponsesToChatStreamTransformer accepts the spec top-level error shape", () => {
+  // OpenAI Responses spec (ResponseErrorEvent) puts code/message at the top
+  // level of the error event, with no nested `error` object.
+  const transformer = new ResponsesToChatStreamTransformer("free-auto");
+  const events = transformer.processDataPayload(
+    JSON.stringify({ type: "error", code: "context_length_exceeded", message: "reduce the prompt" }),
+  );
+  assert.equal(events.length, 1);
+  const parsed = dataJson(events[0]) as { error: { message: string; code: string } };
+  assert.equal(parsed.error.message, "reduce the prompt");
+  assert.equal(parsed.error.code, "context_length_exceeded");
+  assert.equal(transformer.completed, true);
+});
+
 test("ChatToResponsesStreamTransformer converts an upstream chat error into response.failed and suppresses completion", () => {
   const transformer = new ChatToResponsesStreamTransformer("free-auto");
   const events: string[] = [];

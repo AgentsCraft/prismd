@@ -135,7 +135,7 @@ export function sseErrorEvent(code: string, message: string, protocol: SseErrorP
   if (protocol === "responses") {
     return `event: response.failed\ndata: ${JSON.stringify({
       type: "response.failed",
-      response: { id: "resp_error", error: { code, message } },
+      response: { id: "resp_error", status: "failed", error: { code, message } },
     })}\n\n`;
   }
   return `event: error\ndata: ${JSON.stringify({ type: "error", error: { message, type: "upstream_error", code } })}\n\n`;

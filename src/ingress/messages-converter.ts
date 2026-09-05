@@ -2,6 +2,7 @@
  * Anthropic Messages API <-> OpenAI Chat Completions bidirectional conversion.
  * Enables Claude Code CLI and Anthropic SDK clients to use prismd seamlessly.
  */
+import { ANTHROPIC_ERROR_TYPE_NAMES } from "../core/error-contract.js";
 
 export interface AnthropicTool {
   name: string;
@@ -338,9 +339,21 @@ export class ChatToAnthropicStreamTransformer {
 
     // Mid-stream upstream error (data: {"error":{...}}): relay as an Anthropic
     // error event and suppress the normal message_delta/message_stop ending.
+    // The upstream error type is often OpenAI-flavored ("upstream_error",
+    // "invalid_request_error" aside); Anthropic SDKs switch on the type name,
+    // so anything outside the spec vocabulary maps to api_error. The original
+    // code stays as an extra field for troubleshooting.
     if (chunk.error && typeof chunk.error === "object") {
       this.allCompleted = true;
-      return [this.formatEvent("error", { type: "error", error: chunk.error })];
+      const err = chunk.error as Record<string, unknown>;
+      const rawType = typeof err.type === "string" ? err.type : "";
+      const type = ANTHROPIC_ERROR_TYPE_NAMES.has(rawType) ? rawType : "api_error";
+      const error: Record<string, unknown> = {
+        type,
+        message: typeof err.message === "string" && err.message !== "" ? err.message : "upstream error",
+      };
+      if (typeof err.code === "string" && err.code !== "") error.code = err.code;
+      return [this.formatEvent("error", { type: "error", error })];
     }
 
     const events: string[] = [];
