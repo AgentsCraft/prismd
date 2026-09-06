@@ -60,3 +60,16 @@ test("renderUiHtml contains active model banner element and SSE listener", () =>
   assert.ok(html.includes('renderActiveModel'));
 });
 
+test("renderUiHtml contains clients (last 24h) section fed by /v1/clientstatus", () => {
+  const html = renderUiHtml();
+  assert.ok(html.includes('id="clients-panel"'));
+  assert.ok(html.includes("fetch('/v1/clientstatus')"));
+  assert.ok(html.includes("renderClients"));
+  assert.ok(html.includes("clientDotClass"));
+  assert.ok(html.includes("clientsTitle"));
+  // Section copy is translated for every UI language
+  assert.ok(html.includes("客户端（最近 24h）"));
+  assert.ok(html.includes("Clients (last 24h)"));
+  assert.ok(html.includes("クライアント（直近 24h）"));
+});
+
