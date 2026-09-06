@@ -155,7 +155,14 @@ export async function responses(c: Context): Promise<Response> {
     );
   }
 
-  exporter.onRequestStart({ requestId, ts: startedAt, method, path, alias: body.model });
+  exporter.onRequestStart({
+    requestId,
+    ts: startedAt,
+    method,
+    path,
+    alias: body.model,
+    userAgent: c.req.header("user-agent") ?? "",
+  });
 
   const attempts = config.policies.retryBeforeStream
     ? Math.min(selection.ordered.length, config.policies.maxCandidatesPerRequest)

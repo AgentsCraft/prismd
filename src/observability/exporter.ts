@@ -8,6 +8,7 @@
  * and a timestamp, so the events form a machine-readable trace per request.
  */
 import { logger } from "./logger.js";
+import { clientUsageSink } from "./client-sink.js";
 
 export interface RequestStartEvent {
   requestId: string;
@@ -15,6 +16,8 @@ export interface RequestStartEvent {
   method: string;
   path: string;
   alias: string;
+  /** Raw User-Agent header as sent by the client ("" when absent). */
+  userAgent: string;
 }
 
 export interface FirstTokenEvent {
@@ -101,4 +104,38 @@ export class PinoExporter implements Exporter {
   }
 }
 
-export const exporter: Exporter = new PinoExporter();
+/**
+ * Fans lifecycle events out to every registered exporter (pino logging plus
+ * the in-memory client usage window) while keeping a single `exporter` handle
+ * on the request path. Methods are instance-bound so tests can wrap them by
+ * extracting the function from the singleton.
+ */
+export class CompositeExporter implements Exporter {
+  private readonly sinks: readonly Exporter[];
+
+  constructor(sinks: readonly Exporter[]) {
+    this.sinks = sinks;
+  }
+
+  onRequestStart = (event: RequestStartEvent): void => {
+    for (const sink of this.sinks) sink.onRequestStart(event);
+  };
+
+  onFirstToken = (event: FirstTokenEvent): void => {
+    for (const sink of this.sinks) sink.onFirstToken(event);
+  };
+
+  onChunk = (event: ChunkEvent): void => {
+    for (const sink of this.sinks) sink.onChunk(event);
+  };
+
+  onRequestEnd = (event: RequestEndEvent): void => {
+    for (const sink of this.sinks) sink.onRequestEnd(event);
+  };
+
+  onError = (event: ErrorEvent): void => {
+    for (const sink of this.sinks) sink.onError(event);
+  };
+}
+
+export const exporter: Exporter = new CompositeExporter([new PinoExporter(), clientUsageSink]);
