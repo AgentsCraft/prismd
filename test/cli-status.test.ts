@@ -13,6 +13,8 @@ import {
 } from "../src/cli/status.js";
 import { StateStore } from "../src/core/state.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
+import { renderClientStatus } from "../src/cli/status.js";
+import type { ClientStatusSnapshot } from "../routes/clientstatus.js";
 
 test("detectCliLanguage matches 10 languages and falls back to en", () => {
   assert.equal(detectCliLanguage({ LANG: "zh_CN.UTF-8" }), "zh-CN");
@@ -191,6 +193,64 @@ test("renderOfflineStatus reads from SQLite database with localization", () => {
     renderOfflineStatus(dbPath, "zh-CN");
     assert.ok(logs.includes("prismd 网关未运行"));
     assert.ok(logs.includes("提供方 / 模型"));
+  } finally {
+    console.log = origLog;
+  }
+});
+
+test("renderClientStatus appends client usage table in en and zh-CN", () => {
+  const mockData: ClientStatusSnapshot = {
+    timestamp: new Date().toISOString(),
+    windowMs: 86_400_000,
+    clients: [
+      {
+        client: "claude-code",
+        endpoint: "/v1/messages",
+        requests: 142,
+        successRate: 1,
+        p50Ms: 1800,
+        p95Ms: 4200,
+        failovers: 0,
+        topFailures: [],
+        lastError: null,
+        recent: [],
+      },
+      {
+        client: "SomeClient/9.9",
+        endpoint: "/v1/chat/completions",
+        requests: 6,
+        successRate: 0.5,
+        p50Ms: 2900,
+        p95Ms: 5000,
+        failovers: 1,
+        topFailures: [{ reason: "3 stream_error", count: 3 }],
+        lastError: { at: new Date().toISOString(), reason: "3 stream_error" },
+        recent: [],
+      },
+    ],
+  };
+
+  let logs = "";
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => {
+    logs += args.join(" ") + "\n";
+  };
+  try {
+    renderClientStatus(mockData, "en");
+    assert.ok(logs.includes("Clients (last 24h)"));
+    assert.ok(logs.includes("claude-code"));
+    assert.ok(logs.includes("/v1/messages"));
+    assert.ok(logs.includes("142"));
+    assert.ok(logs.includes("100%"));
+    assert.ok(logs.includes("1.8s"));
+    assert.ok(logs.includes("SomeClient/9.9"));
+    assert.ok(logs.includes("50%"));
+
+    logs = "";
+    renderClientStatus(mockData, "zh-CN");
+    assert.ok(logs.includes("客户端（最近 24h）"));
+    assert.ok(logs.includes("协议端点"));
+    assert.ok(logs.includes("最近错误"));
   } finally {
     console.log = origLog;
   }
