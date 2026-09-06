@@ -1,12 +1,22 @@
 import type { Context } from "hono";
 import { getConfig } from "../config.js";
 import { gatewayError } from "../core/errors.js";
+import {
+  buildFailoverProblem,
+  buildNoCandidatesProblem,
+  describeConnectFailure,
+  problemResponse,
+  readUpstreamErrorSnippet,
+  toFailedAttempts,
+  type AttemptOutcome,
+} from "../core/error-contract.js";
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
 import { statusBroadcaster } from "../core/status-events.js";
 import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
+import { addSseKeepAlive } from "../egress/raw.js";
 import { callUpstream as chatCallUpstream } from "../egress/chat.js";
 import { exporter } from "../observability/exporter.js";
 import { logger } from "../observability/logger.js";
@@ -23,7 +33,9 @@ import type { ResponsesRequestBody } from "../types/protocol.js";
  *       -> other 4xx (400/404/422) -> passthrough verbatim, no switch
  *       -> 2xx -> relay; stream breaks afterwards are never retried
  *          (SSE error event ends the stream)
- *   all candidates failed -> 502 gateway_all_candidates_failed
+ *   all candidates failed -> classified final response: any 429 attempt ->
+ *   429 (Retry-After = max), only connect failures -> 503
+ *   upstream_unreachable, otherwise 502 gateway_all_candidates_failed
  */
 
 const RELAY_HEADERS = ["content-type", "retry-after"] as const;
@@ -131,19 +143,15 @@ export async function responses(c: Context): Promise<Response> {
       );
     }
 
-    return c.json(
-      gatewayError(
-        429,
-        "quota_exceeded",
-        `all candidates for alias "${body.model}" are filtered by quota or health`,
-        {
-          candidates: [
-            ...selection.filtered,
-            ...selection.windowExceeded.map((w) => ({ ...w, reason: "context_window_exceeded" })),
-          ],
-        },
+    // Nothing selectable: quota exhausted, candidates cooling down after
+    // upstream failures, or unhealthy. Tell the client the real reasons and
+    // when the first candidate recovers instead of blind 429s.
+    return problemResponse(
+      c,
+      buildNoCandidatesProblem(body.model, selection, candidates, (provider, model) =>
+        health.earliestRecoveryAt(provider, model),
       ),
-      429,
+      "openai",
     );
   }
 
@@ -154,7 +162,7 @@ export async function responses(c: Context): Promise<Response> {
     : 1;
 
   let failovers = 0;
-  const attemptStatuses: { candidate: Candidate; status: number | null }[] = [];
+  const attemptStatuses: AttemptOutcome<Candidate>[] = [];
 
   for (let i = 0; i < attempts; i += 1) {
     const candidate = selection.ordered[i];
@@ -251,7 +259,11 @@ export async function responses(c: Context): Promise<Response> {
           },
           "upstream connection failed",
         );
-        attemptStatuses.push({ candidate, status: null });
+        attemptStatuses.push({
+          candidate,
+          status: null,
+          snippet: describeConnectFailure(err, isTimeout),
+        });
         failovers += 1;
         continue;
       }
@@ -283,9 +295,16 @@ export async function responses(c: Context): Promise<Response> {
         status: result.status,
         retryAfterMs: result.retryAfterMs,
       });
-      // Free the unused error body so the upstream connection is released.
-      void result.response.body?.cancel();
-      attemptStatuses.push({ candidate, status: result.status });
+      // Read (then release) the upstream error body — bounded and under a
+      // short deadline — so the final problem can carry a real reason
+      // snippet instead of a bare status code.
+      const snippet = await readUpstreamErrorSnippet(result.response, config.policies.streamIdleTimeoutMs);
+      attemptStatuses.push({
+        candidate,
+        status: result.status,
+        retryAfterMs: result.retryAfterMs,
+        snippet,
+      });
       failovers += 1;
     }
     if (!handedOff) {
@@ -293,18 +312,18 @@ export async function responses(c: Context): Promise<Response> {
     }
   }
 
-  // All attempts failed: 502 with per-candidate upstream status codes.
-  const metadata = attemptStatuses.map(({ candidate, status }) => ({
-    provider: candidate.provider,
-    model: candidate.providerModelId,
-    status: status ?? "connection_error",
-  }));
+  // Every attempt failed: classify the outcome (any 429 -> 429 with the max
+  // Retry-After, all connect failures -> 503, otherwise 502) and render the
+  // per-attempt reasons instead of a bare status code.
+  const problem = buildFailoverProblem(body.model, toFailedAttempts(attemptStatuses), requestId);
+  const finalStatus = problem.status;
+
   exporter.onError({
     requestId,
     ts: Date.now(),
     alias: body.model,
-    code: "gateway_all_candidates_failed",
-    message: `all candidates for alias "${body.model}" failed`,
+    code: problem.code,
+    message: problem.message,
   });
 
   const fallbackCandidate = selection.selected ?? selection.ordered[0];
@@ -316,7 +335,7 @@ export async function responses(c: Context): Promise<Response> {
       alias: body.model,
       provider: finalCandidate.provider,
       model: finalCandidate.providerModelId,
-      status: 502,
+      status: finalStatus,
       failover: failovers,
       durationMs: Date.now() - startedAt,
       usage: { inputChars, outputChars: 0 },
@@ -326,7 +345,7 @@ export async function responses(c: Context): Promise<Response> {
       alias: body.model,
       provider: finalCandidate.provider,
       model: finalCandidate.providerModelId,
-      status: 502,
+      status: finalStatus,
       durationMs: Date.now() - startedAt,
       failovers,
     });
@@ -339,7 +358,7 @@ export async function responses(c: Context): Promise<Response> {
     alias: body.model,
     provider: finalCandidate?.provider ?? "unknown",
     model: finalCandidate?.providerModelId ?? "unknown",
-    status: 502,
+    status: finalStatus,
     durationMs: Date.now() - startedAt,
     usage: {
       inputTokens: Math.ceil(inputChars / 4),
@@ -349,15 +368,7 @@ export async function responses(c: Context): Promise<Response> {
     failovers,
   });
 
-  return c.json(
-    gatewayError(
-      502,
-      "gateway_all_candidates_failed",
-      `all candidates for alias "${body.model}" failed`,
-      { candidates: metadata },
-    ),
-    502,
-  );
+  return problemResponse(c, problem, "openai");
 }
 
 interface RelayContext {
@@ -433,7 +444,7 @@ function relaySuccess(ctx: RelayContext & { result: OkResult }): Response {
         return relayed.cancel(reason);
       },
     });
-    return new Response(body, { status: result.response.status, headers });
+    return new Response(addSseKeepAlive(body, "responses"), { status: result.response.status, headers });
   }
 
   finalize({ ...ctx, status: result.response.status }, accounting);

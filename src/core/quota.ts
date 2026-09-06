@@ -83,6 +83,16 @@ export function estimateTokens(chars: number): number {
   return Math.ceil(chars / TOKENS_PER_CHAR);
 }
 
+/**
+ * Milliseconds until the next daily window reset: usage keys are local
+ * dates (see localDate), so the daily counters roll over at the start of
+ * the next local day. Never negative.
+ */
+export function msUntilNextDailyWindow(now: Date): number {
+  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return Math.max(0, nextMidnight.getTime() - now.getTime());
+}
+
 export class QuotaManager {
   private readonly store: StateStore;
   private readonly flushIntervalMs: number;

@@ -295,31 +295,7 @@
         "llama-3.3-70b",
         "gpt-4o-mini",
         "cohere/north-mini-code:free",
-        "poolside/laguna-s-2.1:free",
-        "qwen2.5-coder:7b"
-      ]
-    },
-    "free-fast": {
-      "description": "Smaller, faster free model",
-      "candidates": [
-        "gemini-2.0-flash-lite",
-        "openai/gpt-oss-20b",
-        "qwen/qwen3.6-27b",
-        "llama3.1-8b",
-        "poolside/laguna-xs-2.1:free",
-        "qwen2.5-coder:7b"
-      ]
-    },
-    "free-code": {
-      "description": "Free models tuned for code generation",
-      "candidates": [
-        "gemini-2.0-flash",
-        "qwen/qwen3.8-27b",
-        "openai/gpt-oss-120b",
-        "cohere/north-mini-code:free",
-        "llama-3.3-70b",
-        "poolside/laguna-s-2.1:free",
-        "qwen2.5-coder:7b"
+        "poolside/laguna-s-2.1:free"
       ]
     }
   }

@@ -8,9 +8,15 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SERVER_PATH = join(REPO_ROOT, "src", "server.ts");
+/**
+ * Run the TSX-loaded CLI via node directly: `npx` is a .cmd shim on Windows
+ * and Node refuses to spawn .cmd files without a shell (CVE-2024-27980),
+ * so spawning it yields EINVAL and status null.
+ */
+const TSX_CLI = join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
 
 test("prismd --help displays usage information", () => {
-  const run = spawnSync("npx", ["tsx", SERVER_PATH, "--help"], {
+  const run = spawnSync(process.execPath, [TSX_CLI, SERVER_PATH, "--help"], {
     cwd: REPO_ROOT,
     encoding: "utf8",
   });
@@ -26,7 +32,7 @@ test("prismd generate creates ~/.prismd/prismd.json from keys", () => {
   mkdirSync(homePrismd, { recursive: true });
   writeFileSync(join(homePrismd, "keys.yaml"), "openrouter: sk-test-key-123\n");
 
-  const run = spawnSync("npx", ["tsx", SERVER_PATH, "generate"], {
+  const run = spawnSync(process.execPath, [TSX_CLI, SERVER_PATH, "generate"], {
     cwd,
     encoding: "utf8",
     env: {

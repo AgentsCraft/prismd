@@ -117,7 +117,7 @@ const HOME_ENV = envWith(['OPENROUTER_API_KEY', 'test-key']);
 
 /** Child-process env for CLI tests: isolates from the developer's real keys. */
 function childEnv(home: string): Record<string, string> {
-  const env = { ...process.env, HOME: home };
+  const env = { ...process.env, HOME: home, PRISMD_HOME: home };
   for (const name of ['OPENROUTER_API_KEY', 'GROQ_API_KEY', 'PRISMD_API_KEY']) {
     delete env[name];
   }

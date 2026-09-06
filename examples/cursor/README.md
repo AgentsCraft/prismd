@@ -14,8 +14,6 @@ Cursor 支持配置自定义 OpenAI 兼容端点（Override OpenAI Base URL）�
    ```
 4. 在模型列表下方点击 **Add Model**，依次添加所需的 prismd 别名：
    - `free-auto`（推荐设为主力模型）
-   - `free-fast`
-   - `free-code`
 5. 在下拉列表中选中 `free-auto` 即可开始编码对话与代码补全。
 
 ---

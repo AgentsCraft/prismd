@@ -37,11 +37,6 @@ Cerebras 已内置在 prismd 预设中，可直接在别名中引用：
         "llama-3.3-70b",
         "llama3.1-8b"
       ]
-    },
-    "free-fast": {
-      "candidates": [
-        "llama3.1-8b"
-      ]
     }
   }
 }

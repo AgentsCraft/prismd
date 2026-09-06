@@ -17,9 +17,13 @@ prismd.json
 config.user.json
 
 # Secrets / local env
+keys.yaml
 .env
 .env.*
 !.env.example
+keys.yaml
+keys.yaml.*
+!keys.yaml.example
 
 # Logs
 *.log

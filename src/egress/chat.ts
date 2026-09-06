@@ -87,10 +87,15 @@ function wrapChatStream(
   function abort(controller: ReadableStreamDefaultController<Uint8Array>, code: string, message: string): void {
     clearIdle();
     accounting.aborted = true;
-    try {
-      controller.enqueue(encoder.encode(sseErrorEvent(code, message)));
-    } catch {
-      /* controller already closed */
+    // This wrapper's output is a Responses SSE stream, so the injected error
+    // must use the response.failed shape. Skip if the transformer already
+    // emitted an error or completion of its own.
+    if (!transformer.completed) {
+      try {
+        controller.enqueue(encoder.encode(sseErrorEvent(code, message, "responses")));
+      } catch {
+        /* controller already closed */
+      }
     }
     try {
       controller.close();

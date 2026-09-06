@@ -50,7 +50,9 @@ export function resolveConfigPath(
 /**
  * Load and validate a prismd.json file. Throws on missing file, invalid
  * JSON, schema violations (with instance paths) or a non-loopback
- * server.host (security: fail fast, no silent fallback).
+ * server.host (security: fail fast, no silent fallback). Unknown top-level
+ * keys are ignored with a warning, so a file written by a different prismd
+ * version stays loadable instead of bricking startup over a stale field.
  */
 export function loadConfig(filePath: string): PrismdConfig {
   let text: string;
@@ -68,6 +70,19 @@ export function loadConfig(filePath: string): PrismdConfig {
   }
 
   const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf8"));
+  if (raw !== null && typeof raw === "object" && !Array.isArray(raw) && schema.properties) {
+    const knownRootKeys = new Set(Object.keys(schema.properties));
+    const obj = raw as Record<string, unknown>;
+    const unknownKeys = Object.keys(obj).filter((key) => !knownRootKeys.has(key));
+    if (unknownKeys.length > 0) {
+      logger.warn(
+        { keys: unknownKeys, path: filePath },
+        "ignoring unknown top-level config keys (written by a different prismd version?); they have no effect",
+      );
+      for (const key of unknownKeys) delete obj[key];
+    }
+  }
+
   const ajv = new Ajv({ allErrors: true });
   const validate = ajv.compile(schema);
   if (!validate(raw)) {

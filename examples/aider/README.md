@@ -31,5 +31,3 @@ aider
 ## 2. 常用模型别名选用
 
 - `aider --model openai/free-auto`：主力编码模型（Gemini 2.0 Flash / Llama 3.3 70B 等）。
-- `aider --model openai/free-fast`：轻量极速模型（Gemini Flash Lite / Llama 3.1 8B）。
-- `aider --model openai/free-code`：代码特化队列。

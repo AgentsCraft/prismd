@@ -9,8 +9,9 @@ import { resetRuntimeForTests } from "../src/core/runtime.js";
 import { makeValidConfig, useTempDataPath } from "./helpers.js";
 
 // Upstream points at a port with nothing listening: a request that
-// reaches the egress fails fast with connection refused (502), which
-// proves auth let it through. A 401 proves auth blocked it first.
+// reaches the egress fails fast with connection refused (all-failed
+// classification: 503 upstream_unreachable), which proves auth let it
+// through. A 401 proves auth blocked it first.
 const UNREACHABLE_UPSTREAM = "http://127.0.0.1:9";
 
 const dir = mkdtempSync(join(tmpdir(), "prismd-auth-"));
@@ -78,28 +79,28 @@ test("wrong token is rejected with 401", async () => {
   assert.equal(body.error.code, "invalid_api_key");
 });
 
-test("correct Bearer token passes auth and reaches egress (502: upstream unreachable)", async () => {
+test("correct Bearer token passes auth and reaches egress (503: upstream unreachable)", async () => {
   resetRuntimeForTests();
   const res = await post({ authorization: "Bearer test-token" });
-  assert.equal(res.status, 502);
+  assert.equal(res.status, 503);
   const body = (await res.json()) as { error: { code: string } };
-  assert.equal(body.error.code, "gateway_all_candidates_failed");
+  assert.equal(body.error.code, "upstream_unreachable");
 });
 
 test("correct lowercase bearer token passes auth", async () => {
   resetRuntimeForTests();
   const res = await post({ authorization: "bearer test-token" });
-  assert.equal(res.status, 502);
+  assert.equal(res.status, 503);
   const body = (await res.json()) as { error: { code: string } };
-  assert.equal(body.error.code, "gateway_all_candidates_failed");
+  assert.equal(body.error.code, "upstream_unreachable");
 });
 
 test("correct x-api-key header passes auth seamlessly (Anthropic SDK / Claude Code)", async () => {
   resetRuntimeForTests();
   const res = await post({ xApiKey: "test-token" });
-  assert.equal(res.status, 502);
+  assert.equal(res.status, 503);
   const body = (await res.json()) as { error: { code: string } };
-  assert.equal(body.error.code, "gateway_all_candidates_failed");
+  assert.equal(body.error.code, "upstream_unreachable");
 });
 
 test("wrong x-api-key header is rejected with 401", async () => {
@@ -113,7 +114,7 @@ test("wrong x-api-key header is rejected with 401", async () => {
 test("valid x-api-key with empty or invalid authorization still passes auth", async () => {
   resetRuntimeForTests();
   const res = await post({ authorization: "Bearer wrong", xApiKey: "test-token" });
-  assert.equal(res.status, 502);
+  assert.equal(res.status, 503);
   const body = (await res.json()) as { error: { code: string } };
-  assert.equal(body.error.code, "gateway_all_candidates_failed");
+  assert.equal(body.error.code, "upstream_unreachable");
 });

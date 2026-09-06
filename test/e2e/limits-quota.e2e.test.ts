@@ -99,6 +99,13 @@ test("旅程 6：输入超过全部候选 contextWindow 时返回 422，不触�
 });
 
 test("旅程 7：日额度耗尽返回 429，重启进程后（种子回读）额度仍耗尽", { timeout: 60_000 }, async (t) => {
+  if (process.platform === "win32") {
+    // 重启依赖向子进程投递 SIGTERM 触发优雅退出强制 flush；Windows 的
+    // process.kill("SIGTERM") 是 TerminateProcess 硬杀，handler 不会执行，
+    // 该路径仅在 POSIX 可测（CI Linux/macOS 覆盖）。
+    t.skip("Windows 无法向子进程投递可捕获的 SIGTERM");
+    return;
+  }
   // 前置条件：两候选 dailyRequests=2；4 个正常请求正好打满两候选
   // （请求 1-2 -> 候选 1，请求 3-4 -> 候选 2），第 5 个应 429。
   const mockA = await startMockUpstream({

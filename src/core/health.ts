@@ -106,6 +106,21 @@ export class HealthManager extends EventEmitter {
     return { state: "healthy", consecutiveFailures: 0, cooldownUntil: null, lastErrorAt: null };
   }
 
+  /**
+   * Earliest absolute timestamp (ms) at which the candidate may serve again,
+   * or null when it can serve now (healthy / half-open probe) or nothing is
+   * cooling down. Delegates to get(): KeyPool per-key cooldowns are only
+   * consulted when this manager holds no local failure record for the
+   * candidate (an entry with lastError/consecutiveFailures short-circuits).
+   */
+  earliestRecoveryAt(provider: string, model: string): number | null {
+    const health = this.get(provider, model);
+    if (health.state === "cooldown" && health.cooldownUntil !== null && health.cooldownUntil > this.options.now()) {
+      return health.cooldownUntil;
+    }
+    return null;
+  }
+
   /** True when a candidate may serve requests (healthy, or half-open probe). */
   isHealthy(provider: string, model: string): boolean {
     const key = keyOf(provider, model);

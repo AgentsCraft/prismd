@@ -78,5 +78,6 @@ export async function callUpstream(
     request.body,
     body.stream === true,
     options,
+    "responses",
   );
 }

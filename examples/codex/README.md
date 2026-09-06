@@ -47,5 +47,3 @@ codex --profile prismd
 
 在 `prismd.config.toml` 中，可按需指定不同的虚拟别名：
 - `model = "free-auto"`：主力通用编码模型队列。
-- `model = "free-fast"`：超轻量快速响应队列。
-- `model = "free-code"`：代码生成特化模型队列。

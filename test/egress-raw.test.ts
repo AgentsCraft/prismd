@@ -7,6 +7,7 @@ import {
   dataPayloads,
   tryExtractUsage,
   parseRetryAfter,
+  sseErrorEvent,
   callRawHttpUpstream,
   UpstreamConnectError,
 } from "../src/egress/raw.js";
@@ -79,6 +80,24 @@ test("parseRetryAfter parses delta-seconds and date strings", () => {
   assert.ok(parsed !== undefined && parsed > 0 && parsed <= 6000);
 });
 
+test("sseErrorEvent renders the error shape of each output protocol", () => {
+  // Chat: bare data event, no event name, no [DONE].
+  assert.equal(
+    sseErrorEvent("boom", "it broke", "chat"),
+    'data: {"error":{"message":"it broke","type":"upstream_error","code":"boom"}}\n\n',
+  );
+  // Responses: named response.failed event with the Responses error envelope.
+  assert.equal(
+    sseErrorEvent("boom", "it broke", "responses"),
+    'event: response.failed\ndata: {"type":"response.failed","response":{"id":"resp_error","status":"failed","error":{"code":"boom","message":"it broke"}}}\n\n',
+  );
+  // Anthropic: named error event with the Anthropic error envelope.
+  assert.equal(
+    sseErrorEvent("boom", "it broke", "anthropic"),
+    'event: error\ndata: {"type":"error","error":{"message":"it broke","type":"upstream_error","code":"boom"}}\n\n',
+  );
+});
+
 test("callRawHttpUpstream handles connect timeout", async () => {
   const hangingServer = createServer((_req, _res) => {
     // Never respond to trigger connect timeout
@@ -94,6 +113,7 @@ test("callRawHttpUpstream handles connect timeout", async () => {
       "{}",
       false,
       { connectTimeoutMs: 50, streamIdleTimeoutMs: 100 },
+      "chat",
     );
     assert.fail("should have thrown UpstreamConnectError");
   } catch (err) {
@@ -128,6 +148,7 @@ test("callRawHttpUpstream handles stream idle timeout and extracts usage", async
           firstTokenLatency = lat;
         },
       },
+      "chat",
     );
 
     assert.equal(result.kind, "stream");
@@ -136,6 +157,45 @@ test("callRawHttpUpstream handles stream idle timeout and extracts usage", async
     const bodyText = await result.response.text();
     assert.ok(bodyText.includes('"content":"start"'));
     assert.ok(bodyText.includes('"code":"stream_idle_timeout"'));
+    // Chat upstream: the injected error must be the chat shape — a bare data
+    // event, not a named event and not followed by [DONE].
+    assert.ok(bodyText.includes('data: {"error":{'));
+    assert.ok(bodyText.includes('"type":"upstream_error"'));
+    assert.ok(!bodyText.includes("event: error"));
+    assert.ok(!bodyText.includes("[DONE]"));
+    assert.equal(result.accounting.aborted, true);
+  } finally {
+    await new Promise((r) => streamServer.close(r));
+  }
+});
+
+test("callRawHttpUpstream injects the Responses shape when a responses upstream stream breaks", async () => {
+  const streamServer = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.write('data: {"type":"response.output_text.delta","delta":"start"}\n\n');
+    // Hangs after first chunk to trigger idle timeout
+  });
+  await new Promise<void>((resolve) => streamServer.listen(0, "127.0.0.1", resolve));
+  const port = (streamServer.address() as AddressInfo).port;
+
+  try {
+    const result = await callRawHttpUpstream(
+      "test-provider",
+      `http://127.0.0.1:${port}/stream`,
+      { "content-type": "application/json" },
+      "{}",
+      true,
+      { connectTimeoutMs: 1000, streamIdleTimeoutMs: 50 },
+      "responses",
+    );
+
+    assert.equal(result.kind, "stream");
+    const bodyText = await result.response.text();
+    assert.ok(bodyText.includes("event: response.failed"));
+    assert.ok(bodyText.includes('"type":"response.failed"'));
+    assert.ok(bodyText.includes('"code":"stream_idle_timeout"'));
+    assert.ok(!bodyText.includes("event: error\n"));
+    assert.ok(!bodyText.includes("[DONE]"));
     assert.equal(result.accounting.aborted, true);
   } finally {
     await new Promise((r) => streamServer.close(r));
@@ -160,6 +220,7 @@ test("callRawHttpUpstream extracts real usage from completed SSE stream", async 
       "{}",
       true,
       { connectTimeoutMs: 1000, streamIdleTimeoutMs: 1000 },
+      "chat",
     );
 
     assert.equal(result.kind, "stream");
