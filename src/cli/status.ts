@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getConfig } from "../config.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
+import type { ClientStatusSnapshot } from "../routes/clientstatus.js";
 
 export type SupportedLang = "en" | "zh-CN" | "ja" | "ko" | "de" | "fr" | "es" | "it" | "ar" | "tr";
 
@@ -28,6 +29,12 @@ export interface CliTranslations {
   noDatabase: string;
   noUsageToday: string;
   usageFor: string;
+  clientsTitle: string;
+  clientCol: string;
+  endpointCol: string;
+  successCol: string;
+  p50Col: string;
+  lastErrorCol: string;
 }
 
 export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
@@ -52,6 +59,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "No database found at",
     noUsageToday: "No recorded usage for today",
     usageFor: "Usage for",
+    clientsTitle: "Clients (last 24h)",
+    clientCol: "CLIENT",
+    endpointCol: "ENDPOINT",
+    successCol: "SUCCESS",
+    p50Col: "P50",
+    lastErrorCol: "LAST ERROR",
   },
   "zh-CN": {
     title: "prismd 状态",
@@ -74,6 +87,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "未找到数据库：",
     noUsageToday: "今日暂无记录的用量",
     usageFor: "今日用量：",
+    clientsTitle: "客户端（最近 24h）",
+    clientCol: "客户端",
+    endpointCol: "协议端点",
+    successCol: "成功率",
+    p50Col: "P50",
+    lastErrorCol: "最近错误",
   },
   ja: {
     title: "prismd ステータス",
@@ -96,6 +115,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "データベースが見つかりません:",
     noUsageToday: "本日の使用量記録はありません",
     usageFor: "本日の使用量:",
+    clientsTitle: "クライアント（直近 24h）",
+    clientCol: "クライアント",
+    endpointCol: "エンドポイント",
+    successCol: "成功率",
+    p50Col: "P50",
+    lastErrorCol: "直近のエラー",
   },
   ko: {
     title: "prismd 상태",
@@ -118,6 +143,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "데이터베이스를 찾을 수 없습니다:",
     noUsageToday: "오늘 기록된 사용량이 없습니다",
     usageFor: "오늘 사용량:",
+    clientsTitle: "클라이언트 (최근 24시간)",
+    clientCol: "클라이언트",
+    endpointCol: "엔드포인트",
+    successCol: "성공률",
+    p50Col: "P50",
+    lastErrorCol: "최근 오류",
   },
   de: {
     title: "prismd Status",
@@ -140,6 +171,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "Keine Datenbank gefunden unter",
     noUsageToday: "Keine aufgezeichnete Nutzung für heute",
     usageFor: "Nutzung für",
+    clientsTitle: "Clients (letzte 24h)",
+    clientCol: "CLIENT",
+    endpointCol: "ENDPUNKT",
+    successCol: "ERFOLG",
+    p50Col: "P50",
+    lastErrorCol: "LETZTER FEHLER",
   },
   fr: {
     title: "Statut prismd",
@@ -162,6 +199,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "Aucune base de données trouvée à",
     noUsageToday: "Aucune utilisation enregistrée pour aujourd'hui",
     usageFor: "Utilisation pour",
+    clientsTitle: "Clients (dernières 24h)",
+    clientCol: "CLIENT",
+    endpointCol: "ACCÈS",
+    successCol: "SUCCÈS",
+    p50Col: "P50",
+    lastErrorCol: "DERNIÈRE ERREUR",
   },
   es: {
     title: "Estado prismd",
@@ -184,6 +227,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "No se encontró ninguna base de datos en",
     noUsageToday: "No hay uso registrado para hoy",
     usageFor: "Uso para",
+    clientsTitle: "Clientes (últimas 24h)",
+    clientCol: "CLIENTE",
+    endpointCol: "ENDPOINT",
+    successCol: "ÉXITO",
+    p50Col: "P50",
+    lastErrorCol: "ÚLTIMO ERROR",
   },
   it: {
     title: "Stato prismd",
@@ -206,6 +255,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "Nessun database trovato in",
     noUsageToday: "Nessun utilizzo registrato per oggi",
     usageFor: "Utilizzo per",
+    clientsTitle: "Client (ultime 24h)",
+    clientCol: "CLIENT",
+    endpointCol: "ENDPOINT",
+    successCol: "SUCCESSO",
+    p50Col: "P50",
+    lastErrorCol: "ULTIMO ERRORE",
   },
   ar: {
     title: "حالة prismd",
@@ -228,6 +283,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "لم يتم العثور على قاعدة بيانات في",
     noUsageToday: "لا يوجد استخدام مسجل لليوم",
     usageFor: "الاستخدام لـ",
+    clientsTitle: "العملاء (آخر 24 ساعة)",
+    clientCol: "العميل",
+    endpointCol: "نقطة النهاية",
+    successCol: "النجاح",
+    p50Col: "P50",
+    lastErrorCol: "آخر خطأ",
   },
   tr: {
     title: "prismd Durumu",
@@ -250,6 +311,12 @@ export const CLI_TRANSLATIONS: Record<SupportedLang, CliTranslations> = {
     noDatabase: "Belirtilen konumda veritabanı bulunamadı:",
     noUsageToday: "Bugün için kayıtlı kullanım yok",
     usageFor: "Kullanım:",
+    clientsTitle: "İstemciler (son 24 saat)",
+    clientCol: "İSTEMCİ",
+    endpointCol: "UÇ NOKTA",
+    successCol: "BAŞARI",
+    p50Col: "P50",
+    lastErrorCol: "SON HATA",
   },
 };
 
@@ -336,6 +403,31 @@ export async function fetchLiveStatus(host: string, port: number): Promise<Model
   }
 }
 
+export async function fetchClientStatus(host: string, port: number): Promise<ClientStatusSnapshot | null> {
+  const url = `http://${host}:${port}/v1/clientstatus`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return null;
+    return (await res.json()) as ClientStatusSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+function formatDurationMs(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return "—";
+  if (ms >= 1000) return (ms / 1000).toFixed(1) + "s";
+  return Math.round(ms) + "ms";
+}
+
+function colorSuccessRate(rate: number, failovers: number): string {
+  const text = `${Math.round(rate * 100)}%`;
+  if (!process.stdout.isTTY) return text;
+  if (rate < 0.9) return `\x1b[31m${text}\x1b[0m`;
+  if (rate < 0.99 || failovers > 0) return `\x1b[33m${text}\x1b[0m`;
+  return `\x1b[32m${text}\x1b[0m`;
+}
+
 export function renderLiveStatus(data: ModelStatusResponse, lang?: SupportedLang): void {
   const currentLang = lang ?? detectCliLanguage();
   const t = CLI_TRANSLATIONS[currentLang] ?? CLI_TRANSLATIONS.en;
@@ -382,6 +474,30 @@ export function renderLiveStatus(data: ModelStatusResponse, lang?: SupportedLang
     }
     console.log();
   }
+}
+
+export function renderClientStatus(data: ClientStatusSnapshot, lang?: SupportedLang): void {
+  const currentLang = lang ?? detectCliLanguage();
+  const t = CLI_TRANSLATIONS[currentLang] ?? CLI_TRANSLATIONS.en;
+
+  console.log(`\x1b[1m${t.clientsTitle}\x1b[0m`);
+  console.log("─".repeat(105));
+  console.log(
+    `${padEndWidth(t.clientCol, 26)} ${padEndWidth(t.endpointCol, 22)} ${padEndWidth(t.requests, 12)} ${padEndWidth(t.successCol, 12)} ${padEndWidth(t.p50Col, 10)} ${t.lastErrorCol}`,
+  );
+  console.log("─".repeat(105));
+
+  for (const entry of data.clients) {
+    const client = padEndWidth(entry.client.slice(0, 24), 26);
+    const endpoint = padEndWidth(entry.endpoint, 22);
+    const reqs = padEndWidth(String(entry.requests), 12);
+    const rate = colorSuccessRate(entry.successRate, entry.failovers);
+    const rateText = padEndWidth(rate, 12);
+    const p50 = padEndWidth(formatDurationMs(entry.p50Ms), 10);
+    const lastError = entry.lastError ? entry.lastError.reason : "—";
+    console.log(`${client} ${endpoint} ${reqs} ${rateText} ${p50} ${lastError}`);
+  }
+  console.log();
 }
 
 export function renderOfflineStatus(dbPath: string, lang?: SupportedLang): void {
@@ -451,6 +567,10 @@ export async function runStatusCli(): Promise<void> {
   const live = await fetchLiveStatus(host, port);
   if (live) {
     renderLiveStatus(live);
+    const clients = await fetchClientStatus(host, port);
+    if (clients && clients.clients.length > 0) {
+      renderClientStatus(clients);
+    }
   } else {
     renderOfflineStatus(dbPath);
   }
