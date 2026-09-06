@@ -362,8 +362,11 @@ export async function readBoundedBodyText(
     return await new Promise<string | undefined>((resolve) => {
       let settled = false;
       let text = "";
+      // Must stay ref'd: the read promise has no other loop handle, so an
+      // unref'd timer lets the event loop drain before the promise settles
+      // (Node 23 test runner flags it; shutdown delay is bounded at
+      // ERROR_BODY_READ_TIMEOUT_MS).
       const timer = setTimeout(() => finish(undefined), timeoutMs);
-      timer.unref(); // never hold process shutdown for an error body
       const finish = (value: string | undefined) => {
         if (settled) return;
         settled = true;
