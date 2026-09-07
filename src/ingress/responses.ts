@@ -13,7 +13,7 @@ import {
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
 import { statusBroadcaster } from "../core/status-events.js";
-import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
+import { routeAlias, shouldFailover, parseTagsHeader, resolveModelAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { callUpstream as responsesCallUpstream, UpstreamConnectError, type StreamAccounting, type UpstreamResult } from "../egress/responses.js";
 import { addSseKeepAlive } from "../egress/raw.js";
@@ -73,8 +73,9 @@ export async function responses(c: Context): Promise<Response> {
     c.req.header("x-prismd-require-reasoning") === "true";
 
   const rateLimiter = getRateLimiter();
+  const effectiveAlias = resolveModelAlias(config.models, body.model);
 
-  const routed = routeAlias(config.models, body.model, {
+  const routed = routeAlias(config.models, effectiveAlias, {
     inputChars,
     dailyRequests: (provider, model) => quota.getDailyRequests(provider, model),
     isHealthy: (provider, model) => health.isHealthy(provider, model),

@@ -94,6 +94,64 @@ export function resolveClaudeModelAlias(
   return configuredKeys[0];
 }
 
+const KNOWN_MODEL_PREFIXES = [
+  "gpt-",
+  "o1",
+  "o3",
+  "o4",
+  "codex",
+  "claude-",
+  "deepseek-",
+  "gemini-",
+  "llama-",
+  "mistral-",
+  "qwen-",
+];
+
+/**
+ * Resolves a requested model name (from OpenAI Responses or Chat completions)
+ * to a configured alias, or falls back to "free-auto" / available alias if a known
+ * standard LLM family is requested by coding clients.
+ */
+export function resolveModelAlias(
+  models: Record<string, AliasModel>,
+  requestedModel: string,
+): string {
+  // 1. Exact match
+  if (models[requestedModel]) {
+    return requestedModel;
+  }
+
+  const configuredKeys = Object.keys(models);
+  if (configuredKeys.length === 0) {
+    return requestedModel;
+  }
+
+  const reqLower = requestedModel.toLowerCase();
+
+  // 2. Exact case-insensitive match
+  const caseMatch = configuredKeys.find((k) => k.toLowerCase() === reqLower);
+  if (caseMatch) return caseMatch;
+
+  // 3. Partial substring match
+  const partial = configuredKeys.find(
+    (k) => reqLower.includes(k.toLowerCase()) || k.toLowerCase().includes(reqLower),
+  );
+  if (partial) return partial;
+
+  // 4. If requested model belongs to a known model family (e.g. gpt-5.5, gpt-4o, o3-mini)
+  // route to "free-auto" or "default"
+  const isKnownFamily = KNOWN_MODEL_PREFIXES.some((p) => reqLower.startsWith(p) || reqLower.includes(p));
+  if (isKnownFamily) {
+    if (models["free-auto"]) return "free-auto";
+    if (models["default"]) return "default";
+    return configuredKeys[0];
+  }
+
+  // Otherwise return requestedModel as-is so router produces 404 model_not_found
+  return requestedModel;
+}
+
 /**
  * Determines whether an upstream HTTP status code should trigger failover
  * to the next candidate. Supports explicit status codes ("404", "429"),

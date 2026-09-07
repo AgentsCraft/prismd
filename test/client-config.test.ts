@@ -98,7 +98,7 @@ test("setupCodex configures ~/.codex/config.toml and auth.json", () => {
   assert.ok(existsSync(tomlPath));
   const toml = readFileSync(tomlPath, "utf8");
   assert.ok(toml.includes('model_provider = "prismd"'));
-  assert.ok(toml.includes('model = "free-auto"'));
+  assert.ok(toml.includes('model = "gpt-5.5"'));
   assert.ok(toml.includes("[features]"));
   assert.ok(toml.includes("goals = true"));
   assert.ok(toml.includes("[model_providers.prismd]"));
@@ -109,7 +109,7 @@ test("updateCodexToml handles empty, new, and existing TOML configs correctly", 
   // Empty
   const out1 = updateCodexToml("");
   assert.ok(out1.includes('model_provider = "prismd"'));
-  assert.ok(out1.includes('model = "free-auto"'));
+  assert.ok(out1.includes('model = "gpt-5.5"'));
   assert.ok(out1.includes("[model_providers.prismd]"));
 
   // Existing with other sections
@@ -125,7 +125,7 @@ base_url = "http://localhost:9999"
 `;
   const out2 = updateCodexToml(input);
   assert.ok(out2.includes('model_provider = "prismd"'));
-  assert.ok(out2.includes('model = "free-auto"'));
+  assert.ok(out2.includes('model = "gpt-5.5"'));
   assert.ok(out2.includes('[windows]'));
   assert.ok(out2.includes('sandbox = "unelevated"'));
   assert.ok(out2.includes('base_url = "http://127.0.0.1:8787/v1"'));
