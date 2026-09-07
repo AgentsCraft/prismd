@@ -54,12 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### 步骤 2：配置 API Key
+### 步骤 2：初始化与配置（交互式向导）
 
-在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key（配置任意一个或多个均可，未配置的提供商自动跳过）：
+运行交互式初始化向导，快速配置 Key 与客户端：
+```bash
+prismd init
+```
+向导将引导你：
+1. 设置本地保护令牌（默认自动生成随机密钥）。
+2. 选择要启用的免费模型提供商（OpenRouter、Groq、Google Gemini、Cerebras 等）并填入 API Key。
+3. **自动配置常用 Coding Agent**（Claude Code、Codex CLI、OpenCode、Pi Agent），自动落盘配置文件或快捷启动脚本，并自动为已有配置生成时间戳备份（`.bak.<时间戳>`）！
+
+*(偏好手动配置？亦可手动编辑 `~/.prismd/keys.yaml`，或通过 `PRISMD_HOME` 环境变量自定义配置目录)*。
 
 ```yaml
-# ~/.prismd/keys.yaml (建议权限 chmod 600)
+# 手动配置示例：~/.prismd/keys.yaml (建议权限 chmod 600)
 prismd: "my-local-secret"       # 本地网关安全保护令牌（客户端连接使用）
 
 # 云端模型服务商（支持填单 Key 或多 Key 列表实现自动轮询）：
@@ -202,12 +211,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web 仪表盘**：浏览器直接打开 `http://127.0.0.1:8787/ui`，实时查看：
   - 各候选模型实时健康状态（`healthy` / `rate_limited` / `cooldown`）
   - 每日配额进度条与 Token 消耗统计
+  - **客户端用量表（最近 24h）**：按客户端 × 端点展示请求数、成功率、P50 延迟、故障转移次数与最近错误
   - 支持 10 种语言界面切换与「一键重置用量（Reset usage）」
 - **CLI 终端状态与管理**：
   ```bash
-  prismd status      # 终端输出各候选模型的彩色状态矩阵
+  prismd status      # 终端输出模型状态矩阵及客户端用量区块（需网关在线）
   prismd generate    # 重新编译生成 ~/.prismd/prismd.json
   ```
+- **API**：`GET /v1/clientstatus` — 客户端用量窗口的只读 JSON 快照（无需鉴权，仅限本机回环）。
 
 ---
 
@@ -219,3 +230,6 @@ kill -HUP $(pgrep -f "prismd")
   - 为该提供方配置多个账号 Key 开启轮询，或将本地 Ollama 候选追加进别名队列（见[本地 LLM 兜底](#3-本地-llm-兜底-ollama--lm-studio可选)）。
 - **Q: 如何重置当天的调用配额记录？**
   - 在 Web 控制台右上角点击「Reset usage」按钮，或删除本地数据库文件 `data/prismd.sqlite`。
+- **Q: 启动时提示存在未知的配置键？**
+  - `config.user.json` 中未知的顶层键会被记录一条警告后忽略，不影响运行。此键可能来自更高版本或拼写错误，删除或纠正即可消除该警告。
+

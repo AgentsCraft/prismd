@@ -54,12 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### 2단계: API Key 설정
+### 2단계: 초기화 및 설정 (대화형 마법사)
 
-`~/.prismd/keys.yaml` 또는 `./.env` 파일에 무료 API Key를 설정합니다 (하나 이상 설정 가능, 미설정 제공자는 자동 건너뜀):
+대화형 설정 마법사를 실행하여 키와 클라이언트를 설정합니다:
+```bash
+prismd init
+```
+마법사 제공 기능:
+1. 로컬 보호 토큰(`prismd:`) 설정.
+2. 무료 제공자(OpenRouter, Groq, Google Gemini 등)를 선택하고 API Key 입력.
+3. **코딩 클라이언트 자동 설정**(Claude Code, Codex CLI, OpenCode, Pi Agent) 및 기존 설정 안전 자동 백업(`.bak.<타임스탬프>`)!
+
+*(수동 설정을 선호하는 경우 `~/.prismd/keys.yaml`을 직접 편집하거나 `PRISMD_HOME`을 설정하세요).*
 
 ```yaml
-# ~/.prismd/keys.yaml (권장 권한: chmod 600)
+# 수동 설정 예시: ~/.prismd/keys.yaml (권장 권한: chmod 600)
 prismd: "my-local-secret"       # 로컬 보호 토큰 (클라이언트 연결용)
 
 # 클라우드 제공자 (단일 Key 또는 다중 Key 라운드로빈 풀 지원):
@@ -191,12 +200,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web 대시보드**: 브라우저에서 `http://127.0.0.1:8787/ui` 접속:
   - 모델 실시간 상태 (`healthy` / `rate_limited` / `cooldown`)
   - 일일 할당량 진행률 및 토큰 사용량 통계
+  - **클라이언트 사용량 테이블 (최근 24h)**: 클라이언트 × 엔드포인트별 요청 수·성공률·P50 레이턴시·페일오버 횟수·최근 오류
   - 10개 언어 지원 및 "사용량 초기화 (Reset usage)" 버튼
 - **CLI 상태 확인**:
   ```bash
-  prismd status
+  prismd status      # 상태 매트릭스 + 클라이언트 사용량 섹션 출력 (게이트웨이 실행 중 시)
+  prismd generate    # ~/.prismd/prismd.json 재컴파일
   ```
-  터미널 컬러 매트릭스로 확인.
+- **API**: `GET /v1/clientstatus` — 클라이언트 사용량 윈도우의 읽기 전용 JSON 스냅샷 (인증 불필요·루프백 전용).
 
 ---
 
@@ -208,3 +219,6 @@ kill -HUP $(pgrep -f "prismd")
   - 해당 제공자의 다중 Key를 등록하거나, `config.user.json`으로 로컬 Ollama 후보를 큐에 추가하세요.
 - **Q: 일일 사용량 카운터를 초기화하려면?**
   - Web 대시보드에서 "Reset usage"를 클릭하거나 `data/prismd.sqlite` 파일을 삭제하세요.
+- **Q: 시작 시 알 수 없는 설정 키에 대한 경고가 표시되는 경우?**
+  - `config.user.json`의 알 수 없는 최상위 키는 경고를 출력하고 무시됩니다. 이는 안전합니다 — 새 버전에서 추가된 키이거나 오타일 수 있습니다. 경고를 없애려면 해당 키를 삭제하거나 수정하세요.
+

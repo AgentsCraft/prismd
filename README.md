@@ -54,12 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### Step 2: Configure API Keys
+### Step 2: Initialize & Configure (Interactive Wizard)
 
-Add your free API keys in `~/.prismd/keys.yaml` or `./.env` (configure one or more; unconfigured providers are automatically skipped):
+Run the interactive setup wizard to configure your keys and clients in seconds:
+```bash
+prismd init
+```
+The wizard will:
+1. Set your local protection token (`prismd:`).
+2. Prompt you to select free providers (OpenRouter, Groq, Google Gemini, Cerebras, etc.) and enter their API keys.
+3. **Automatically configure your coding clients** (Claude Code, Codex CLI, OpenCode, Pi Agent) with safe timestamped backups (`.bak.<timestamp>`) for existing configs!
+
+*(Prefer manual configuration? You can manually edit `~/.prismd/keys.yaml` or set `PRISMD_HOME` to override the directory).*
 
 ```yaml
-# ~/.prismd/keys.yaml (recommended chmod 600)
+# Manual setup example: ~/.prismd/keys.yaml (recommended chmod 600)
 prismd: "my-local-secret"       # Local protection token (used by clients)
 
 # Cloud Providers (supports single key or multi-key pool for round-robin):
@@ -200,12 +209,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web Dashboard**: Open `http://127.0.0.1:8787/ui` in your browser:
   - Real-time candidate health (`healthy` / `rate_limited` / `cooldown`)
   - Daily quota progress bars and token usage statistics
+  - **Client usage table (last 24h)**: per-client × endpoint request count, success rate, P50 latency, failover count, and recent errors
   - 10-language UI selector and "Reset usage" button
 - **CLI Status & Commands**:
   ```bash
-  prismd status      # Display metrics table in terminal
+  prismd status      # Display metrics table + client usage section (when gateway is live)
   prismd generate    # Recompile ~/.prismd/prismd.json
   ```
+- **API**: `GET /v1/clientstatus` — read-only JSON snapshot of the client usage window (unauthenticated, loopback-only).
 
 ---
 
@@ -217,3 +228,6 @@ kill -HUP $(pgrep -f "prismd")
   - Add multiple keys for the provider, or append a local Ollama candidate to the alias queue (see [Local LLM Fallback](#3-local-llm-fallback-ollama--lm-studio-opt-in)).
 - **Q: Reset daily quota counters?**
   - Click "Reset usage" in the Web Dashboard (`http://127.0.0.1:8787/ui`) or delete `data/prismd.sqlite`.
+- **Q: Warning about unknown config key on startup?**
+  - Unknown top-level keys in `config.user.json` are tolerated with a warning and ignored. This is safe — the key may come from a newer version or a typo. Remove or correct the key to suppress the warning.
+

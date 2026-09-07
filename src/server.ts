@@ -6,7 +6,9 @@ import { waitForStreams } from "./core/drain.js";
 import { runStatusCli } from "./cli/status.js";
 import { runSyncCli } from "./cli/sync.js";
 import { runGenerateCli } from "./cli/generate.js";
+import { runInitCli } from "./cli/init.js";
 import { printHelpCli } from "./cli/help.js";
+
 import { logger } from "./observability/logger.js";
 import { validateUpstreamModels } from "./core/catalog-sync.js";
 import { getHealth, getKeyPool, initRuntime, shutdownRuntime } from "./core/runtime.js";
@@ -34,7 +36,7 @@ if (cliCommand === "sync" || cliCommand === "check") {
   }
 }
 
-if (cliCommand === "generate" || cliCommand === "init") {
+if (cliCommand === "generate") {
   try {
     const exitCode = await runGenerateCli();
     process.exit(exitCode);
@@ -43,6 +45,17 @@ if (cliCommand === "generate" || cliCommand === "init") {
     process.exit(1);
   }
 }
+
+if (cliCommand === "init") {
+  try {
+    const exitCode = await runInitCli();
+    process.exit(exitCode);
+  } catch (err) {
+    logger.error({ error: (err as Error).message }, "failed to execute init command");
+    process.exit(1);
+  }
+}
+
 
 if (cliCommand === "--help" || cliCommand === "-h") {
   printHelpCli();
