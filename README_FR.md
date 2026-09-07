@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### Étape 2 : Configuration des Clés API
 
-Renseignez vos clés dans `~/.prismd/keys.yaml` ou `./.env` (configurez-en une ou plusieurs ; les fournisseurs non configurés sont ignorés) :
+Renseignez vos clés dans `~/.prismd/keys.yaml` ou `./.env` (configurez-en une ou plusieurs ; les fournisseurs non configurés sont ignorés).
+Pour personnaliser le répertoire de configuration, définissez `PRISMD_HOME=/chemin/vers/dossier` — `prismd generate` et la passerelle résoudront `keys.yaml` et `prismd.json` à partir de ce chemin au lieu de `~/.prismd`.
 
 ```yaml
 # ~/.prismd/keys.yaml (permissions recommandées : chmod 600)
@@ -191,12 +192,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Tableau de Bord Web** : Ouvrez `http://127.0.0.1:8787/ui` dans votre navigateur :
   - Santé en temps réel des modèles (`healthy` / `rate_limited` / `cooldown`)
   - Barres de progression des quotas et statistiques de tokens
+  - **Tableau d'utilisation des clients (dernières 24h)** : requêtes, taux de succès, latence P50, nombre de basculements et dernières erreurs par client × endpoint
   - Sélecteur 10 langues et bouton « Réinitialiser l'utilisation (Reset usage) »
 - **Statut CLI** :
   ```bash
-  prismd status
+  prismd status      # Matrice d'état + section clients (si passerelle active)
+  prismd generate    # Recompiler ~/.prismd/prismd.json
   ```
-  Affiche une matrice en couleur dans votre terminal.
+- **API** : `GET /v1/clientstatus` — instantané JSON en lecture seule de la fenêtre d'utilisation clients (non authentifié, loopback uniquement).
 
 ---
 
@@ -208,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - Ajoutez plusieurs clés pour le fournisseur concerné, ou ajoutez un candidat Ollama local à une file via `config.user.json`.
 - **Q : Comment réinitialiser les quotas du jour ?**
   - Cliquez sur « Reset usage » sur le tableau de bord Web ou supprimez `data/prismd.sqlite`.
+- **Q : Avertissement sur une clé de configuration inconnue au démarrage ?**
+  - Les clés de premier niveau inconnues dans `config.user.json` sont tolérées avec un avertissement et ignorées. C'est sans danger — la clé provient peut-être d'une version plus récente ou d'une faute de frappe. Supprimez ou corrigez la clé pour supprimer l'avertissement.
+

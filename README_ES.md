@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### Paso 2: Configuración de Claves API
 
-Añade tus claves en `~/.prismd/keys.yaml` o en `./.env` (configura uno o más; los no configurados se omiten automáticamente):
+Añade tus claves en `~/.prismd/keys.yaml` o en `./.env` (configura uno o más; los no configurados se omiten automáticamente).
+Para personalizar el directorio de configuración, establece `PRISMD_HOME=/ruta/al/directorio` — tanto `prismd generate` como la pasarela resolverán `keys.yaml` y `prismd.json` desde esa ruta en lugar de `~/.prismd`.
 
 ```yaml
 # ~/.prismd/keys.yaml (permisos recomendados: chmod 600)
@@ -191,12 +192,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Panel Web**: Abre `http://127.0.0.1:8787/ui` en tu navegador:
   - Estado de salud en tiempo real (`healthy` / `rate_limited` / `cooldown`)
   - Barras de progreso de cuotas y estadísticas de tokens
+  - **Tabla de uso de clientes (últimas 24h)**: solicitudes, tasa de éxito, latencia P50, conteo de failovers y últimos errores por cliente × endpoint
   - Selector de 10 idiomas y botón de «Restablecer uso (Reset usage)»
 - **Estado CLI**:
   ```bash
-  prismd status
+  prismd status      # Matriz de estado + sección de clientes (si la pasarela está activa)
+  prismd generate    # Recompilar ~/.prismd/prismd.json
   ```
-  Muestra una matriz a color en la terminal.
+- **API**: `GET /v1/clientstatus` — instantánea JSON de solo lectura de la ventana de uso de clientes (sin autenticación, solo loopback).
 
 ---
 
@@ -208,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - Añade más claves para ese proveedor, o agrega un candidato local de Ollama a la cola vía `config.user.json`.
 - **Q: ¿Cómo restablecer los contadores diarios?**
   - Haz clic en «Reset usage» en el panel Web o elimina `data/prismd.sqlite`.
+- **Q: ¿Advertencia sobre clave de configuración desconocida al iniciar?**
+  - Las claves de nivel superior desconocidas en `config.user.json` se toleran con una advertencia y se ignoran. Es seguro — la clave puede provenir de una versión más nueva o de un error tipográfico. Elimina o corrige la clave para suprimir la advertencia.
+

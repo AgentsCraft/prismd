@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### Schritt 2: API-Keys konfigurieren
 
-Tragen Sie Ihre Keys in `~/.prismd/keys.yaml` oder `./.env` ein (einer oder mehrere; nicht konfigurierte Provider werden übersprungen):
+Tragen Sie Ihre Keys in `~/.prismd/keys.yaml` oder `./.env` ein (einer oder mehrere; nicht konfigurierte Provider werden übersprungen).
+Das Standardverzeichnis lässt sich mit `PRISMD_HOME=/pfad/zum/verzeichnis` überschreiben — `prismd generate` und das Gateway lesen `keys.yaml` und `prismd.json` dann aus diesem Pfad statt aus `~/.prismd`.
 
 ```yaml
 # ~/.prismd/keys.yaml (Empfohlene Rechte: chmod 600)
@@ -191,12 +192,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web-Dashboard**: Öffnen Sie `http://127.0.0.1:8787/ui` im Browser:
   - Echtzeit-Gesundheitsstatus (`healthy` / `rate_limited` / `cooldown`)
   - Quoten-Fortschrittsbalken und Token-Verbrauchsstatistiken
-  - 10 Sprachen und Schaltfläche „Nutzung zurücksetzen (Reset usage)“
+  - **Client-Nutzungstabelle (letzte 24h)**: Anfragen, Erfolgsrate, P50-Latenz, Failover-Anzahl und letzte Fehler je Client × Endpunkt
+  - 10 Sprachen und Schaltfläche „Nutzung zurücksetzen (Reset usage)"
 - **CLI-Status**:
   ```bash
-  prismd status
+  prismd status      # Statusmatrix + Client-Nutzungsblock (wenn Gateway aktiv)
+  prismd generate    # ~/.prismd/prismd.json neu kompilieren
   ```
-  Farbige Statusmatrix im Terminal.
+- **API**: `GET /v1/clientstatus` — schreibgeschützter JSON-Snapshot des Client-Nutzungsfensters (unauthentifiziert, nur Loopback).
 
 ---
 
@@ -207,4 +210,6 @@ kill -HUP $(pgrep -f "prismd")
 - **Q: Häufige 429-Fehler bei kostenlosen Modellen?**
   - Fügen Sie mehrere Keys hinzu oder hängen Sie über `config.user.json` einen lokalen Ollama-Kandidaten an die Warteschlange an.
 - **Q: Tägliche Nutzungszähler zurücksetzen?**
-  - Klicken Sie im Web-Dashboard auf „Reset usage“ oder löschen Sie `data/prismd.sqlite`.
+  - Klicken Sie im Web-Dashboard auf „Reset usage" oder löschen Sie `data/prismd.sqlite`.
+- **Q: Warnung über unbekannten Konfigurations-Key beim Start?**
+  - Unbekannte Top-Level-Keys in `config.user.json` werden mit einer Warnung protokolliert und ignoriert. Dies ist sicher — der Key stammt möglicherweise aus einer neueren Version oder enthält einen Tippfehler. Entfernen oder korrigieren Sie den Key, um die Warnung zu unterdrücken.

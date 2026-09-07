@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### 2. Adım: API Anahtarlarını Yapılandırma
 
-Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır):
+Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır).
+Varsayılan yapılandırma dizinini değiştirmek için `PRISMD_HOME=/yol/dizin` ortam değişkenini ayarlayın — hem `prismd generate` hem de gateway, `keys.yaml` ve `prismd.json` dosyalarını `~/.prismd` yerine o yoldan okur.
 
 ```yaml
 # ~/.prismd/keys.yaml (önerilen izin: chmod 600)
@@ -191,12 +192,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web Paneli**: Tarayıcınızda `http://127.0.0.1:8787/ui` adresini açın:
   - Gerçek zamanlı model durumu (`healthy` / `rate_limited` / `cooldown`)
   - Günlük kota ilerleme çubukları ve token istatistikleri
+  - **İstemci kullanım tablosu (son 24 saat)**: istemci × endpoint başına istek sayısı, başarı oranı, P50 gecikmesi, yük devretme sayısı ve son hatalar
   - 10 dil seçeneği ve «Kullanımı Sıfırla (Reset usage)» düğmesi
 - **CLI Durumu**:
   ```bash
-  prismd status
+  prismd status      # Durum matrisi + istemci kullanım bölümü (gateway çalışırken)
+  prismd generate    # ~/.prismd/prismd.json'ı yeniden derle
   ```
-  Terminalde renkli durum matrisi.
+- **API**: `GET /v1/clientstatus` — istemci kullanım penceresinin salt okunur JSON anlık görüntüsü (kimlik doğrulama gerekmez, yalnızca loopback).
 
 ---
 
@@ -208,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - İlgili sağlayıcı için birden fazla anahtar ekleyin veya `config.user.json` ile yerel bir Ollama adayını kuyruğa ekleyin.
 - **Q: Günlük kota sayaçları nasıl sıfırlanır?**
   - Web panelinden «Reset usage» butonuna tıklayın veya `data/prismd.sqlite` dosyasını silin.
+- **Q: Başlangıçta bilinmeyen yapılandırma anahtarı uyarısı alıyorum?**
+  - `config.user.json` içindeki bilinmeyen üst düzey anahtarlar bir uyarıyla kaydedilir ve yoksayılır. Bu güvenlidir — anahtar daha yeni bir sürümden veya yazım hatasından kaynaklanıyor olabilir. Uyarıyı gidermek için anahtarı kaldırın veya düzeltin.
+

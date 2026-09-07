@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### Step 2: Configure API Keys
 
-Add your free API keys in `~/.prismd/keys.yaml` or `./.env` (configure one or more; unconfigured providers are automatically skipped):
+Add your free API keys in `~/.prismd/keys.yaml` or `./.env` (configure one or more; unconfigured providers are automatically skipped).
+Override the default config directory by setting `PRISMD_HOME=/path/to/dir` — `prismd generate` and the gateway both resolve `keys.yaml` and `prismd.json` from that path instead of `~/.prismd`.
 
 ```yaml
 # ~/.prismd/keys.yaml (recommended chmod 600)
@@ -200,12 +201,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web Dashboard**: Open `http://127.0.0.1:8787/ui` in your browser:
   - Real-time candidate health (`healthy` / `rate_limited` / `cooldown`)
   - Daily quota progress bars and token usage statistics
+  - **Client usage table (last 24h)**: per-client × endpoint request count, success rate, P50 latency, failover count, and recent errors
   - 10-language UI selector and "Reset usage" button
 - **CLI Status & Commands**:
   ```bash
-  prismd status      # Display metrics table in terminal
+  prismd status      # Display metrics table + client usage section (when gateway is live)
   prismd generate    # Recompile ~/.prismd/prismd.json
   ```
+- **API**: `GET /v1/clientstatus` — read-only JSON snapshot of the client usage window (unauthenticated, loopback-only).
 
 ---
 
@@ -217,3 +220,6 @@ kill -HUP $(pgrep -f "prismd")
   - Add multiple keys for the provider, or append a local Ollama candidate to the alias queue (see [Local LLM Fallback](#3-local-llm-fallback-ollama--lm-studio-opt-in)).
 - **Q: Reset daily quota counters?**
   - Click "Reset usage" in the Web Dashboard (`http://127.0.0.1:8787/ui`) or delete `data/prismd.sqlite`.
+- **Q: Warning about unknown config key on startup?**
+  - Unknown top-level keys in `config.user.json` are tolerated with a warning and ignored. This is safe — the key may come from a newer version or a typo. Remove or correct the key to suppress the warning.
+

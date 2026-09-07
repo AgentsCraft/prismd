@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### Passaggio 2: Configurazione delle Chiavi API
 
-Aggiungi le tue chiavi in `~/.prismd/keys.yaml` o in `./.env` (configura uno o più provider; quelli non configurati vengono ignorati):
+Aggiungi le tue chiavi in `~/.prismd/keys.yaml` o in `./.env` (configura uno o più provider; quelli non configurati vengono ignorati).
+Per personalizzare la directory di configurazione, imposta `PRISMD_HOME=/percorso/alla/directory` — sia `prismd generate` che il gateway leggeranno `keys.yaml` e `prismd.json` da quel percorso anziché da `~/.prismd`.
 
 ```yaml
 # ~/.prismd/keys.yaml (permessi consigliati: chmod 600)
@@ -191,12 +192,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Dashboard Web**: Apri `http://127.0.0.1:8787/ui` nel browser:
   - Stato di salute in tempo reale (`healthy` / `rate_limited` / `cooldown`)
   - Barre di progresso quote e statistiche token
+  - **Tabella utilizzo client (ultime 24h)**: richieste, tasso di successo, latenza P50, conteggio failover e ultimi errori per client × endpoint
   - Selettore per 10 lingue e pulsante «Reimposta utilizzo (Reset usage)»
 - **Stato CLI**:
   ```bash
-  prismd status
+  prismd status      # Matrice di stato + sezione client (se il gateway è attivo)
+  prismd generate    # Ricompilare ~/.prismd/prismd.json
   ```
-  Visualizza una matrice a colori nel terminale.
+- **API**: `GET /v1/clientstatus` — snapshot JSON in sola lettura della finestra di utilizzo client (non autenticato, solo loopback).
 
 ---
 
@@ -208,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - Aggiungi più chiavi per il provider, oppure aggiungi una candidata Ollama locale alla coda via `config.user.json`.
 - **Q: Come azzerare i conteggi giornalieri?**
   - Clicca su «Reset usage» nella dashboard Web o elimina `data/prismd.sqlite`.
+- **Q: Avviso su chiave di configurazione sconosciuta all'avvio?**
+  - Le chiavi di primo livello sconosciute in `config.user.json` vengono tollerate con un avviso e ignorate. È sicuro — la chiave potrebbe provenire da una versione più recente o da un errore di battitura. Rimuovi o correggi la chiave per eliminare l'avviso.
+

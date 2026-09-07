@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### ステップ 2: API Key の設定
  
-`~/.prismd/keys.yaml` または `./.env` に無料 API Key を設定します（1 つ以上設定可能。未設定のプロバイダーは自動的にスキップされます）：
+`~/.prismd/keys.yaml` または `./.env` に無料 API Key を設定します（1 つ以上設定可能。未設定のプロバイダーは自動的にスキップされます）。
+設定ディレクトリをカスタマイズするには `PRISMD_HOME=/path/to/dir` を設定してください — `prismd generate` とゲートウェイは `~/.prismd` の代わりにそのパスから `keys.yaml` と `prismd.json` を読み込みます。
  
 ```yaml
 # ~/.prismd/keys.yaml (推奨権限 chmod 600)
@@ -191,12 +192,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web ダッシュボード**：ブラウザで `http://127.0.0.1:8787/ui` を開く：
   - 各候補モデルのリアルタイム稼働状態（`healthy` / `rate_limited` / `cooldown`）
   - 日次クォータバーとトークン消費統計
+  - **クライアント利用テーブル（直近 24h）**：クライアント × エンドポイント別のリクエスト数・成功率・P50 レイテンシ・フェイルオーバー回数・最新エラー
   - 10 言語切り替えと「使用量リセット（Reset usage）」ボタン
 - **CLI ステータス**：
   ```bash
-  prismd status
+  prismd status      # 状態マトリックス＋クライアント利用セクションを出力（ゲートウェイ起動時）
+  prismd generate    # ~/.prismd/prismd.json を再コンパイル
   ```
-  ターミナルにカラーマトリックスを出力。
+- **API**：`GET /v1/clientstatus` — クライアント利用ウィンドウの読み取り専用 JSON スナップショット（認証不要・ループバック限定）。
 
 ---
 
@@ -208,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - プロバイダーに複数 Key を追加するか、`config.user.json` でローカル Ollama 候補をキューに追加してください。
 - **Q: 日次クォータ集計をリセットしたい**
   - Web ダッシュボード（`http://127.0.0.1:8787/ui`）の「Reset usage」をクリックするか、`data/prismd.sqlite` を削除してください。
+- **Q: 起動時に不明な設定キーに関する警告が表示される**
+  - `config.user.json` の未知のトップレベルキーは警告を出力して無視されます。これは安全です — 新しいバージョン由来またはタイポの可能性があります。警告を消すにはキーを削除または修正してください。
+
