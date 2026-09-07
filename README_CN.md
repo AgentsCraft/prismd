@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### 步骤 2：配置 API Key
 
-在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key（配置任意一个或多个均可，未配置的提供商自动跳过）：
+在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key（配置任意一个或多个均可，未配置的提供商自动跳过）。
+如需自定义配置目录，可设置环境变量 `PRISMD_HOME=/path/to/dir`——`prismd generate` 和网关均从该路径读取 `keys.yaml` 和 `prismd.json`，而非默认的 `~/.prismd`。
 
 ```yaml
 # ~/.prismd/keys.yaml (建议权限 chmod 600)
@@ -221,3 +222,6 @@ kill -HUP $(pgrep -f "prismd")
   - 为该提供方配置多个账号 Key 开启轮询，或将本地 Ollama 候选追加进别名队列（见[本地 LLM 兜底](#3-本地-llm-兜底-ollama--lm-studio可选)）。
 - **Q: 如何重置当天的调用配额记录？**
   - 在 Web 控制台右上角点击「Reset usage」按钮，或删除本地数据库文件 `data/prismd.sqlite`。
+- **Q: 启动时提示存在未知的配置键？**
+  - `config.user.json` 中未知的顶层键会被记录一条警告后忽略，不影响运行。此键可能来自更高版本或拼写错误，删除或纠正即可消除该警告。
+

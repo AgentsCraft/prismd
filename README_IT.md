@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### Passaggio 2: Configurazione delle Chiavi API
 
-Aggiungi le tue chiavi in `~/.prismd/keys.yaml` o in `./.env` (configura uno o più provider; quelli non configurati vengono ignorati):
+Aggiungi le tue chiavi in `~/.prismd/keys.yaml` o in `./.env` (configura uno o più provider; quelli non configurati vengono ignorati).
+Per personalizzare la directory di configurazione, imposta `PRISMD_HOME=/percorso/alla/directory` — sia `prismd generate` che il gateway leggeranno `keys.yaml` e `prismd.json` da quel percorso anziché da `~/.prismd`.
 
 ```yaml
 # ~/.prismd/keys.yaml (permessi consigliati: chmod 600)
@@ -210,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - Aggiungi più chiavi per il provider, oppure aggiungi una candidata Ollama locale alla coda via `config.user.json`.
 - **Q: Come azzerare i conteggi giornalieri?**
   - Clicca su «Reset usage» nella dashboard Web o elimina `data/prismd.sqlite`.
+- **Q: Avviso su chiave di configurazione sconosciuta all'avvio?**
+  - Le chiavi di primo livello sconosciute in `config.user.json` vengono tollerate con un avviso e ignorate. È sicuro — la chiave potrebbe provenire da una versione più recente o da un errore di battitura. Rimuovi o correggi la chiave per eliminare l'avviso.
+

@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### 2. Adım: API Anahtarlarını Yapılandırma
 
-Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır):
+Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır).
+Varsayılan yapılandırma dizinini değiştirmek için `PRISMD_HOME=/yol/dizin` ortam değişkenini ayarlayın — hem `prismd generate` hem de gateway, `keys.yaml` ve `prismd.json` dosyalarını `~/.prismd` yerine o yoldan okur.
 
 ```yaml
 # ~/.prismd/keys.yaml (önerilen izin: chmod 600)
@@ -210,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - İlgili sağlayıcı için birden fazla anahtar ekleyin veya `config.user.json` ile yerel bir Ollama adayını kuyruğa ekleyin.
 - **Q: Günlük kota sayaçları nasıl sıfırlanır?**
   - Web panelinden «Reset usage» butonuna tıklayın veya `data/prismd.sqlite` dosyasını silin.
+- **Q: Başlangıçta bilinmeyen yapılandırma anahtarı uyarısı alıyorum?**
+  - `config.user.json` içindeki bilinmeyen üst düzey anahtarlar bir uyarıyla kaydedilir ve yoksayılır. Bu güvenlidir — anahtar daha yeni bir sürümden veya yazım hatasından kaynaklanıyor olabilir. Uyarıyı gidermek için anahtarı kaldırın veya düzeltin.
+

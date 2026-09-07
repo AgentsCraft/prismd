@@ -56,7 +56,8 @@ cd prismd && npm install
 
 ### ステップ 2: API Key の設定
  
-`~/.prismd/keys.yaml` または `./.env` に無料 API Key を設定します（1 つ以上設定可能。未設定のプロバイダーは自動的にスキップされます）：
+`~/.prismd/keys.yaml` または `./.env` に無料 API Key を設定します（1 つ以上設定可能。未設定のプロバイダーは自動的にスキップされます）。
+設定ディレクトリをカスタマイズするには `PRISMD_HOME=/path/to/dir` を設定してください — `prismd generate` とゲートウェイは `~/.prismd` の代わりにそのパスから `keys.yaml` と `prismd.json` を読み込みます。
  
 ```yaml
 # ~/.prismd/keys.yaml (推奨権限 chmod 600)
@@ -210,3 +211,6 @@ kill -HUP $(pgrep -f "prismd")
   - プロバイダーに複数 Key を追加するか、`config.user.json` でローカル Ollama 候補をキューに追加してください。
 - **Q: 日次クォータ集計をリセットしたい**
   - Web ダッシュボード（`http://127.0.0.1:8787/ui`）の「Reset usage」をクリックするか、`data/prismd.sqlite` を削除してください。
+- **Q: 起動時に不明な設定キーに関する警告が表示される**
+  - `config.user.json` の未知のトップレベルキーは警告を出力して無視されます。これは安全です — 新しいバージョン由来またはタイポの可能性があります。警告を消すにはキーを削除または修正してください。
+
