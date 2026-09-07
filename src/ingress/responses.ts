@@ -69,7 +69,7 @@ export async function responses(c: Context): Promise<Response> {
   const tags = parseTagsHeader(rawTags);
   const requireTools = Array.isArray(body.tools) && body.tools.length > 0;
   const requireReasoning =
-    body.reasoning_effort !== undefined ||
+    (body.reasoning_effort !== undefined && body.reasoning_effort !== "none") ||
     c.req.header("x-prismd-require-reasoning") === "true";
 
   const rateLimiter = getRateLimiter();

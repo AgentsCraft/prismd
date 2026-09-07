@@ -157,7 +157,7 @@ export function convertResponsesToChatRequest(
       }
 
       const msg: ChatMessage = {
-        role: role === "developer" ? "developer" : role === "system" ? "system" : role === "assistant" ? "assistant" : "user",
+        role: (role === "developer" || role === "system") ? "system" : role === "assistant" ? "assistant" : "user",
         content,
       };
       if (typeof raw.name === "string") {
