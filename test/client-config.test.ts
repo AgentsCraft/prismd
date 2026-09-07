@@ -11,23 +11,49 @@ import {
   setupClient,
   backupFileIfExists,
   getClientConfigPath,
+  updateCodexToml,
   SUPPORTED_CLIENTS,
 } from "../src/cli/client-config.js";
 
-
-test("SUPPORTED_CLIENTS includes claude, codex, opencode, and pi", () => {
+test("SUPPORTED_CLIENTS includes claude, codex, opencode, and pi with simple launch commands", () => {
   const ids = SUPPORTED_CLIENTS.map((c) => c.id);
   assert.deepEqual(ids, ["claude", "codex", "opencode", "pi"]);
+
+  for (const client of SUPPORTED_CLIENTS) {
+    const cmd = client.launchCommand("dummy-token");
+    assert.equal(cmd, client.id);
+  }
 });
 
-test("setupClaudeCode creates helper scripts with auth token", () => {
+test("setupClaudeCode configures ~/.claude/settings.json and auxiliary scripts", () => {
   const home = mkdtempSync(join(tmpdir(), "prismd-client-claude-"));
   const token = "secret-token-xyz";
 
+  // Pre-populate settings.json with existing properties
+  const claudeDir = join(home, ".claude");
+  mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(
+    join(claudeDir, "settings.json"),
+    JSON.stringify({ model: "opus", env: { CUSTOM_VAR: "123" } }),
+    "utf8",
+  );
+
   const res = setupClaudeCode(home, token);
   assert.equal(res.name, "Claude Code");
-  assert.equal(res.filesWritten.length, 3);
+  assert.equal(res.launchCommand, "claude");
+  assert.equal(res.backupsCreated.length, 1);
+  assert.ok(res.backupsCreated[0].includes("settings.json.bak."));
 
+  // Check ~/.claude/settings.json
+  const settingsPath = join(home, ".claude", "settings.json");
+  assert.ok(existsSync(settingsPath));
+  const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+  assert.equal(settings.model, "opus", "existing properties must be preserved");
+  assert.equal(settings.env.CUSTOM_VAR, "123", "existing env vars must be preserved");
+  assert.equal(settings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:8787/v1");
+  assert.equal(settings.env.ANTHROPIC_API_KEY, token);
+
+  // Check auxiliary scripts
   const shPath = join(home, ".prismd", "claude-prismd.sh");
   const cmdPath = join(home, ".prismd", "claude-prismd.cmd");
   const ps1Path = join(home, ".prismd", "claude-prismd.ps1");
@@ -35,58 +61,106 @@ test("setupClaudeCode creates helper scripts with auth token", () => {
   assert.ok(existsSync(shPath));
   assert.ok(existsSync(cmdPath));
   assert.ok(existsSync(ps1Path));
-
-  const shContent = readFileSync(shPath, "utf8");
-  assert.ok(shContent.includes(`export ANTHROPIC_API_KEY="${token}"`));
-  assert.ok(shContent.includes('export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"'));
-
-  const cmdContent = readFileSync(cmdPath, "utf8");
-  assert.ok(cmdContent.includes(`set ANTHROPIC_API_KEY=${token}`));
-  assert.ok(cmdContent.includes("set ANTHROPIC_BASE_URL=http://127.0.0.1:8787/v1"));
 });
 
-test("setupCodex creates ~/.codex/prismd.config.toml", () => {
+test("setupCodex configures ~/.codex/config.toml and auth.json", () => {
   const home = mkdtempSync(join(tmpdir(), "prismd-client-codex-"));
   const token = "token-codex-123";
 
+  // Pre-populate existing config.toml and auth.json
+  const codexDir = join(home, ".codex");
+  mkdirSync(codexDir, { recursive: true });
+  writeFileSync(
+    join(codexDir, "config.toml"),
+    'model_provider = "old_provider"\nmodel = "old_model"\n\n[features]\ngoals = true\n',
+    "utf8",
+  );
+  writeFileSync(
+    join(codexDir, "auth.json"),
+    JSON.stringify({ EXISTING_KEY: "old_val" }),
+    "utf8",
+  );
+
   const res = setupCodex(home, token);
   assert.equal(res.name, "Codex CLI");
+  assert.equal(res.launchCommand, "codex");
+  assert.equal(res.backupsCreated.length, 2);
 
-  const tomlPath = join(home, ".codex", "prismd.config.toml");
+  // Verify auth.json
+  const authPath = join(home, ".codex", "auth.json");
+  assert.ok(existsSync(authPath));
+  const auth = JSON.parse(readFileSync(authPath, "utf8"));
+  assert.equal(auth.EXISTING_KEY, "old_val");
+  assert.equal(auth.OPENAI_API_KEY, token);
+
+  // Verify config.toml
+  const tomlPath = join(home, ".codex", "config.toml");
   assert.ok(existsSync(tomlPath));
-
-  const content = readFileSync(tomlPath, "utf8");
-  assert.ok(content.includes('model = "free-auto"'));
-  assert.ok(content.includes('model_provider = "prismd"'));
-  assert.ok(content.includes('base_url = "http://127.0.0.1:8787/v1"'));
+  const toml = readFileSync(tomlPath, "utf8");
+  assert.ok(toml.includes('model_provider = "prismd"'));
+  assert.ok(toml.includes('model = "free-auto"'));
+  assert.ok(toml.includes("[features]"));
+  assert.ok(toml.includes("goals = true"));
+  assert.ok(toml.includes("[model_providers.prismd]"));
+  assert.ok(toml.includes('base_url = "http://127.0.0.1:8787/v1"'));
 });
 
-test("setupOpenCode creates and merges ~/.config/opencode/config.json", () => {
+test("updateCodexToml handles empty, new, and existing TOML configs correctly", () => {
+  // Empty
+  const out1 = updateCodexToml("");
+  assert.ok(out1.includes('model_provider = "prismd"'));
+  assert.ok(out1.includes('model = "free-auto"'));
+  assert.ok(out1.includes("[model_providers.prismd]"));
+
+  // Existing with other sections
+  const input = `model_provider = "custom"
+model = "gpt-4"
+
+[windows]
+sandbox = "unelevated"
+
+[model_providers.prismd]
+name = "old_prismd"
+base_url = "http://localhost:9999"
+`;
+  const out2 = updateCodexToml(input);
+  assert.ok(out2.includes('model_provider = "prismd"'));
+  assert.ok(out2.includes('model = "free-auto"'));
+  assert.ok(out2.includes('[windows]'));
+  assert.ok(out2.includes('sandbox = "unelevated"'));
+  assert.ok(out2.includes('base_url = "http://127.0.0.1:8787/v1"'));
+  assert.ok(!out2.includes("http://localhost:9999"));
+});
+
+test("setupOpenCode creates and merges ~/.config/opencode/opencode.json", () => {
   const home = mkdtempSync(join(tmpdir(), "prismd-client-opencode-"));
   const token = "token-opencode-456";
 
   // Initial setup without existing config
   const res1 = setupOpenCode(home, token);
   assert.equal(res1.name, "OpenCode");
+  assert.equal(res1.launchCommand, "opencode");
 
-  const jsonPath = join(home, ".config", "opencode", "config.json");
+  const jsonPath = join(home, ".config", "opencode", "opencode.json");
   assert.ok(existsSync(jsonPath));
 
   const initial = JSON.parse(readFileSync(jsonPath, "utf8"));
-  assert.ok(initial.providers?.prismd);
-  assert.equal(initial.providers.prismd.apiKey, token);
-  assert.equal(initial.providers.prismd.baseUrl, "http://127.0.0.1:8787/v1");
+  assert.equal(initial.model, "prismd/free-auto");
+  assert.ok(initial.provider?.prismd);
+  assert.equal(initial.provider.prismd.apiKey, token);
+  assert.equal(initial.provider.prismd.baseURL, "http://127.0.0.1:8787/v1");
 
   // Preserves existing providers on update
-  initial.providers.other = { type: "anthropic" };
+  initial.provider.other = { npm: "@ai-sdk/anthropic" };
   writeFileSync(jsonPath, JSON.stringify(initial), "utf8");
 
   const newToken = "token-opencode-updated";
-  setupOpenCode(home, newToken);
+  const res2 = setupOpenCode(home, newToken);
+  assert.equal(res2.backupsCreated.length, 1);
 
   const updated = JSON.parse(readFileSync(jsonPath, "utf8"));
-  assert.ok(updated.providers.other, "existing provider must be preserved");
-  assert.equal(updated.providers.prismd.apiKey, newToken);
+  assert.ok(updated.provider.other, "existing provider must be preserved");
+  assert.equal(updated.provider.prismd.apiKey, newToken);
 });
 
 test("setupPi creates ~/.pi/config.json", () => {
@@ -95,6 +169,7 @@ test("setupPi creates ~/.pi/config.json", () => {
 
   const res = setupPi(home, token);
   assert.equal(res.name, "Pi Agent");
+  assert.equal(res.launchCommand, "pi");
 
   const jsonPath = join(home, ".pi", "config.json");
   assert.ok(existsSync(jsonPath));
@@ -117,6 +192,15 @@ test("setupClient dispatches to appropriate handlers", () => {
   assert.equal(setupClient("unknown", home, token), null);
 });
 
+test("getClientConfigPath returns correct target files", () => {
+  const home = "/fake/home";
+  assert.equal(getClientConfigPath("claude", home), join(home, ".claude", "settings.json"));
+  assert.equal(getClientConfigPath("codex", home), join(home, ".codex", "config.toml"));
+  assert.equal(getClientConfigPath("opencode", home), join(home, ".config", "opencode", "opencode.json"));
+  assert.equal(getClientConfigPath("pi", home), join(home, ".pi", "config.json"));
+  assert.equal(getClientConfigPath("unknown", home), null);
+});
+
 test("backupFileIfExists returns null when file does not exist", () => {
   const missing = join(tmpdir(), "non-existent-file-xyz.json");
   assert.equal(backupFileIfExists(missing), null);
@@ -133,25 +217,3 @@ test("backupFileIfExists creates exact copy with .bak suffix", () => {
   assert.ok(existsSync(backup));
   assert.equal(readFileSync(backup, "utf8"), "{\"hello\":\"world\"}");
 });
-
-test("setupCodex and setupPi create backups when existing file is present", () => {
-  const home = mkdtempSync(join(tmpdir(), "prismd-client-backup-"));
-  const piDir = join(home, ".pi");
-  mkdirSync(piDir, { recursive: true });
-  writeFileSync(join(piDir, "config.json"), "{\"original\":\"pi\"}", "utf8");
-
-  const piRes = setupPi(home, "token-pi");
-  assert.equal(piRes.backupsCreated.length, 1);
-  assert.ok(existsSync(piRes.backupsCreated[0]));
-  assert.equal(readFileSync(piRes.backupsCreated[0], "utf8"), "{\"original\":\"pi\"}");
-
-  const codexDir = join(home, ".codex");
-  mkdirSync(codexDir, { recursive: true });
-  writeFileSync(join(codexDir, "prismd.config.toml"), "original_codex = true", "utf8");
-
-  const codexRes = setupCodex(home, "token-codex");
-  assert.equal(codexRes.backupsCreated.length, 1);
-  assert.ok(existsSync(codexRes.backupsCreated[0]));
-  assert.equal(readFileSync(codexRes.backupsCreated[0], "utf8"), "original_codex = true");
-});
-

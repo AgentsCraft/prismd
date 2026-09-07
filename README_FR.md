@@ -96,14 +96,14 @@ prismd
 
 ### Étape 3 : Configurer votre Agent
 
-| Client | Configuration Rapide | Guide |
+| Client | Démarrage Rapide (`prismd init` auto-config) | Guide |
 |---|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="mon-secret-local"`<br>`claude` | [Guide](examples/claude-code/README.md) |
-| **Codex CLI** | `PRISMD_API_KEY=mon-secret-local codex --profile prismd` | [Guide](examples/codex/README.md) |
+| **Claude Code** | `claude` (configuré dans `~/.claude/settings.json`) | [Guide](examples/claude-code/README.md) |
+| **Codex CLI** | `codex` (configuré dans `~/.codex/config.toml` & `auth.json`) | [Guide](examples/codex/README.md) |
+| **OpenCode** | `opencode` (configuré dans `~/.config/opencode/opencode.json`) | [Guide](examples/opencode/README.md) |
+| **Pi Agent** | `pi` (configuré dans `~/.pi/config.json`) | [Guide](examples/pi/README.md) |
 | **Cursor** | Settings → Models → Activer OpenAI API Key (`mon-secret-local`)<br>**Override OpenAI Base URL** : `http://127.0.0.1:8787/v1`<br>Ajouter le modèle : `free-auto` | [Guide](examples/cursor/README.md) |
-| **OpenCode** | Définir `baseUrl: "http://127.0.0.1:8787/v1"` dans `~/.config/opencode/config.json` | [Guide](examples/opencode/README.md) |
 | **DeepSeek Harness (dsh)** | Définir `base_url = "http://127.0.0.1:8787/v1"` dans `~/.dsh/config.toml`<br>`PRISMD_API_KEY=mon-secret-local dsh --model prismd:free-auto` | [Guide](examples/dsh/README.md) |
-| **Pi Agent** | Définir `endpoint: "http://127.0.0.1:8787/v1"` dans `~/.pi/config.json`<br>`pi run` | [Guide](examples/pi/README.md) |
 | **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="mon-secret-local"` `aider --model openai/free-auto` | [Guide](examples/aider/README.md) |
 
 > 📖 **Documentation complète** : Voir le [Guide d'intégration des clients](docs/clients/README.md) pour les détails sur les protocoles et configurations.
