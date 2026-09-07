@@ -263,6 +263,64 @@ export function setupClaudeCode(homeDir: string, token: string): SetupResult {
 }
 
 /**
+ * Ensure free-auto metadata exists in ~/.codex/models.json so Codex CLI does not warn.
+ */
+export function ensureCodexModelMetadata(codexDir: string): { path: string; backupPath: string | null } {
+  const modelsPath = join(codexDir, "models.json");
+  let backupPath: string | null = null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let catalog: { models?: any[] } = {};
+  if (existsSync(modelsPath)) {
+    try {
+      catalog = JSON.parse(readFileSync(modelsPath, "utf8"));
+    } catch {
+      catalog = {};
+    }
+  }
+
+  if (!Array.isArray(catalog.models)) {
+    catalog.models = [];
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existing = catalog.models.find((m: any) => m && m.slug === "free-auto");
+  if (!existing) {
+    backupPath = backupFileIfExists(modelsPath);
+    const template =
+      catalog.models.length > 0 && typeof catalog.models[0] === "object"
+        ? structuredClone(catalog.models[0])
+        : {
+            shell_type: "shell_command",
+            visibility: "list",
+            supported_in_api: true,
+            support_verbosity: true,
+            truncation_policy: { mode: "tokens", limit: 10000 },
+            experimental_supported_tools: [],
+            supported_reasoning_levels: [
+              { effort: "low", description: "Fast responses with lighter reasoning" },
+              { effort: "high", description: "Deep reasoning" },
+            ],
+            supports_parallel_tool_calls: true,
+            input_modalities: ["text"],
+            supports_image_detail_original: false,
+          };
+
+    template.slug = "free-auto";
+    template.display_name = "free-auto";
+    template.description = "prismd aggregated free models";
+    template.context_window = 131072;
+    template.max_context_window = 131072;
+    template.priority = 1;
+
+    catalog.models.unshift(template);
+    writeFileSync(modelsPath, JSON.stringify(catalog, null, 2) + "\n", { mode: 0o600 });
+  }
+
+  return { path: modelsPath, backupPath };
+}
+
+/**
  * Configure Codex CLI native profile at ~/.codex/config.toml & ~/.codex/auth.json
  */
 export function setupCodex(homeDir: string, token: string): SetupResult {
@@ -308,12 +366,17 @@ export function setupCodex(homeDir: string, token: string): SetupResult {
   writeFileSync(tomlPath, updatedToml, { mode: 0o600 });
   written.push(tomlPath);
 
+  // 3. ~/.codex/models.json (metadata for free-auto)
+  const { path: modelsPath, backupPath: bModels } = ensureCodexModelMetadata(codexDir);
+  if (bModels) backups.push(bModels);
+  written.push(modelsPath);
+
   return {
     name: "Codex CLI",
     filesWritten: written,
     backupsCreated: backups,
     launchCommand: "codex",
-    notes: "Configured ~/.codex/config.toml & auth.json. Launch by running 'codex' directly.",
+    notes: "Configured ~/.codex/config.toml, auth.json & models.json. Launch by running 'codex' directly.",
   };
 }
 

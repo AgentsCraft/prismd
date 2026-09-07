@@ -11,7 +11,7 @@
  *
  * Zero external dependencies — uses pure Node built-ins (crypto, fs, path, os).
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -324,6 +324,29 @@ function serializeKeysYaml(
   return lines.join("\n");
 }
 
+/**
+ * Synchronize local auth token into ~/.prismd/keys.yaml.
+ * Ensures the running or next started prismd gateway matches client credentials.
+ */
+export function updateLocalTokenInKeysYaml(keysPath: string, token: string): void {
+  try {
+    let content = "";
+    if (existsSync(keysPath)) {
+      content = readFileSync(keysPath, "utf8");
+    }
+    const tokenLine = `prismd: "${token}"`;
+    if (/^prismd:\s*.*$/m.test(content)) {
+      content = content.replace(/^prismd:\s*.*$/m, tokenLine);
+    } else {
+      content = tokenLine + (content ? "\n\n" + content : "\n");
+    }
+    writeFileSync(keysPath, content, { mode: 0o600 });
+    console.log(c.green("  [+] ") + `Synced auth token to ${c.dim(keysPath)}`);
+  } catch (err) {
+    console.log(c.yellow("  [!] Failed to sync token to keys.yaml: ") + (err as Error).message);
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export async function runInitCli(): Promise<number> {
@@ -371,6 +394,10 @@ export async function runInitCli(): Promise<number> {
           tokenToUse = changeToken;
         }
         console.log();
+
+        if (rawToken !== tokenToUse) {
+          updateLocalTokenInKeysYaml(keysPath, tokenToUse);
+        }
 
         const clientResults = await runClientConfigurationFlow(reader, homeDir, tokenToUse);
 
@@ -428,7 +455,12 @@ export async function runInitCli(): Promise<number> {
     }
 
     // ── Step 1: local auth token ─────────────────────────────────────────────
-    const defaultToken = randomToken();
+    const existingStore = loadKeyStore(homeDir, cwd);
+    const existingRawToken = existingStore.yaml?.["prismd"];
+    const defaultToken =
+      typeof existingRawToken === "string" && existingRawToken.trim() !== ""
+        ? existingRawToken.trim()
+        : randomToken();
     console.log(c.bold("  Step 1 / 4  —  Local auth token"));
     console.log();
     console.log("  Coding agents use this token to authenticate with prismd.");

@@ -217,3 +217,65 @@ test("backupFileIfExists creates exact copy with .bak suffix", () => {
   assert.ok(existsSync(backup));
   assert.equal(readFileSync(backup, "utf8"), "{\"hello\":\"world\"}");
 });
+
+test("ensureCodexModelMetadata registers free-auto and preserves existing catalog", async () => {
+  const { ensureCodexModelMetadata } = await import("../src/cli/client-config.js");
+  const dir = mkdtempSync(join(tmpdir(), "prismd-codex-meta-"));
+
+  // 1. Initial creation when models.json does not exist
+  const res1 = ensureCodexModelMetadata(dir);
+  assert.ok(existsSync(res1.path));
+  assert.equal(res1.backupPath, null);
+
+  const meta1 = JSON.parse(readFileSync(res1.path, "utf8"));
+  assert.ok(Array.isArray(meta1.models));
+  assert.equal(meta1.models.length, 1);
+  assert.equal(meta1.models[0].slug, "free-auto");
+  assert.equal(meta1.models[0].context_window, 131072);
+
+  // 2. Subsequent call does not create backup if free-auto already present
+  const res2 = ensureCodexModelMetadata(dir);
+  assert.equal(res2.backupPath, null);
+
+  // 3. Existing catalog with another model gets free-auto prepended and backed up
+  const dir2 = mkdtempSync(join(tmpdir(), "prismd-codex-meta-existing-"));
+  const existingCatalog = {
+    models: [{ slug: "o3-mini", display_name: "o3-mini", context_window: 200000 }],
+  };
+  writeFileSync(join(dir2, "models.json"), JSON.stringify(existingCatalog), "utf8");
+
+  const res3 = ensureCodexModelMetadata(dir2);
+  assert.ok(res3.backupPath);
+  assert.ok(existsSync(res3.backupPath));
+
+  const meta3 = JSON.parse(readFileSync(res3.path, "utf8"));
+  assert.equal(meta3.models.length, 2);
+  assert.equal(meta3.models[0].slug, "free-auto");
+  assert.equal(meta3.models[1].slug, "o3-mini");
+});
+
+test("updateLocalTokenInKeysYaml updates or adds prismd token while preserving content", async () => {
+  const { updateLocalTokenInKeysYaml } = await import("../src/cli/init.js");
+  const dir = mkdtempSync(join(tmpdir(), "prismd-keys-sync-"));
+  const keysFile = join(dir, "keys.yaml");
+
+  // Case 1: file exists with empty or previous token
+  writeFileSync(
+    keysFile,
+    '# config\nprismd: ""\ngroq: "gsk_123"\n',
+    "utf8",
+  );
+  updateLocalTokenInKeysYaml(keysFile, "new-token-456");
+
+  const content1 = readFileSync(keysFile, "utf8");
+  assert.ok(content1.includes('prismd: "new-token-456"'));
+  assert.ok(content1.includes('groq: "gsk_123"'));
+
+  // Case 2: file exists without prismd key
+  writeFileSync(keysFile, 'gemini: "AIza123"\n', "utf8");
+  updateLocalTokenInKeysYaml(keysFile, "token-789");
+  const content2 = readFileSync(keysFile, "utf8");
+  assert.ok(content2.includes('prismd: "token-789"'));
+  assert.ok(content2.includes('gemini: "AIza123"'));
+});
+
