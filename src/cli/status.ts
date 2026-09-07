@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../core/sqlite.js";
 import { getConfig } from "../config.js";
 import type { ModelStatusResponse } from "../routes/modelstatus.js";
 import type { ClientStatusSnapshot } from "../routes/clientstatus.js";

@@ -7,7 +7,7 @@
  *   request_log     — one row per request for troubleshooting; pruned to
  *                     the last N days at startup
  */
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "./sqlite.js";
 import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 

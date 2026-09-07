@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../src/core/sqlite.js";
 import { app } from "../src/app.js";
 import { resetConfigForTests } from "../src/config.js";
 import { resetRuntimeForTests, shutdownRuntime } from "../src/core/runtime.js";

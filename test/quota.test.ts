@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdtempSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../src/core/sqlite.js";
 import { QuotaManager, estimateTokens } from "../src/core/quota.js";
 import { StateStore, type RequestLogEntry } from "../src/core/state.js";
 
