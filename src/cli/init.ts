@@ -21,9 +21,12 @@ import { generateConfigStringAsync } from "../generate-config.js";
 import {
   SUPPORTED_CLIENTS,
   setupClient,
+  backupFileIfExists,
+  getClientConfigPath,
   type ClientDefinition,
   type SetupResult,
 } from "./client-config.js";
+
 
 
 // ── ANSI helpers (only when TTY) ─────────────────────────────────────────────
@@ -136,18 +139,26 @@ function printProviderMenu(providers: ProviderDef[], selected: Set<number>): voi
   console.log();
 }
 
-function printClientMenu(clients: ClientDefinition[], selected: Set<number>): void {
+function printClientMenu(
+  clients: ClientDefinition[],
+  selected: Set<number>,
+  homeDir: string,
+): void {
   console.log(c.bold("  Supported coding clients:"));
   console.log();
   for (let i = 0; i < clients.length; i++) {
     const cl = clients[i];
     const tick = selected.has(i) ? c.green("[ok]") : " ";
     const num = String(i + 1).padStart(2);
-    console.log(`  [${tick}] ${num}. ${c.bold(cl.name)}`);
+    const targetFile = getClientConfigPath(cl.id, homeDir);
+    const exists = targetFile && existsSync(targetFile);
+    const tag = exists ? c.yellow(" [existing config — will backup]") : "";
+    console.log(`  [${tick}] ${num}. ${c.bold(cl.name)}${tag}`);
     console.log(`          ${c.dim(cl.description)}`);
   }
   console.log();
 }
+
 
 
 /**
@@ -382,6 +393,10 @@ export async function runInitCli(): Promise<number> {
 
     // ── Write keys.yaml ───────────────────────────────────────────────────────
     mkdirSync(prismdDir, { recursive: true, mode: 0o700 });
+    const keysBackup = backupFileIfExists(keysPath);
+    if (keysBackup) {
+      console.log(c.yellow("  [!] ") + "backed up previous keys.yaml to " + c.dim(keysBackup));
+    }
     writeFileSync(keysPath, serializeKeysYaml(collectedKeys, keyComments), {
       mode: 0o600,
     });
@@ -421,7 +436,7 @@ export async function runInitCli(): Promise<number> {
     console.log();
 
     const selectedClients = new Set<number>();
-    printClientMenu(SUPPORTED_CLIENTS, selectedClients);
+    printClientMenu(SUPPORTED_CLIENTS, selectedClients, homeDir);
 
     while (true) {
       const raw = (await rl.question("  Toggle (numbers) or Enter to confirm: ")).trim();
@@ -437,7 +452,7 @@ export async function runInitCli(): Promise<number> {
       }
 
       console.log();
-      printClientMenu(SUPPORTED_CLIENTS, selectedClients);
+      printClientMenu(SUPPORTED_CLIENTS, selectedClients, homeDir);
     }
 
     const clientResults: SetupResult[] = [];
@@ -449,6 +464,9 @@ export async function runInitCli(): Promise<number> {
         const res = setupClient(clientDef.id, homeDir, prismdToken);
         if (res) {
           clientResults.push(res);
+          for (const b of res.backupsCreated) {
+            console.log(c.yellow("  [!] ") + `${res.name}: backed up previous config to ${c.dim(b)}`);
+          }
           for (const f of res.filesWritten) {
             console.log(c.green("  [+] ") + `${res.name}: configured ${c.dim(f)}`);
           }
@@ -458,6 +476,7 @@ export async function runInitCli(): Promise<number> {
         }
       }
     }
+
 
     // ── Next steps ────────────────────────────────────────────────────────────
     const configuredProviders = Object.keys(collectedKeys).filter((k) => k !== "prismd");

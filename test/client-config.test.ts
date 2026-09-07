@@ -9,8 +9,11 @@ import {
   setupOpenCode,
   setupPi,
   setupClient,
+  backupFileIfExists,
+  getClientConfigPath,
   SUPPORTED_CLIENTS,
 } from "../src/cli/client-config.js";
+
 
 test("SUPPORTED_CLIENTS includes claude, codex, opencode, and pi", () => {
   const ids = SUPPORTED_CLIENTS.map((c) => c.id);
@@ -113,3 +116,42 @@ test("setupClient dispatches to appropriate handlers", () => {
   assert.equal(setupClient("pi", home, token)?.name, "Pi Agent");
   assert.equal(setupClient("unknown", home, token), null);
 });
+
+test("backupFileIfExists returns null when file does not exist", () => {
+  const missing = join(tmpdir(), "non-existent-file-xyz.json");
+  assert.equal(backupFileIfExists(missing), null);
+});
+
+test("backupFileIfExists creates exact copy with .bak suffix", () => {
+  const dir = mkdtempSync(join(tmpdir(), "prismd-backup-test-"));
+  const target = join(dir, "myconfig.json");
+  writeFileSync(target, "{\"hello\":\"world\"}", "utf8");
+
+  const backup = backupFileIfExists(target);
+  assert.ok(backup);
+  assert.ok(backup.includes(".bak."));
+  assert.ok(existsSync(backup));
+  assert.equal(readFileSync(backup, "utf8"), "{\"hello\":\"world\"}");
+});
+
+test("setupCodex and setupPi create backups when existing file is present", () => {
+  const home = mkdtempSync(join(tmpdir(), "prismd-client-backup-"));
+  const piDir = join(home, ".pi");
+  mkdirSync(piDir, { recursive: true });
+  writeFileSync(join(piDir, "config.json"), "{\"original\":\"pi\"}", "utf8");
+
+  const piRes = setupPi(home, "token-pi");
+  assert.equal(piRes.backupsCreated.length, 1);
+  assert.ok(existsSync(piRes.backupsCreated[0]));
+  assert.equal(readFileSync(piRes.backupsCreated[0], "utf8"), "{\"original\":\"pi\"}");
+
+  const codexDir = join(home, ".codex");
+  mkdirSync(codexDir, { recursive: true });
+  writeFileSync(join(codexDir, "prismd.config.toml"), "original_codex = true", "utf8");
+
+  const codexRes = setupCodex(home, "token-codex");
+  assert.equal(codexRes.backupsCreated.length, 1);
+  assert.ok(existsSync(codexRes.backupsCreated[0]));
+  assert.equal(readFileSync(codexRes.backupsCreated[0], "utf8"), "original_codex = true");
+});
+
