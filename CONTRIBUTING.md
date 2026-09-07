@@ -12,7 +12,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 
 ## 2. Prerequisites & Environment
 
-- **Node.js**: `>= 23.4.0` (required for native `node:sqlite` DatabaseSync support)
+- **Node.js**: `>= 22.13.0` (required for native `node:sqlite` DatabaseSync support)
 - **npm**: `>= 10.0.0`
 - **Git**: `>= 2.30.0`
 

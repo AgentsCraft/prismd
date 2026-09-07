@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../src/core/sqlite.js";
 import { fileURLToPath } from "node:url";
 import { app } from "../src/app.js";
 import { resetConfigForTests } from "../src/config.js";

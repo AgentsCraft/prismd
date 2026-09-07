@@ -12,7 +12,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync } from "../../src/core/sqlite.js";
 import { rmSync, writeFileSync } from "node:fs";
 import { GATEWAY_TOKEN, logTail, parseSse, postResponses, startGateway, sleep, type GatewayHandle } from "./harness.js";
 import { makeValidConfig } from "../helpers.js";

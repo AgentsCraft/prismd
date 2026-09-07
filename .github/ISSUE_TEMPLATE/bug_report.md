@@ -26,7 +26,7 @@ A clear and concise description of what you expected to happen.
 
 ### Environment
 - **prismd Version**: [e.g. 0.0.1 or git commit hash]
-- **Node.js Version**: [e.g. 23.4.0 (`node -v`)]
+- **Node.js Version**: [e.g. 22.13.0 (`node -v`)]
 - **OS Platform**: [e.g. macOS 15, Ubuntu 24.04, Windows 11 WSL2]
 - **Client Agent**: [e.g. Claude Code, Codex CLI, Cursor, OpenCode]
 - **Target Upstream Provider(s)**: [e.g. OpenRouter, Groq, Cerebras, Gemini, GitHub Models]
