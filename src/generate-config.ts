@@ -188,10 +188,14 @@ export function buildConfig({
           return false;
         }
         if (typeof meta.contextWindow === "number" && meta.contextWindow > 0) {
-          candidate.contextWindow = meta.contextWindow;
+          candidate.contextWindow = candidate.contextWindow
+            ? Math.min(candidate.contextWindow, meta.contextWindow)
+            : meta.contextWindow;
         }
         if (typeof meta.maxOutputTokens === "number" && meta.maxOutputTokens > 0) {
-          candidate.maxOutputTokens = meta.maxOutputTokens;
+          candidate.maxOutputTokens = candidate.maxOutputTokens
+            ? Math.min(candidate.maxOutputTokens, meta.maxOutputTokens)
+            : meta.maxOutputTokens;
         }
       }
       return true;

@@ -682,3 +682,21 @@ test("convertResponsesToChatRequest filters non-function/non-mcp tools to preven
   assert.equal((req.tools[1] as any).type, "mcp");
 });
 
+test("convertResponsesToChatRequest maps developer role to system for open-source chat upstreams", () => {
+  const req = convertResponsesToChatRequest(
+    {
+      model: "free-auto",
+      input: [
+        { type: "message", role: "developer", content: "You are Codex." },
+        { type: "message", role: "user", content: "hello" },
+      ],
+    },
+    "free-auto",
+  );
+
+  assert.deepEqual(req.messages, [
+    { role: "system", content: "You are Codex." },
+    { role: "user", content: "hello" },
+  ]);
+});
+
