@@ -18,6 +18,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { generateConfigStringAsync } from "../generate-config.js";
+import {
+  SUPPORTED_CLIENTS,
+  setupClient,
+  type ClientDefinition,
+  type SetupResult,
+} from "./client-config.js";
+
 
 // ── ANSI helpers (only when TTY) ─────────────────────────────────────────────
 const isTTY = process.stdout.isTTY;
@@ -128,6 +135,20 @@ function printProviderMenu(providers: ProviderDef[], selected: Set<number>): voi
   }
   console.log();
 }
+
+function printClientMenu(clients: ClientDefinition[], selected: Set<number>): void {
+  console.log(c.bold("  Supported coding clients:"));
+  console.log();
+  for (let i = 0; i < clients.length; i++) {
+    const cl = clients[i];
+    const tick = selected.has(i) ? c.green("[ok]") : " ";
+    const num = String(i + 1).padStart(2);
+    console.log(`  [${tick}] ${num}. ${c.bold(cl.name)}`);
+    console.log(`          ${c.dim(cl.description)}`);
+  }
+  console.log();
+}
+
 
 /**
  * Read input with characters masked as "*".
@@ -246,7 +267,7 @@ export async function runInitCli(): Promise<number> {
 
     // ── Step 1: local auth token ─────────────────────────────────────────────
     const defaultToken = randomToken();
-    console.log(c.bold("  Step 1 / 3  —  Local auth token"));
+    console.log(c.bold("  Step 1 / 4  —  Local auth token"));
     console.log();
     console.log("  Coding agents use this token to authenticate with prismd.");
     console.log("  Any string works — it never leaves your machine.");
@@ -258,7 +279,7 @@ export async function runInitCli(): Promise<number> {
     console.log();
 
     // ── Step 2: provider selection ───────────────────────────────────────────
-    console.log(c.bold("  Step 2 / 3  —  Select providers"));
+    console.log(c.bold("  Step 2 / 4  —  Select providers"));
     console.log();
     console.log("  Enter provider numbers (space/comma separated) to toggle selection.");
     console.log("  Press " + c.bold("Enter") + " on an empty line when done.");
@@ -303,7 +324,8 @@ export async function runInitCli(): Promise<number> {
     console.log();
 
     // ── Step 3: key entry ────────────────────────────────────────────────────
-    console.log(c.bold("  Step 3 / 3  —  Enter API keys"));
+    console.log(c.bold("  Step 3 / 4  —  Enter API keys"));
+
     console.log();
 
     const collectedKeys: Record<string, string | string[]> = { prismd: prismdToken };
@@ -390,6 +412,53 @@ export async function runInitCli(): Promise<number> {
       );
     }
 
+    // ── Step 4: configure coding clients ─────────────────────────────────────
+    console.log();
+    console.log(c.bold("  Step 4 / 4  —  Configure coding clients (optional)"));
+    console.log();
+    console.log("  Select clients to auto-generate config files or helper launch scripts.");
+    console.log("  Enter numbers (space/comma separated) to toggle, or press " + c.bold("Enter") + " when done (empty to skip).");
+    console.log();
+
+    const selectedClients = new Set<number>();
+    printClientMenu(SUPPORTED_CLIENTS, selectedClients);
+
+    while (true) {
+      const raw = (await rl.question("  Toggle (numbers) or Enter to confirm: ")).trim();
+      if (raw === "") break;
+
+      const nums = raw
+        .split(/[\s,]+/)
+        .map((s) => parseInt(s.trim(), 10) - 1)
+        .filter((n) => !isNaN(n) && n >= 0 && n < SUPPORTED_CLIENTS.length);
+
+      for (const n of nums) {
+        selectedClients.has(n) ? selectedClients.delete(n) : selectedClients.add(n);
+      }
+
+      console.log();
+      printClientMenu(SUPPORTED_CLIENTS, selectedClients);
+    }
+
+    const clientResults: SetupResult[] = [];
+    if (selectedClients.size > 0) {
+      console.log();
+      console.log(c.bold("  Writing client configurations..."));
+      for (const idx of [...selectedClients].sort((a, b) => a - b)) {
+        const clientDef = SUPPORTED_CLIENTS[idx];
+        const res = setupClient(clientDef.id, homeDir, prismdToken);
+        if (res) {
+          clientResults.push(res);
+          for (const f of res.filesWritten) {
+            console.log(c.green("  [+] ") + `${res.name}: configured ${c.dim(f)}`);
+          }
+          if (res.notes) {
+            console.log(c.dim(`      ${res.notes}`));
+          }
+        }
+      }
+    }
+
     // ── Next steps ────────────────────────────────────────────────────────────
     const configuredProviders = Object.keys(collectedKeys).filter((k) => k !== "prismd");
 
@@ -400,27 +469,43 @@ export async function runInitCli(): Promise<number> {
     console.log();
     console.log(`  ${c.bold("Auth token:")}  ${c.cyan(prismdToken)}`);
     console.log(`  ${c.bold("Providers:")}   ${configuredProviders.join(", ")}`);
+    if (clientResults.length > 0) {
+      console.log(`  ${c.bold("Clients:")}     ${clientResults.map((r) => r.name).join(", ")}`);
+    }
     console.log();
-    console.log(c.bold("  Start the gateway:"));
+    console.log(c.bold("  1. Start the gateway:"));
     console.log();
     console.log("    " + c.cyan("prismd"));
     console.log();
-    console.log(c.bold("  Connect an agent — Claude Code example:"));
-    console.log();
-    console.log(
-      "    export ANTHROPIC_BASE_URL=" + c.cyan('"http://127.0.0.1:8787/v1"'),
-    );
-    console.log("    export ANTHROPIC_API_KEY=" + c.cyan(`"${prismdToken}"`));
-    console.log("    " + c.cyan("claude"));
-    console.log();
-    console.log(
-      c.dim(
-        "  Cursor, Codex CLI, Aider and others: https://github.com/AgentsCraft/prismd#connect-your-agent",
-      ),
-    );
-    console.log();
+
+    if (clientResults.length > 0) {
+      console.log(c.bold("  2. Launch your configured client(s):"));
+      console.log();
+      for (const cr of clientResults) {
+        console.log(`    ${c.bold(cr.name)}:`);
+        console.log("      " + c.cyan(cr.launchCommand));
+        console.log();
+      }
+    } else {
+      console.log(c.bold("  2. Connect an agent — Claude Code example:"));
+      console.log();
+      console.log(
+        "    export ANTHROPIC_BASE_URL=" + c.cyan('"http://127.0.0.1:8787/v1"'),
+      );
+      console.log("    export ANTHROPIC_API_KEY=" + c.cyan(`"${prismdToken}"`));
+      console.log("    " + c.cyan("claude"));
+      console.log();
+      console.log(
+        c.dim(
+          "  Codex CLI, OpenCode, Pi Agent, Cursor: https://github.com/AgentsCraft/prismd#connect-your-agent",
+        ),
+      );
+      console.log();
+    }
+
     console.log("  Dashboard: " + c.cyan("http://127.0.0.1:8787/ui"));
     console.log();
+
 
     return 0;
   } finally {
