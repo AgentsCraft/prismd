@@ -174,14 +174,20 @@ export function convertResponsesToChatRequest(
 
   // Convert tools
   if (Array.isArray(body.tools) && body.tools.length > 0) {
-    chatRequest.tools = body.tools.map((t) => {
-      if (!t || typeof t !== "object") return t;
+    const validTools: Array<Record<string, unknown>> = [];
+    for (const t of body.tools) {
+      if (!t || typeof t !== "object") continue;
       const tool = t as Record<string, unknown>;
+      if (tool.type === "mcp") {
+        validTools.push(tool);
+        continue;
+      }
       if (tool.function && typeof tool.function === "object") {
-        return tool;
+        validTools.push(tool);
+        continue;
       }
       if (tool.type === "function" || typeof tool.name === "string") {
-        return {
+        validTools.push({
           type: "function",
           function: {
             name: tool.name,
@@ -189,10 +195,16 @@ export function convertResponsesToChatRequest(
             parameters: tool.parameters,
             ...(tool.strict !== undefined ? { strict: tool.strict } : {}),
           },
-        };
+        });
+        continue;
       }
-      return tool;
-    });
+      // Omit non-function/non-mcp tools (e.g. web_search, local_shell) because
+      // upstream Chat Completions APIs (OpenRouter, Groq, Cerebras, etc.)
+      // reject them with: "tools[i].type must be one of [function, mcp]"
+    }
+    if (validTools.length > 0) {
+      chatRequest.tools = validTools;
+    }
   }
 
   // Convert tool_choice

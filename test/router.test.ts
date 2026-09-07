@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveAlias, resolveClaudeModelAlias, shouldFailover, parseTagsHeader } from "../src/core/router.js";
+import {
+  resolveAlias,
+  resolveClaudeModelAlias,
+  resolveModelAlias,
+  shouldFailover,
+  parseTagsHeader,
+} from "../src/core/router.js";
 import type { AliasModel } from "../src/types/config.js";
 import { makeValidConfig } from "./helpers.js";
 
@@ -94,5 +100,32 @@ test("parseTagsHeader parses comma-delimited strings and arrays with deduplicati
   assert.equal(parseTagsHeader(""), undefined);
   assert.deepEqual(parseTagsHeader("coding, fast, coding"), ["coding", "fast"]);
   assert.deepEqual(parseTagsHeader(["CODING", "  tool-call  ", "coding"]), ["coding", "tool-call"]);
+});
+
+test("resolveModelAlias returns exact, case-insensitive, or falls back to free-auto", () => {
+  const customModels: Models = {
+    "free-auto": models["free-auto"],
+    "deepseek-coder": models["free-auto"],
+  };
+
+  // Exact match
+  assert.equal(resolveModelAlias(customModels, "deepseek-coder"), "deepseek-coder");
+  // Case-insensitive match
+  assert.equal(resolveModelAlias(customModels, "DEEPSEEK-CODER"), "deepseek-coder");
+  // Substring match
+  assert.equal(resolveModelAlias(customModels, "deepseek"), "deepseek-coder");
+  // Unknown model from known family falls back to free-auto
+  assert.equal(resolveModelAlias(customModels, "gpt-5.5"), "free-auto");
+  assert.equal(resolveModelAlias(customModels, "gpt-4o"), "free-auto");
+  assert.equal(resolveModelAlias(customModels, "o3-mini"), "free-auto");
+
+  // Completely unknown non-family returns as-is so router 404s
+  assert.equal(resolveModelAlias(customModels, "nope"), "nope");
+
+  // When free-auto is not present, falls back to first configured model
+  const otherModels: Models = {
+    "primary-model": models["free-auto"],
+  };
+  assert.equal(resolveModelAlias(otherModels, "gpt-5.5"), "primary-model");
 });
 

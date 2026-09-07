@@ -140,7 +140,7 @@ export function updateCodexToml(existingToml: string): string {
         continue;
       }
       if (/^\s*model\s*=/.test(line)) {
-        resultLines.push('model = "free-auto"');
+        resultLines.push('model = "gpt-5.5"');
         seenModel = true;
         continue;
       }
@@ -154,7 +154,7 @@ export function updateCodexToml(existingToml: string): string {
     prepends.push('model_provider = "prismd"');
   }
   if (!seenModel) {
-    prepends.push('model = "free-auto"');
+    prepends.push('model = "gpt-5.5"');
   }
 
   let finalOutput = resultLines;
