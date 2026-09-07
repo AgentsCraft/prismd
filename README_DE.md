@@ -54,13 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### Schritt 2: API-Keys konfigurieren
+### Schritt 2: Initialisierung & Konfiguration (Interaktiver Assistent)
 
-Tragen Sie Ihre Keys in `~/.prismd/keys.yaml` oder `./.env` ein (einer oder mehrere; nicht konfigurierte Provider werden übersprungen).
-Das Standardverzeichnis lässt sich mit `PRISMD_HOME=/pfad/zum/verzeichnis` überschreiben — `prismd generate` und das Gateway lesen `keys.yaml` und `prismd.json` dann aus diesem Pfad statt aus `~/.prismd`.
+Führen Sie den interaktiven Setup-Assistenten aus:
+```bash
+prismd init
+```
+Der Assistent führt Sie durch folgende Schritte:
+1. Lokales Schutz-Token (`prismd:`) festlegen.
+2. Kostenlose Provider auswählen (OpenRouter, Groq, Google Gemini etc.) und Keys eingeben.
+3. **Coding-Clients automatisch konfigurieren** (Claude Code, Codex CLI, OpenCode, Pi Agent) inklusive automatischer Backups (`.bak.<Zeitstempel>`)!
+
+*(Manuelle Konfiguration bevorzugt? Bearbeiten Sie `~/.prismd/keys.yaml` oder setzen Sie `PRISMD_HOME`).*
 
 ```yaml
-# ~/.prismd/keys.yaml (Empfohlene Rechte: chmod 600)
+# Manuelles Setup: ~/.prismd/keys.yaml (Empfohlene Rechte: chmod 600)
 prismd: "mein-lokales-geheimnis" # Lokaler Schutz-Token (für Clients)
 
 # Cloud-Provider (Einzel-Key oder Multi-Key-Pool für Round-Robin):

@@ -54,13 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### 2단계: API Key 설정
+### 2단계: 초기화 및 설정 (대화형 마법사)
 
-`~/.prismd/keys.yaml` 또는 `./.env` 파일에 무료 API Key를 설정합니다 (하나 이상 설정 가능, 미설정 제공자는 자동 건너뜀).
-기본 설정 디렉토리를 변경하려면 `PRISMD_HOME=/경로/지정` 환경 변수를 설정하세요 — `prismd generate`와 게이트웨이 모두 `~/.prismd` 대신 해당 경로에서 `keys.yaml`과 `prismd.json`을 읽습니다.
+대화형 설정 마법사를 실행하여 키와 클라이언트를 설정합니다:
+```bash
+prismd init
+```
+마법사 제공 기능:
+1. 로컬 보호 토큰(`prismd:`) 설정.
+2. 무료 제공자(OpenRouter, Groq, Google Gemini 등)를 선택하고 API Key 입력.
+3. **코딩 클라이언트 자동 설정**(Claude Code, Codex CLI, OpenCode, Pi Agent) 및 기존 설정 안전 자동 백업(`.bak.<타임스탬프>`)!
+
+*(수동 설정을 선호하는 경우 `~/.prismd/keys.yaml`을 직접 편집하거나 `PRISMD_HOME`을 설정하세요).*
 
 ```yaml
-# ~/.prismd/keys.yaml (권장 권한: chmod 600)
+# 수동 설정 예시: ~/.prismd/keys.yaml (권장 권한: chmod 600)
 prismd: "my-local-secret"       # 로컬 보호 토큰 (클라이언트 연결용)
 
 # 클라우드 제공자 (단일 Key 또는 다중 Key 라운드로빈 풀 지원):

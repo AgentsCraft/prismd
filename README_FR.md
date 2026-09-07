@@ -54,13 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### Étape 2 : Configuration des Clés API
+### Étape 2 : Initialisation & Configuration (Assistant Interactif)
 
-Renseignez vos clés dans `~/.prismd/keys.yaml` ou `./.env` (configurez-en une ou plusieurs ; les fournisseurs non configurés sont ignorés).
-Pour personnaliser le répertoire de configuration, définissez `PRISMD_HOME=/chemin/vers/dossier` — `prismd generate` et la passerelle résoudront `keys.yaml` et `prismd.json` à partir de ce chemin au lieu de `~/.prismd`.
+Exécutez l'assistant de configuration interactif :
+```bash
+prismd init
+```
+L'assistant vous permet de :
+1. Définir votre jeton local (`prismd:`).
+2. Choisir vos fournisseurs gratuits (OpenRouter, Groq, Google Gemini etc.) et saisir vos clés.
+3. **Configurer automatiquement vos clients d'encodage** (Claude Code, Codex CLI, OpenCode, Pi Agent) avec sauvegardes automatiques (`.bak.<horodatage>`) !
+
+*(Vous préférez la configuration manuelle ? Éditez `~/.prismd/keys.yaml` ou utilisez `PRISMD_HOME`).*
 
 ```yaml
-# ~/.prismd/keys.yaml (permissions recommandées : chmod 600)
+# Configuration manuelle : ~/.prismd/keys.yaml (permissions recommandées : chmod 600)
 prismd: "mon-secret-local"      # Jeton de protection local (utilisé par les clients)
 
 # Fournisseurs Cloud (clé unique ou pool multi-clés pour rotation automatique) :

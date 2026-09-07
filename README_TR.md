@@ -54,13 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### 2. Adım: API Anahtarlarını Yapılandırma
+### 2. Adım: Başlatma ve Yapılandırma (Etkileşimli Sihirbaz)
 
-Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır).
-Varsayılan yapılandırma dizinini değiştirmek için `PRISMD_HOME=/yol/dizin` ortam değişkenini ayarlayın — hem `prismd generate` hem de gateway, `keys.yaml` ve `prismd.json` dosyalarını `~/.prismd` yerine o yoldan okur.
+Etkileşimli kurulum sihirbazını çalıştırın:
+```bash
+prismd init
+```
+Sihirbaz şunları sağlar:
+1. Yerel koruma belirtecini (`prismd:`) belirleyin.
+2. Ücretsiz sağlayıcıları seçin (OpenRouter, Groq, Google Gemini vb.) ve API anahtarlarını girin.
+3. **Kodlama istemcilerini otomatik yapılandırın** (Claude Code, Codex CLI, OpenCode, Pi Agent) ve mevcut dosyaların güvenli zaman damgalı yedeklerini (`.bak.<zaman_damgası>`) alın!
+
+*(Manuel yapılandırmayı mı tercih ediyorsunuz? `~/.prismd/keys.yaml` dosyasını düzenleyin veya `PRISMD_HOME` kullanın).*
 
 ```yaml
-# ~/.prismd/keys.yaml (önerilen izin: chmod 600)
+# Manuel yapılandırma örneği: ~/.prismd/keys.yaml (önerilen izin: chmod 600)
 prismd: "yerel-gizli-token"     # Yerel koruma belirteci (istemciler tarafından kullanılır)
 
 # Bulut Sağlayıcıları (round-robin için tek anahtar veya çoklu anahtar havuzunu destekler):

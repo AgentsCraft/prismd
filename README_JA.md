@@ -54,13 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### ステップ 2: API Key の設定
+### ステップ 2: 初期化と設定（対話型ウィザード）
  
-`~/.prismd/keys.yaml` または `./.env` に無料 API Key を設定します（1 つ以上設定可能。未設定のプロバイダーは自動的にスキップされます）。
-設定ディレクトリをカスタマイズするには `PRISMD_HOME=/path/to/dir` を設定してください — `prismd generate` とゲートウェイは `~/.prismd` の代わりにそのパスから `keys.yaml` と `prismd.json` を読み込みます。
- 
+対話型セットアップウィザードを実行してキーとクライアントを設定します：
+```bash
+prismd init
+```
+ウィザードの機能：
+1. ローカル保護トークン（`prismd:`）の設定。
+2. 無料プロバイダー（OpenRouter、Groq、Google Gemini など）を選択して API キーを入力。
+3. **コーディングクライアントの自動設定**（Claude Code、Codex CLI、OpenCode、Pi Agent）と既存設定の安全な自動バックアップ（`.bak.<日時>`）！
+
+*(手動設定をご希望の場合は `~/.prismd/keys.yaml` を直接編集するか、`PRISMD_HOME` を設定してください)*。
+
 ```yaml
-# ~/.prismd/keys.yaml (推奨権限 chmod 600)
+# 手動設定例: ~/.prismd/keys.yaml (推奨権限 chmod 600)
 prismd: "my-local-secret"       # ローカル保護トークン（クライアント接続用）
  
 # クラウドプロバイダー（単一キーまたは複数キーのラウンドロビンプールに対応）：

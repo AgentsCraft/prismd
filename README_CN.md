@@ -54,13 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### 步骤 2：配置 API Key
+### 步骤 2：初始化与配置（交互式向导）
 
-在 `~/.prismd/keys.yaml` 或工程目录 `.env` 中填入你的免费 API Key（配置任意一个或多个均可，未配置的提供商自动跳过）。
-如需自定义配置目录，可设置环境变量 `PRISMD_HOME=/path/to/dir`——`prismd generate` 和网关均从该路径读取 `keys.yaml` 和 `prismd.json`，而非默认的 `~/.prismd`。
+运行交互式初始化向导，快速配置 Key 与客户端：
+```bash
+prismd init
+```
+向导将引导你：
+1. 设置本地保护令牌（默认自动生成随机密钥）。
+2. 选择要启用的免费模型提供商（OpenRouter、Groq、Google Gemini、Cerebras 等）并填入 API Key。
+3. **自动配置常用 Coding Agent**（Claude Code、Codex CLI、OpenCode、Pi Agent），自动落盘配置文件或快捷启动脚本，并自动为已有配置生成时间戳备份（`.bak.<时间戳>`）！
+
+*(偏好手动配置？亦可手动编辑 `~/.prismd/keys.yaml`，或通过 `PRISMD_HOME` 环境变量自定义配置目录)*。
 
 ```yaml
-# ~/.prismd/keys.yaml (建议权限 chmod 600)
+# 手动配置示例：~/.prismd/keys.yaml (建议权限 chmod 600)
 prismd: "my-local-secret"       # 本地网关安全保护令牌（客户端连接使用）
 
 # 云端模型服务商（支持填单 Key 或多 Key 列表实现自动轮询）：
