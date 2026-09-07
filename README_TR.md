@@ -96,14 +96,14 @@ prismd
 
 ### 3. Adım: Ajanınızı Yapılandırın
 
-| İstemci | Hızlı Kurulum | Kılavuz |
+| İstemci | Hızlı Başlangıç (`prismd init` otomatik yapılandırma) | Kılavuz |
 |---|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="yerel-gizli-token"`<br>`claude` | [Kılavuz](examples/claude-code/README.md) |
-| **Codex CLI** | `PRISMD_API_KEY=yerel-gizli-token codex --profile prismd` | [Kılavuz](examples/codex/README.md) |
+| **Claude Code** | `claude` (`~/.claude/settings.json` içinde yapılandırıldı) | [Kılavuz](examples/claude-code/README.md) |
+| **Codex CLI** | `codex` (`~/.codex/config.toml` ve `auth.json` içinde yapılandırıldı) | [Kılavuz](examples/codex/README.md) |
+| **OpenCode** | `opencode` (`~/.config/opencode/opencode.json` içinde yapılandırıldı) | [Kılavuz](examples/opencode/README.md) |
+| **Pi Agent** | `pi` (`~/.pi/config.json` içinde yapılandırıldı) | [Kılavuz](examples/pi/README.md) |
 | **Cursor** | Settings → Models → OpenAI API Key etkinleştirin (`yerel-gizli-token`)<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Model ekleyin: `free-auto` | [Kılavuz](examples/cursor/README.md) |
-| **OpenCode** | `~/.config/opencode/config.json` dosyasında `baseUrl: "http://127.0.0.1:8787/v1"` ayarlayın | [Kılavuz](examples/opencode/README.md) |
 | **DeepSeek Harness (dsh)** | `~/.dsh/config.toml` dosyasında `base_url = "http://127.0.0.1:8787/v1"` ayarlayın<br>`PRISMD_API_KEY=yerel-gizli-token dsh --model prismd:free-auto` | [Kılavuz](examples/dsh/README.md) |
-| **Pi Agent** | `~/.pi/config.json` dosyasında `endpoint: "http://127.0.0.1:8787/v1"` ayarlayın<br>`pi run` | [Kılavuz](examples/pi/README.md) |
 | **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="yerel-gizli-token"` `aider --model openai/free-auto` | [Kılavuz](examples/aider/README.md) |
 
 > 📖 **Tam Belgeler**: Protokol ve gelişmiş yapılandırma detayları için [İstemci Entegrasyon Kılavuzu](docs/clients/README.md) sayfasına bakın.

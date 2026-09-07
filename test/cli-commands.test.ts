@@ -96,7 +96,8 @@ test("prismd init option 1 configures coding clients using existing token withou
 
   assert.equal(run.status, 0, run.stderr);
   assert.ok(run.stdout.includes("Client setup complete!"));
-  assert.ok(existsSync(join(home, ".codex", "prismd.config.toml")));
+  assert.ok(existsSync(join(home, ".codex", "config.toml")));
+  assert.ok(existsSync(join(home, ".codex", "auth.json")));
   assert.equal(readFileSync(join(homePrismd, "keys.yaml"), "utf8"), "prismd: original-token-123\n");
 });
 

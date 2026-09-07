@@ -96,14 +96,14 @@ prismd
 
 ### 3단계: 에이전트 클라이언트 설정
 
-| 클라이언트 | 빠른 설정 | 가이드 |
+| 클라이언트 | 빠른 시작 (`prismd init` 자동 구성) | 가이드 |
 |---|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [가이드](examples/claude-code/README.md) |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [가이드](examples/codex/README.md) |
+| **Claude Code** | `claude` (`~/.claude/settings.json`에 자동 구성) | [가이드](examples/claude-code/README.md) |
+| **Codex CLI** | `codex` (`~/.codex/config.toml` 및 `auth.json`에 자동 구성) | [가이드](examples/codex/README.md) |
+| **OpenCode** | `opencode` (`~/.config/opencode/opencode.json`에 자동 구성) | [가이드](examples/opencode/README.md) |
+| **Pi Agent** | `pi` (`~/.pi/config.json`에 자동 구성) | [가이드](examples/pi/README.md) |
 | **Cursor** | Settings → Models → OpenAI API Key 활성화 (`my-local-secret` 입력)<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>모델 추가: `free-auto` | [가이드](examples/cursor/README.md) |
-| **OpenCode** | `~/.config/opencode/config.json`에서 `baseUrl: "http://127.0.0.1:8787/v1"` 설정 | [가이드](examples/opencode/README.md) |
 | **DeepSeek Harness (dsh)** | `~/.dsh/config.toml`에서 `base_url = "http://127.0.0.1:8787/v1"` 설정<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [가이드](examples/dsh/README.md) |
-| **Pi Agent** | `~/.pi/config.json`에서 `endpoint: "http://127.0.0.1:8787/v1"` 설정<br>`pi run` | [가이드](examples/pi/README.md) |
 | **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [가이드](examples/aider/README.md) |
 
 > 📖 **전체 문서**: [클라이언트 연동 가이드 및 프로토콜 상세](docs/clients/README.md)를 참조하세요.

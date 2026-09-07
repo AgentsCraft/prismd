@@ -96,14 +96,14 @@ prismd
 
 ### 步骤 3：配置智能体客户端（即开即用）
 
-| 客户端 | 极简配置命令 / 设置项 | 配置示例 |
+| 客户端 | 原生启动命令（`prismd init` 自动配置） | 配置指南 |
 |---|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [详细指南](examples/claude-code/README.md) |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [详细指南](examples/codex/README.md) |
+| **Claude Code** | `claude`（自动配置至 `~/.claude/settings.json`） | [详细指南](examples/claude-code/README.md) |
+| **Codex CLI** | `codex`（自动配置至 `~/.codex/config.toml` 与 `auth.json`） | [详细指南](examples/codex/README.md) |
+| **OpenCode** | `opencode`（自动配置至 `~/.config/opencode/opencode.json`） | [详细指南](examples/opencode/README.md) |
+| **Pi Agent** | `pi`（自动配置至 `~/.pi/config.json`） | [详细指南](examples/pi/README.md) |
 | **Cursor** | Settings → Models → 开启 OpenAI API Key（填 `my-local-secret`）<br>勾选 **Override OpenAI Base URL** 填 `http://127.0.0.1:8787/v1`<br>模型填 `free-auto` | [详细指南](examples/cursor/README.md) |
-| **OpenCode** | `~/.config/opencode/config.json` 设置 `baseUrl: "http://127.0.0.1:8787/v1"` | [详细指南](examples/opencode/README.md) |
 | **DeepSeek Harness (dsh)** | `~/.dsh/config.toml` 设置 `base_url = "http://127.0.0.1:8787/v1"`<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [详细指南](examples/dsh/README.md) |
-| **Pi Agent** | `~/.pi/config.json` 设置 `endpoint: "http://127.0.0.1:8787/v1"`<br>`pi run` | [详细指南](examples/pi/README.md) |
 | **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [详细指南](examples/aider/README.md) |
 
 > 📖 **完整文档**：参阅 [智能体客户端接入总览与协议详解](docs/clients/README.md)。
