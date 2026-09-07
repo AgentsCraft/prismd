@@ -2,22 +2,21 @@
  * prismd init — interactive setup wizard.
  *
  * Guides the user through:
- *   1. Choosing a local auth token (prismd:)
- *   2. Selecting one or more cloud providers
- *   3. Entering API keys for each selected provider
- *   4. Writing ~/.prismd/keys.yaml (chmod 600)
- *   5. Running prismd generate to build prismd.json
- *   6. Printing next-step instructions
+ *   - Mode selection when existing configs are found (clients only, re-configure, regenerate)
+ *   - Local auth token generation/configuration (prismd:)
+ *   - Selecting cloud providers (OpenRouter, Groq, Google Gemini, Cerebras, etc.)
+ *   - Entering API keys (multi-key pooling supported)
+ *   - Automated coding client setup (Claude Code, Codex CLI, OpenCode, Pi Agent) with backups
+ *   - Generating ~/.prismd/keys.yaml (chmod 600) and ~/.prismd/prismd.json
  *
- * Zero external dependencies — uses only Node.js built-ins:
- *   readline/promises for input, crypto for random token generation.
+ * Zero external dependencies — uses pure Node built-ins (crypto, fs, path, os).
  */
-import { createInterface } from "node:readline/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { generateConfigStringAsync } from "../generate-config.js";
+import { loadKeyStore } from "../keys.js";
 import {
   SUPPORTED_CLIENTS,
   setupClient,
@@ -26,8 +25,6 @@ import {
   type ClientDefinition,
   type SetupResult,
 } from "./client-config.js";
-
-
 
 // ── ANSI helpers (only when TTY) ─────────────────────────────────────────────
 const isTTY = process.stdout.isTTY;
@@ -108,6 +105,99 @@ const PROVIDERS: ProviderDef[] = [
   },
 ];
 
+// ── Stream / input reader ─────────────────────────────────────────────────────
+
+class PromptReader {
+  private lines: string[] = [];
+  private waiters: ((line: string) => void)[] = [];
+  private closed = false;
+
+  constructor() {
+    let buffer = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk: string) => {
+      buffer += chunk;
+      const parts = buffer.split(/\r?\n/);
+      buffer = parts.pop() ?? "";
+      for (const line of parts) {
+        if (this.waiters.length > 0) {
+          const waiter = this.waiters.shift()!;
+          waiter(line);
+        } else {
+          this.lines.push(line);
+        }
+      }
+    });
+    process.stdin.on("end", () => {
+      this.closed = true;
+      if (buffer.length > 0) {
+        const line = buffer;
+        buffer = "";
+        if (this.waiters.length > 0) {
+          this.waiters.shift()!(line);
+        } else {
+          this.lines.push(line);
+        }
+      }
+      while (this.waiters.length > 0) {
+        this.waiters.shift()!("");
+      }
+    });
+  }
+
+  async readLine(prompt?: string): Promise<string> {
+    if (prompt) process.stdout.write(prompt);
+    if (this.lines.length > 0) {
+      return this.lines.shift()!;
+    }
+    if (this.closed) return "";
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
+  async readSecret(prompt: string): Promise<string> {
+    if (!isTTY || process.platform === "win32") {
+      return (await this.readLine(prompt)).trim();
+    }
+    process.stdout.write(prompt);
+    return new Promise((resolve) => {
+      let input = "";
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.setEncoding("utf8");
+      const onData = (ch: string) => {
+        if (ch === "\r" || ch === "\n" || ch === "\u0004") {
+          process.stdin.setRawMode(false);
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+          process.stdout.write("\n");
+          resolve(input.trim());
+        } else if (ch === "\u0003") {
+          process.stdin.setRawMode(false);
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+          process.stdout.write("\n");
+          process.exit(130);
+        } else if (ch === "\u007f" || ch === "\b") {
+          if (input.length > 0) {
+            input = input.slice(0, -1);
+            process.stdout.write("\b \b");
+          }
+        } else {
+          input += ch;
+          process.stdout.write("*");
+        }
+      };
+      process.stdin.on("data", onData);
+    });
+  }
+
+  close(): void {
+    process.stdin.pause();
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function randomToken(): string {
@@ -124,7 +214,6 @@ function printBanner(): void {
   console.log("  generates your gateway config.");
   console.log();
 }
-
 
 function printProviderMenu(providers: ProviderDef[], selected: Set<number>): void {
   console.log(c.bold("  Available providers:"));
@@ -159,62 +248,57 @@ function printClientMenu(
   console.log();
 }
 
-
-
 /**
- * Read input with characters masked as "*".
- * Falls back to plain readline.question on non-TTY (CI/pipe).
+ * Interactive selection and execution of client configurations.
  */
-async function readSecret(
-  rl: ReturnType<typeof createInterface>,
-  prompt: string,
-): Promise<string> {
-  if (!isTTY || process.platform === "win32") {
-    // Windows raw-mode is unreliable in some terminals; fall back to visible input.
-    return (await rl.question(prompt)).trim();
-  }
-  process.stdout.write(prompt);
-  return new Promise((resolve) => {
-    let input = "";
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.setEncoding("utf8");
-    const onData = (ch: string) => {
-      if (ch === "\r" || ch === "\n" || ch === "\u0004") {
-        process.stdin.setRawMode(false);
-        process.stdin.pause();
-        process.stdin.removeListener("data", onData);
-        process.stdout.write("\n");
-        resolve(input);
-      } else if (ch === "\u0003") {
-        process.stdin.setRawMode(false);
-        process.stdin.pause();
-        process.stdin.removeListener("data", onData);
-        process.stdout.write("\n");
-        process.exit(130);
-      } else if (ch === "\u007f" || ch === "\b") {
-        if (input.length > 0) {
-          input = input.slice(0, -1);
-          process.stdout.write("\b \b");
-        }
-      } else {
-        input += ch;
-        process.stdout.write("*");
-      }
-    };
-    process.stdin.on("data", onData);
-  });
-}
+async function runClientConfigurationFlow(
+  reader: PromptReader,
+  homeDir: string,
+  prismdToken: string,
+): Promise<SetupResult[]> {
+  console.log(c.bold("  Configure coding clients:"));
+  console.log();
+  console.log("  Enter numbers of the clients you want to set up (space/comma separated).");
+  console.log("  Press " + c.bold("Enter") + " to skip.");
+  console.log();
 
-async function confirm(
-  rl: ReturnType<typeof createInterface>,
-  prompt: string,
-  defaultYes = true,
-): Promise<boolean> {
-  const hint = defaultYes ? "[Y/n]" : "[y/N]";
-  const answer = (await rl.question(`  ${prompt} ${c.dim(hint)} `)).trim().toLowerCase();
-  if (answer === "") return defaultYes;
-  return answer === "y" || answer === "yes";
+  printClientMenu(SUPPORTED_CLIENTS, new Set(), homeDir);
+
+  const raw = (await reader.readLine("  Select clients (e.g. 1 2, or Enter to skip): ")).trim();
+  if (raw === "") {
+    return [];
+  }
+
+  const selectedNums = raw
+    .split(/[\s,]+/)
+    .map((s) => parseInt(s.trim(), 10) - 1)
+    .filter((n) => !isNaN(n) && n >= 0 && n < SUPPORTED_CLIENTS.length);
+
+  const selectedSet = new Set(selectedNums);
+  const clientResults: SetupResult[] = [];
+
+  if (selectedSet.size > 0) {
+    console.log();
+    console.log(c.bold("  Writing client configurations..."));
+    for (const idx of [...selectedSet].sort((a, b) => a - b)) {
+      const clientDef = SUPPORTED_CLIENTS[idx];
+      const res = setupClient(clientDef.id, homeDir, prismdToken);
+      if (res) {
+        clientResults.push(res);
+        for (const b of res.backupsCreated) {
+          console.log(c.yellow("  [!] ") + `${res.name}: backed up previous config to ${c.dim(b)}`);
+        }
+        for (const f of res.filesWritten) {
+          console.log(c.green("  [+] ") + `${res.name}: configured ${c.dim(f)}`);
+        }
+        if (res.notes) {
+          console.log(c.dim(`      ${res.notes}`));
+        }
+      }
+    }
+  }
+
+  return clientResults;
 }
 
 function serializeKeysYaml(
@@ -251,7 +335,7 @@ export async function runInitCli(): Promise<number> {
 
   printBanner();
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const reader = new PromptReader();
 
   try {
     // ── Existing config check ────────────────────────────────────────────────
@@ -262,17 +346,84 @@ export async function runInitCli(): Promise<number> {
       if (keysExist)    console.log("     " + c.dim(keysPath));
       if (configExists) console.log("     " + c.dim(configPath));
       console.log();
-      const ok = await confirm(rl, "Re-run init and overwrite existing keys.yaml?", false);
-      if (!ok) {
+      console.log(c.bold("  What would you like to do?"));
+      console.log("    1. Configure coding clients only   " + c.dim("(Claude Code, Codex, OpenCode, Pi Agent)"));
+      console.log("    2. Re-configure gateway API keys   " + c.dim("(Re-run full setup; keys.yaml will be backed up)"));
+      console.log("    3. Regenerate prismd.json          " + c.dim("(Recompile gateway config from existing keys.yaml)"));
+      console.log("    4. Exit");
+      console.log();
+
+      const choice = (await reader.readLine(`  Select option ${c.dim("[default: 1]")} : `)).trim();
+
+      if (choice === "1" || choice === "") {
+        // Mode 1: Configure coding clients only
+        const store = loadKeyStore(homeDir, cwd);
+        const rawToken = store.yaml?.["prismd"];
+        const existingToken =
+          typeof rawToken === "string" && rawToken.trim() !== "" ? rawToken.trim() : undefined;
+        let tokenToUse = existingToken ?? randomToken();
+
         console.log();
-        console.log(
-          "  Aborted. Run " +
-            c.cyan("prismd generate") +
-            " to rebuild prismd.json from existing keys.",
-        );
+        console.log(c.bold("  Local Auth Token"));
+        console.log(`  Current token: ${c.cyan(tokenToUse)}`);
+        const changeToken = (await reader.readLine("  Press Enter to keep this token, or enter a new one: ")).trim();
+        if (changeToken !== "") {
+          tokenToUse = changeToken;
+        }
+        console.log();
+
+        const clientResults = await runClientConfigurationFlow(reader, homeDir, tokenToUse);
+
+        console.log();
+        console.log("  " + "─".repeat(45));
+        console.log();
+        console.log(c.green(c.bold("  Client setup complete!")));
+        console.log();
+        if (clientResults.length > 0) {
+          console.log(c.bold("  Launch your configured client(s):"));
+          console.log();
+          for (const cr of clientResults) {
+            console.log(`    ${c.bold(cr.name)}:`);
+            console.log("      " + c.cyan(cr.launchCommand));
+            console.log();
+          }
+        }
+        console.log("  Dashboard: " + c.cyan("http://127.0.0.1:8787/ui"));
         console.log();
         return 0;
       }
+
+      if (choice === "3") {
+        console.log();
+        console.log("  Building gateway config from existing keys...");
+        try {
+          const content = await generateConfigStringAsync({
+            homeDir,
+            cwd,
+            liveCheck: true,
+            warn: (msg) => console.log(c.yellow("  [!] ") + msg),
+          });
+          writeFileSync(configPath, content, { mode: 0o600 });
+          console.log(c.green("  [+] ") + "prismd.json written  " + c.dim(configPath));
+        } catch (err) {
+          console.log(c.yellow("  [!] Config generation failed: ") + (err as Error).message);
+        }
+        console.log();
+        return 0;
+      }
+
+      if (choice === "4") {
+        console.log("  Exited.");
+        console.log();
+        return 0;
+      }
+
+      if (choice !== "2") {
+        console.log(c.yellow("  Unrecognized option. Exited."));
+        console.log();
+        return 0;
+      }
+
       console.log();
     }
 
@@ -284,7 +435,7 @@ export async function runInitCli(): Promise<number> {
     console.log("  Any string works — it never leaves your machine.");
     console.log();
     const tokenInput = (
-      await rl.question(`  Token ${c.dim(`[default: ${defaultToken}]`)} : `)
+      await reader.readLine(`  Token ${c.dim(`[default: ${defaultToken}]`)} : `)
     ).trim();
     const prismdToken = tokenInput !== "" ? tokenInput : defaultToken;
     console.log();
@@ -300,7 +451,7 @@ export async function runInitCli(): Promise<number> {
     printProviderMenu(PROVIDERS, selected);
 
     while (true) {
-      const raw = (await rl.question("  Toggle (numbers) or Enter to confirm: ")).trim();
+      const raw = (await reader.readLine("  Toggle (numbers) or Enter to confirm: ")).trim();
 
       if (raw === "") {
         if (selected.size === 0) {
@@ -336,7 +487,6 @@ export async function runInitCli(): Promise<number> {
 
     // ── Step 3: key entry ────────────────────────────────────────────────────
     console.log(c.bold("  Step 3 / 4  —  Enter API keys"));
-
     console.log();
 
     const collectedKeys: Record<string, string | string[]> = { prismd: prismdToken };
@@ -357,8 +507,7 @@ export async function runInitCli(): Promise<number> {
         const providerKeys: string[] = [];
         let idx = 1;
         while (true) {
-          const key = await readSecret(
-            rl,
+          const key = await reader.readSecret(
             `  Key ${idx} ${c.dim(`(${provider.keyExample})`)}${idx > 1 ? c.dim(" [empty to stop]") : ""} : `,
           );
           if (key.trim() === "") {
@@ -377,8 +526,7 @@ export async function runInitCli(): Promise<number> {
         }
       } else {
         console.log();
-        const key = await readSecret(
-          rl,
+        const key = await reader.readSecret(
           `  Key ${c.dim(`(${provider.keyExample})`)} : `,
         );
         if (key.trim() !== "") {
@@ -431,52 +579,7 @@ export async function runInitCli(): Promise<number> {
     console.log();
     console.log(c.bold("  Step 4 / 4  —  Configure coding clients (optional)"));
     console.log();
-    console.log("  Select clients to auto-generate config files or helper launch scripts.");
-    console.log("  Enter numbers (space/comma separated) to toggle, or press " + c.bold("Enter") + " when done (empty to skip).");
-    console.log();
-
-    const selectedClients = new Set<number>();
-    printClientMenu(SUPPORTED_CLIENTS, selectedClients, homeDir);
-
-    while (true) {
-      const raw = (await rl.question("  Toggle (numbers) or Enter to confirm: ")).trim();
-      if (raw === "") break;
-
-      const nums = raw
-        .split(/[\s,]+/)
-        .map((s) => parseInt(s.trim(), 10) - 1)
-        .filter((n) => !isNaN(n) && n >= 0 && n < SUPPORTED_CLIENTS.length);
-
-      for (const n of nums) {
-        selectedClients.has(n) ? selectedClients.delete(n) : selectedClients.add(n);
-      }
-
-      console.log();
-      printClientMenu(SUPPORTED_CLIENTS, selectedClients, homeDir);
-    }
-
-    const clientResults: SetupResult[] = [];
-    if (selectedClients.size > 0) {
-      console.log();
-      console.log(c.bold("  Writing client configurations..."));
-      for (const idx of [...selectedClients].sort((a, b) => a - b)) {
-        const clientDef = SUPPORTED_CLIENTS[idx];
-        const res = setupClient(clientDef.id, homeDir, prismdToken);
-        if (res) {
-          clientResults.push(res);
-          for (const b of res.backupsCreated) {
-            console.log(c.yellow("  [!] ") + `${res.name}: backed up previous config to ${c.dim(b)}`);
-          }
-          for (const f of res.filesWritten) {
-            console.log(c.green("  [+] ") + `${res.name}: configured ${c.dim(f)}`);
-          }
-          if (res.notes) {
-            console.log(c.dim(`      ${res.notes}`));
-          }
-        }
-      }
-    }
-
+    const clientResults = await runClientConfigurationFlow(reader, homeDir, prismdToken);
 
     // ── Next steps ────────────────────────────────────────────────────────────
     const configuredProviders = Object.keys(collectedKeys).filter((k) => k !== "prismd");
@@ -525,9 +628,8 @@ export async function runInitCli(): Promise<number> {
     console.log("  Dashboard: " + c.cyan("http://127.0.0.1:8787/ui"));
     console.log();
 
-
     return 0;
   } finally {
-    rl.close();
+    reader.close();
   }
 }

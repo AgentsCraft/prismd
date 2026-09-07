@@ -49,3 +49,55 @@ test("prismd generate creates ~/.prismd/prismd.json from keys", () => {
   assert.ok(generated.models["free-auto"]);
   assert.equal(generated.models["free-auto"].candidates[0].provider, "openrouter");
 });
+
+test("prismd init shows action menu when config exists and handles Exit (option 4)", () => {
+  const home = mkdtempSync(join(tmpdir(), "prismd-cli-init-home-"));
+  const cwd = mkdtempSync(join(tmpdir(), "prismd-cli-init-cwd-"));
+  const homePrismd = join(home, ".prismd");
+  mkdirSync(homePrismd, { recursive: true });
+  writeFileSync(join(homePrismd, "keys.yaml"), "prismd: test-token-123\n");
+
+  const run = spawnSync(process.execPath, [TSX_CLI, SERVER_PATH, "init"], {
+    cwd,
+    encoding: "utf8",
+    input: "4\n",
+    env: {
+      ...process.env,
+      HOME: home,
+      PRISMD_HOME: home,
+      PRISMD_CWD: cwd,
+    },
+  });
+
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes("What would you like to do?"));
+  assert.ok(run.stdout.includes("Configure coding clients only"));
+  assert.ok(run.stdout.includes("Exited."));
+});
+
+test("prismd init option 1 configures coding clients using existing token without touching keys.yaml", () => {
+  const home = mkdtempSync(join(tmpdir(), "prismd-cli-init-clients-home-"));
+  const cwd = mkdtempSync(join(tmpdir(), "prismd-cli-init-clients-cwd-"));
+  const homePrismd = join(home, ".prismd");
+  mkdirSync(homePrismd, { recursive: true });
+  writeFileSync(join(homePrismd, "keys.yaml"), "prismd: original-token-123\n");
+
+  const run = spawnSync(process.execPath, [TSX_CLI, SERVER_PATH, "init"], {
+    cwd,
+    encoding: "utf8",
+    input: "1\n\n2\n",
+    env: {
+      ...process.env,
+      HOME: home,
+      PRISMD_HOME: home,
+      PRISMD_CWD: cwd,
+    },
+  });
+
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout.includes("Client setup complete!"));
+  assert.ok(existsSync(join(home, ".codex", "prismd.config.toml")));
+  assert.equal(readFileSync(join(homePrismd, "keys.yaml"), "utf8"), "prismd: original-token-123\n");
+});
+
+
