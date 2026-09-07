@@ -202,12 +202,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web 仪表盘**：浏览器直接打开 `http://127.0.0.1:8787/ui`，实时查看：
   - 各候选模型实时健康状态（`healthy` / `rate_limited` / `cooldown`）
   - 每日配额进度条与 Token 消耗统计
+  - **客户端用量表（最近 24h）**：按客户端 × 端点展示请求数、成功率、P50 延迟、故障转移次数与最近错误
   - 支持 10 种语言界面切换与「一键重置用量（Reset usage）」
 - **CLI 终端状态与管理**：
   ```bash
-  prismd status      # 终端输出各候选模型的彩色状态矩阵
+  prismd status      # 终端输出模型状态矩阵及客户端用量区块（需网关在线）
   prismd generate    # 重新编译生成 ~/.prismd/prismd.json
   ```
+- **API**：`GET /v1/clientstatus` — 客户端用量窗口的只读 JSON 快照（无需鉴权，仅限本机回环）。
 
 ---
 

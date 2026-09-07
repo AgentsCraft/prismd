@@ -191,12 +191,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Panel Web**: Abre `http://127.0.0.1:8787/ui` en tu navegador:
   - Estado de salud en tiempo real (`healthy` / `rate_limited` / `cooldown`)
   - Barras de progreso de cuotas y estadísticas de tokens
+  - **Tabla de uso de clientes (últimas 24h)**: solicitudes, tasa de éxito, latencia P50, conteo de failovers y últimos errores por cliente × endpoint
   - Selector de 10 idiomas y botón de «Restablecer uso (Reset usage)»
 - **Estado CLI**:
   ```bash
-  prismd status
+  prismd status      # Matriz de estado + sección de clientes (si la pasarela está activa)
+  prismd generate    # Recompilar ~/.prismd/prismd.json
   ```
-  Muestra una matriz a color en la terminal.
+- **API**: `GET /v1/clientstatus` — instantánea JSON de solo lectura de la ventana de uso de clientes (sin autenticación, solo loopback).
 
 ---
 

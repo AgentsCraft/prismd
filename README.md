@@ -200,12 +200,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web Dashboard**: Open `http://127.0.0.1:8787/ui` in your browser:
   - Real-time candidate health (`healthy` / `rate_limited` / `cooldown`)
   - Daily quota progress bars and token usage statistics
+  - **Client usage table (last 24h)**: per-client × endpoint request count, success rate, P50 latency, failover count, and recent errors
   - 10-language UI selector and "Reset usage" button
 - **CLI Status & Commands**:
   ```bash
-  prismd status      # Display metrics table in terminal
+  prismd status      # Display metrics table + client usage section (when gateway is live)
   prismd generate    # Recompile ~/.prismd/prismd.json
   ```
+- **API**: `GET /v1/clientstatus` — read-only JSON snapshot of the client usage window (unauthenticated, loopback-only).
 
 ---
 

@@ -191,12 +191,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web Paneli**: Tarayıcınızda `http://127.0.0.1:8787/ui` adresini açın:
   - Gerçek zamanlı model durumu (`healthy` / `rate_limited` / `cooldown`)
   - Günlük kota ilerleme çubukları ve token istatistikleri
+  - **İstemci kullanım tablosu (son 24 saat)**: istemci × endpoint başına istek sayısı, başarı oranı, P50 gecikmesi, yük devretme sayısı ve son hatalar
   - 10 dil seçeneği ve «Kullanımı Sıfırla (Reset usage)» düğmesi
 - **CLI Durumu**:
   ```bash
-  prismd status
+  prismd status      # Durum matrisi + istemci kullanım bölümü (gateway çalışırken)
+  prismd generate    # ~/.prismd/prismd.json'ı yeniden derle
   ```
-  Terminalde renkli durum matrisi.
+- **API**: `GET /v1/clientstatus` — istemci kullanım penceresinin salt okunur JSON anlık görüntüsü (kimlik doğrulama gerekmez, yalnızca loopback).
 
 ---
 

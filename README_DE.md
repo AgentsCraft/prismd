@@ -191,12 +191,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web-Dashboard**: Öffnen Sie `http://127.0.0.1:8787/ui` im Browser:
   - Echtzeit-Gesundheitsstatus (`healthy` / `rate_limited` / `cooldown`)
   - Quoten-Fortschrittsbalken und Token-Verbrauchsstatistiken
-  - 10 Sprachen und Schaltfläche „Nutzung zurücksetzen (Reset usage)“
+  - **Client-Nutzungstabelle (letzte 24h)**: Anfragen, Erfolgsrate, P50-Latenz, Failover-Anzahl und letzte Fehler je Client × Endpunkt
+  - 10 Sprachen und Schaltfläche „Nutzung zurücksetzen (Reset usage)"
 - **CLI-Status**:
   ```bash
-  prismd status
+  prismd status      # Statusmatrix + Client-Nutzungsblock (wenn Gateway aktiv)
+  prismd generate    # ~/.prismd/prismd.json neu kompilieren
   ```
-  Farbige Statusmatrix im Terminal.
+- **API**: `GET /v1/clientstatus` — schreibgeschützter JSON-Snapshot des Client-Nutzungsfensters (unauthentifiziert, nur Loopback).
 
 ---
 

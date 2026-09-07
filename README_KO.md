@@ -191,12 +191,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web 대시보드**: 브라우저에서 `http://127.0.0.1:8787/ui` 접속:
   - 모델 실시간 상태 (`healthy` / `rate_limited` / `cooldown`)
   - 일일 할당량 진행률 및 토큰 사용량 통계
+  - **클라이언트 사용량 테이블 (최근 24h)**: 클라이언트 × 엔드포인트별 요청 수·성공률·P50 레이턴시·페일오버 횟수·최근 오류
   - 10개 언어 지원 및 "사용량 초기화 (Reset usage)" 버튼
 - **CLI 상태 확인**:
   ```bash
-  prismd status
+  prismd status      # 상태 매트릭스 + 클라이언트 사용량 섹션 출력 (게이트웨이 실행 중 시)
+  prismd generate    # ~/.prismd/prismd.json 재컴파일
   ```
-  터미널 컬러 매트릭스로 확인.
+- **API**: `GET /v1/clientstatus` — 클라이언트 사용량 윈도우의 읽기 전용 JSON 스냅샷 (인증 불필요·루프백 전용).
 
 ---
 
