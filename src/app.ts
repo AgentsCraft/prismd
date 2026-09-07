@@ -7,6 +7,7 @@ import { responses } from "./ingress/responses.js";
 import { newRequestId } from "./observability/request-id.js";
 import { healthzRoute } from "./routes/healthz.js";
 import { modelsRoute } from "./routes/models.js";
+import { clientstatusRoute } from "./routes/clientstatus.js";
 import { modelstatusRoute } from "./routes/modelstatus.js";
 import { uiRoute } from "./routes/ui.js";
 
@@ -19,6 +20,7 @@ export const app = new Hono<{ Variables: Variables }>();
 // Unauthenticated status and discovery routes
 app.route("", healthzRoute);
 app.route("", modelsRoute);
+app.route("", clientstatusRoute);
 app.route("", modelstatusRoute);
 app.route("", uiRoute);
 

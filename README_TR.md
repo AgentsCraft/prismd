@@ -54,12 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### 2. Adım: API Anahtarlarını Yapılandırma
+### 2. Adım: Başlatma ve Yapılandırma (Etkileşimli Sihirbaz)
 
-Anahtarlarınızı `~/.prismd/keys.yaml` veya `./.env` dosyasına ekleyin (bir veya daha fazla yapılandırılabilir; yapılandırılmayan sağlayıcılar otomatik olarak atlanır):
+Etkileşimli kurulum sihirbazını çalıştırın:
+```bash
+prismd init
+```
+Sihirbaz şunları sağlar:
+1. Yerel koruma belirtecini (`prismd:`) belirleyin.
+2. Ücretsiz sağlayıcıları seçin (OpenRouter, Groq, Google Gemini vb.) ve API anahtarlarını girin.
+3. **Kodlama istemcilerini otomatik yapılandırın** (Claude Code, Codex CLI, OpenCode, Pi Agent) ve mevcut dosyaların güvenli zaman damgalı yedeklerini (`.bak.<zaman_damgası>`) alın!
+
+*(Manuel yapılandırmayı mı tercih ediyorsunuz? `~/.prismd/keys.yaml` dosyasını düzenleyin veya `PRISMD_HOME` kullanın).*
 
 ```yaml
-# ~/.prismd/keys.yaml (önerilen izin: chmod 600)
+# Manuel yapılandırma örneği: ~/.prismd/keys.yaml (önerilen izin: chmod 600)
 prismd: "yerel-gizli-token"     # Yerel koruma belirteci (istemciler tarafından kullanılır)
 
 # Bulut Sağlayıcıları (round-robin için tek anahtar veya çoklu anahtar havuzunu destekler):
@@ -87,14 +96,14 @@ prismd
 
 ### 3. Adım: Ajanınızı Yapılandırın
 
-| İstemci | Hızlı Kurulum | Kılavuz |
+| İstemci | Hızlı Başlangıç (`prismd init` otomatik yapılandırma) | Kılavuz |
 |---|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="yerel-gizli-token"`<br>`claude` | [Kılavuz](examples/claude-code/README.md) |
-| **Codex CLI** | `PRISMD_API_KEY=yerel-gizli-token codex --profile prismd` | [Kılavuz](examples/codex/README.md) |
+| **Claude Code** | `claude` (`~/.claude/settings.json` içinde yapılandırıldı) | [Kılavuz](examples/claude-code/README.md) |
+| **Codex CLI** | `codex` (`~/.codex/config.toml` ve `auth.json` içinde yapılandırıldı) | [Kılavuz](examples/codex/README.md) |
+| **OpenCode** | `opencode` (`~/.config/opencode/opencode.json` içinde yapılandırıldı) | [Kılavuz](examples/opencode/README.md) |
+| **Pi Agent** | `pi` (`~/.pi/config.json` içinde yapılandırıldı) | [Kılavuz](examples/pi/README.md) |
 | **Cursor** | Settings → Models → OpenAI API Key etkinleştirin (`yerel-gizli-token`)<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Model ekleyin: `free-auto` | [Kılavuz](examples/cursor/README.md) |
-| **OpenCode** | `~/.config/opencode/config.json` dosyasında `baseUrl: "http://127.0.0.1:8787/v1"` ayarlayın | [Kılavuz](examples/opencode/README.md) |
 | **DeepSeek Harness (dsh)** | `~/.dsh/config.toml` dosyasında `base_url = "http://127.0.0.1:8787/v1"` ayarlayın<br>`PRISMD_API_KEY=yerel-gizli-token dsh --model prismd:free-auto` | [Kılavuz](examples/dsh/README.md) |
-| **Pi Agent** | `~/.pi/config.json` dosyasında `endpoint: "http://127.0.0.1:8787/v1"` ayarlayın<br>`pi run` | [Kılavuz](examples/pi/README.md) |
 | **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="yerel-gizli-token"` `aider --model openai/free-auto` | [Kılavuz](examples/aider/README.md) |
 
 > 📖 **Tam Belgeler**: Protokol ve gelişmiş yapılandırma detayları için [İstemci Entegrasyon Kılavuzu](docs/clients/README.md) sayfasına bakın.
@@ -191,12 +200,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web Paneli**: Tarayıcınızda `http://127.0.0.1:8787/ui` adresini açın:
   - Gerçek zamanlı model durumu (`healthy` / `rate_limited` / `cooldown`)
   - Günlük kota ilerleme çubukları ve token istatistikleri
+  - **İstemci kullanım tablosu (son 24 saat)**: istemci × endpoint başına istek sayısı, başarı oranı, P50 gecikmesi, yük devretme sayısı ve son hatalar
   - 10 dil seçeneği ve «Kullanımı Sıfırla (Reset usage)» düğmesi
 - **CLI Durumu**:
   ```bash
-  prismd status
+  prismd status      # Durum matrisi + istemci kullanım bölümü (gateway çalışırken)
+  prismd generate    # ~/.prismd/prismd.json'ı yeniden derle
   ```
-  Terminalde renkli durum matrisi.
+- **API**: `GET /v1/clientstatus` — istemci kullanım penceresinin salt okunur JSON anlık görüntüsü (kimlik doğrulama gerekmez, yalnızca loopback).
 
 ---
 
@@ -208,3 +219,6 @@ kill -HUP $(pgrep -f "prismd")
   - İlgili sağlayıcı için birden fazla anahtar ekleyin veya `config.user.json` ile yerel bir Ollama adayını kuyruğa ekleyin.
 - **Q: Günlük kota sayaçları nasıl sıfırlanır?**
   - Web panelinden «Reset usage» butonuna tıklayın veya `data/prismd.sqlite` dosyasını silin.
+- **Q: Başlangıçta bilinmeyen yapılandırma anahtarı uyarısı alıyorum?**
+  - `config.user.json` içindeki bilinmeyen üst düzey anahtarlar bir uyarıyla kaydedilir ve yoksayılır. Bu güvenlidir — anahtar daha yeni bir sürümden veya yazım hatasından kaynaklanıyor olabilir. Uyarıyı gidermek için anahtarı kaldırın veya düzeltin.
+

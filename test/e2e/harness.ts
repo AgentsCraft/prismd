@@ -4,7 +4,7 @@
  * e2e journeys; never imports src internals.
  *
  * Environment preparation (same for every journey):
- *   - Node >= 23.4 (node:sqlite built-in), deps installed (`npm install`).
+ *   - Node >= 22.13.0 (node:sqlite built-in), deps installed (`npm install`).
  *   - Temp dir per gateway: prismd.json (schema-valid, providers pointed at
  *     local mock upstream ports), PRISMD_DATA_PATH -> temp sqlite, HOME ->
  *     temp (so the real ~/.prismd keys.yaml is never read), fake keys via

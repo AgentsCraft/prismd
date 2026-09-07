@@ -13,7 +13,7 @@ import {
 import { beginStream, endStream } from "../core/drain.js";
 import { getHealth, getKeyPool, getQuota, getRateLimiter } from "../core/runtime.js";
 import { statusBroadcaster } from "../core/status-events.js";
-import { routeAlias, shouldFailover, parseTagsHeader } from "../core/router.js";
+import { routeAlias, shouldFailover, parseTagsHeader, resolveModelAlias } from "../core/router.js";
 import type { Candidate } from "../types/config.js";
 import { addSseKeepAlive, callRawHttpUpstream } from "../egress/raw.js";
 import {
@@ -97,8 +97,9 @@ export async function chatCompletions(c: Context): Promise<Response> {
     c.req.header("x-prismd-require-reasoning") === "true";
 
   const rateLimiter = getRateLimiter();
+  const effectiveAlias = resolveModelAlias(config.models, body.model);
 
-  const routed = routeAlias(config.models, body.model, {
+  const routed = routeAlias(config.models, effectiveAlias, {
     inputChars,
     dailyRequests: (provider, model) => quota.getDailyRequests(provider, model),
     isHealthy: (provider, model) => health.isHealthy(provider, model),
@@ -179,7 +180,14 @@ export async function chatCompletions(c: Context): Promise<Response> {
     );
   }
 
-  exporter.onRequestStart({ requestId, ts: startedAt, method, path, alias: body.model });
+  exporter.onRequestStart({
+    requestId,
+    ts: startedAt,
+    method,
+    path,
+    alias: body.model,
+    userAgent: c.req.header("user-agent") ?? "",
+  });
 
   const attempts = config.policies.retryBeforeStream
     ? Math.min(selection.ordered.length, config.policies.maxCandidatesPerRequest)

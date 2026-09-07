@@ -54,12 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### ステップ 2: API Key の設定
+### ステップ 2: 初期化と設定（対話型ウィザード）
  
-`~/.prismd/keys.yaml` または `./.env` に無料 API Key を設定します（1 つ以上設定可能。未設定のプロバイダーは自動的にスキップされます）：
- 
+対話型セットアップウィザードを実行してキーとクライアントを設定します：
+```bash
+prismd init
+```
+ウィザードの機能：
+1. ローカル保護トークン（`prismd:`）の設定。
+2. 無料プロバイダー（OpenRouter、Groq、Google Gemini など）を選択して API キーを入力。
+3. **コーディングクライアントの自動設定**（Claude Code、Codex CLI、OpenCode、Pi Agent）と既存設定の安全な自動バックアップ（`.bak.<日時>`）！
+
+*(手動設定をご希望の場合は `~/.prismd/keys.yaml` を直接編集するか、`PRISMD_HOME` を設定してください)*。
+
 ```yaml
-# ~/.prismd/keys.yaml (推奨権限 chmod 600)
+# 手動設定例: ~/.prismd/keys.yaml (推奨権限 chmod 600)
 prismd: "my-local-secret"       # ローカル保護トークン（クライアント接続用）
  
 # クラウドプロバイダー（単一キーまたは複数キーのラウンドロビンプールに対応）：
@@ -87,14 +96,14 @@ prismd
 
 ### ステップ 3: エージェントの設定
 
-| クライアント | クイック設定 | ガイド |
+| クライアント | クイック起動（`prismd init` 自動設定） | ガイド |
 |---|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="my-local-secret"`<br>`claude` | [ガイド](examples/claude-code/README.md) |
-| **Codex CLI** | `PRISMD_API_KEY=my-local-secret codex --profile prismd` | [ガイド](examples/codex/README.md) |
+| **Claude Code** | `claude`（`~/.claude/settings.json` に自動設定） | [ガイド](examples/claude-code/README.md) |
+| **Codex CLI** | `codex`（`~/.codex/config.toml` および `auth.json` に自動設定） | [ガイド](examples/codex/README.md) |
+| **OpenCode** | `opencode`（`~/.config/opencode/opencode.json` に自動設定） | [ガイド](examples/opencode/README.md) |
+| **Pi Agent** | `pi`（`~/.pi/config.json` に自動設定） | [ガイド](examples/pi/README.md) |
 | **Cursor** | Settings → Models → OpenAI API Key 有効化（`my-local-secret`）<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>モデル追加: `free-auto` | [ガイド](examples/cursor/README.md) |
-| **OpenCode** | `~/.config/opencode/config.json` で `baseUrl: "http://127.0.0.1:8787/v1"` を設定 | [ガイド](examples/opencode/README.md) |
 | **DeepSeek Harness (dsh)** | `~/.dsh/config.toml` で `base_url = "http://127.0.0.1:8787/v1"` を設定<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [ガイド](examples/dsh/README.md) |
-| **Pi Agent** | `~/.pi/config.json` で `endpoint: "http://127.0.0.1:8787/v1"` を設定<br>`pi run` | [ガイド](examples/pi/README.md) |
 | **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [ガイド](examples/aider/README.md) |
 
 > 📖 **詳細ドキュメント**: [クライアント接続ガイド・プロトコル一覧](docs/clients/README.md) を参照してください。
@@ -191,12 +200,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Web ダッシュボード**：ブラウザで `http://127.0.0.1:8787/ui` を開く：
   - 各候補モデルのリアルタイム稼働状態（`healthy` / `rate_limited` / `cooldown`）
   - 日次クォータバーとトークン消費統計
+  - **クライアント利用テーブル（直近 24h）**：クライアント × エンドポイント別のリクエスト数・成功率・P50 レイテンシ・フェイルオーバー回数・最新エラー
   - 10 言語切り替えと「使用量リセット（Reset usage）」ボタン
 - **CLI ステータス**：
   ```bash
-  prismd status
+  prismd status      # 状態マトリックス＋クライアント利用セクションを出力（ゲートウェイ起動時）
+  prismd generate    # ~/.prismd/prismd.json を再コンパイル
   ```
-  ターミナルにカラーマトリックスを出力。
+- **API**：`GET /v1/clientstatus` — クライアント利用ウィンドウの読み取り専用 JSON スナップショット（認証不要・ループバック限定）。
 
 ---
 
@@ -208,3 +219,6 @@ kill -HUP $(pgrep -f "prismd")
   - プロバイダーに複数 Key を追加するか、`config.user.json` でローカル Ollama 候補をキューに追加してください。
 - **Q: 日次クォータ集計をリセットしたい**
   - Web ダッシュボード（`http://127.0.0.1:8787/ui`）の「Reset usage」をクリックするか、`data/prismd.sqlite` を削除してください。
+- **Q: 起動時に不明な設定キーに関する警告が表示される**
+  - `config.user.json` の未知のトップレベルキーは警告を出力して無視されます。これは安全です — 新しいバージョン由来またはタイポの可能性があります。警告を消すにはキーを削除または修正してください。
+

@@ -1,21 +1,27 @@
 #!/usr/bin/env node
-import { serve, type ServerType } from "@hono/node-server";
-import { app } from "./app.js";
-import { getConfig, reloadConfig } from "./config.js";
-import { waitForStreams } from "./core/drain.js";
-import { runStatusCli } from "./cli/status.js";
-import { runSyncCli } from "./cli/sync.js";
-import { runGenerateCli } from "./cli/generate.js";
-import { printHelpCli } from "./cli/help.js";
 import { logger } from "./observability/logger.js";
-import { validateUpstreamModels } from "./core/catalog-sync.js";
-import { getHealth, getKeyPool, initRuntime, shutdownRuntime } from "./core/runtime.js";
-import { startConfigWatcher, type ConfigWatcher } from "./core/watcher.js";
+
+// Suppress experimental warnings for built-in SQLite (Node 22/23/24)
+// to maintain a clean CLI user experience across all supported platforms.
+const originalEmitWarning = process.emitWarning.bind(process);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+process.emitWarning = function (warning: any, ...args: any[]) {
+  if (typeof warning === "string" && warning.includes("SQLite")) return;
+  if (warning && typeof warning === "object" && warning.message && warning.message.includes("SQLite")) return;
+  return originalEmitWarning(warning, ...args);
+};
 
 const cliCommand = process.argv[2];
 
+if (cliCommand === "--help" || cliCommand === "-h") {
+  const { printHelpCli } = await import("./cli/help.js");
+  printHelpCli();
+  process.exit(0);
+}
+
 if (cliCommand === "status") {
   try {
+    const { runStatusCli } = await import("./cli/status.js");
     await runStatusCli();
     process.exit(0);
   } catch (err) {
@@ -26,6 +32,7 @@ if (cliCommand === "status") {
 
 if (cliCommand === "sync" || cliCommand === "check") {
   try {
+    const { runSyncCli } = await import("./cli/sync.js");
     const exitCode = await runSyncCli();
     process.exit(exitCode);
   } catch (err) {
@@ -34,8 +41,9 @@ if (cliCommand === "sync" || cliCommand === "check") {
   }
 }
 
-if (cliCommand === "generate" || cliCommand === "init") {
+if (cliCommand === "generate") {
   try {
+    const { runGenerateCli } = await import("./cli/generate.js");
     const exitCode = await runGenerateCli();
     process.exit(exitCode);
   } catch (err) {
@@ -44,10 +52,26 @@ if (cliCommand === "generate" || cliCommand === "init") {
   }
 }
 
-if (cliCommand === "--help" || cliCommand === "-h") {
-  printHelpCli();
-  process.exit(0);
+if (cliCommand === "init") {
+  try {
+    const { runInitCli } = await import("./cli/init.js");
+    const exitCode = await runInitCli();
+    process.exit(exitCode);
+  } catch (err) {
+    logger.error({ error: (err as Error).message }, "failed to execute init command");
+    process.exit(1);
+  }
 }
+
+// Start Gateway Server dynamically
+const { serve } = await import("@hono/node-server");
+const { app } = await import("./app.js");
+const { getConfig, reloadConfig } = await import("./config.js");
+const { waitForStreams } = await import("./core/drain.js");
+const { validateUpstreamModels } = await import("./core/catalog-sync.js");
+const { getHealth, getKeyPool, initRuntime, shutdownRuntime } = await import("./core/runtime.js");
+import type { ConfigWatcher } from "./core/watcher.js";
+const { startConfigWatcher } = await import("./core/watcher.js");
 
 // Loads and validates prismd.json up front: schema violations and
 // non-loopback server.host fail fast here, before any socket opens.
@@ -67,7 +91,7 @@ if (process.env.PRISMD_DISABLE_WATCHER !== "1") {
   }
 }
 
-const server: ServerType = serve(
+const server = serve(
   { fetch: app.fetch, port: config.server.port, hostname: config.server.host },
   (info) => {
     logger.info({ host: info.address, port: info.port }, "prismd listening");

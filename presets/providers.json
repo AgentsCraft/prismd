@@ -153,8 +153,8 @@
     },
     "openai/gpt-oss-20b": {
       "provider": "groq",
-      "contextWindow": 8000,
-      "maxOutputTokens": 8000,
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
       "supportsTools": true,
       "supportsReasoning": true,
       "limits": { "dailyRequests": 14400, "rpm": 30, "maxConcurrent": 2 },
@@ -164,8 +164,8 @@
     },
     "qwen/qwen3.8-27b": {
       "provider": "groq",
-      "contextWindow": 8000,
-      "maxOutputTokens": 8000,
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
       "supportsTools": true,
       "supportsReasoning": false,
       "limits": { "dailyRequests": 1000, "rpm": 30, "maxConcurrent": 2 },
@@ -290,8 +290,9 @@
       "description": "Auto-select a free coding model, with fallback candidates",
       "candidates": [
         "gemini-2.0-flash",
-        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
         "qwen/qwen3.8-27b",
+        "openai/gpt-oss-120b",
         "llama-3.3-70b",
         "gpt-4o-mini",
         "cohere/north-mini-code:free",

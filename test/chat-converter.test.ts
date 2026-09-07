@@ -659,3 +659,44 @@ test("ChatToResponsesStreamTransformer falls back when the chat error has no det
   assert.equal(parsed.response.error.code, "upstream_error");
   assert.equal(parsed.response.error.message, "upstream response failed");
 });
+
+test("convertResponsesToChatRequest filters non-function/non-mcp tools to prevent upstream 400 errors", () => {
+  const req = convertResponsesToChatRequest(
+    {
+      model: "free-auto",
+      input: "do search",
+      tools: [
+        { type: "function", name: "exec", description: "run cmd", parameters: {} },
+        { type: "mcp", name: "mcp_tool" },
+        { type: "web_search" },
+        { type: "local_shell" },
+      ],
+    },
+    "free-auto",
+  );
+
+  assert.ok(Array.isArray(req.tools));
+  assert.equal(req.tools.length, 2);
+  assert.equal((req.tools[0] as any).type, "function");
+  assert.equal((req.tools[0] as any).function?.name, "exec");
+  assert.equal((req.tools[1] as any).type, "mcp");
+});
+
+test("convertResponsesToChatRequest maps developer role to system for open-source chat upstreams", () => {
+  const req = convertResponsesToChatRequest(
+    {
+      model: "free-auto",
+      input: [
+        { type: "message", role: "developer", content: "You are Codex." },
+        { type: "message", role: "user", content: "hello" },
+      ],
+    },
+    "free-auto",
+  );
+
+  assert.deepEqual(req.messages, [
+    { role: "system", content: "You are Codex." },
+    { role: "user", content: "hello" },
+  ]);
+});
+

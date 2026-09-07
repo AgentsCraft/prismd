@@ -311,6 +311,45 @@ export function renderUiHtml(): string {
     .event-arrow { color: var(--text-muted); }
     .event-reason { color: var(--yellow); }
 
+    .clients-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    .clients-table th, .clients-table td {
+      padding: 6px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .clients-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .clients-table td.num, .clients-table th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .client-row { cursor: pointer; }
+    .client-row:hover { background: #11141a; }
+    .client-error { color: var(--yellow); }
+    .client-detail td {
+      background: #11141a;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+    .client-detail-line { padding: 2px 0; }
+    .client-detail-label {
+      display: inline-block;
+      min-width: 130px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-size: 0.65rem;
+      letter-spacing: 0.5px;
+    }
+
     .active-model-banner {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
@@ -448,7 +487,14 @@ export function renderUiHtml(): string {
 
   <main id="aliases-container"></main>
 
-  <section class="events-panel">
+  <section class="events-panel" id="clients-panel">
+    <div class="events-title clients-title">Clients (last 24h)</div>
+    <div id="clients-wrap" class="clients-wrap">
+      <div style="color: var(--text-muted); padding: 8px;">No client requests in the last 24h.</div>
+    </div>
+  </section>
+
+  <section class="events-panel" id="events-panel">
     <div class="events-title">Recent events</div>
     <div id="events-list" class="events-list">
       <div style="color: var(--text-muted); padding: 8px;">No state changes recorded yet.</div>
@@ -487,7 +533,16 @@ export function renderUiHtml(): string {
         activeRequests: 'Active requests',
         noRequestsYet: 'Waiting for incoming requests...',
         latestRoute: 'Latest Route',
-        failoverCount: 'failovers'
+        failoverCount: 'failovers',
+        clientsTitle: 'Clients (last 24h)',
+        clientCol: 'Client',
+        endpointCol: 'Endpoint',
+        successCol: 'Success',
+        p50Col: 'p50',
+        lastErrorCol: 'Last Error',
+        noClientData: 'No client requests in the last 24h.',
+        failureReasons: 'Failure reasons',
+        recentRequests: 'Recent requests'
       },
       'zh-CN': {
         uptime: '运行时间',
@@ -519,7 +574,16 @@ export function renderUiHtml(): string {
         activeRequests: '活跃请求',
         noRequestsYet: '等待请求接入中...',
         latestRoute: '最新路由',
-        failoverCount: '故障转移'
+        failoverCount: '故障转移',
+        clientsTitle: '客户端（最近 24h）',
+        clientCol: '客户端',
+        endpointCol: '协议端点',
+        successCol: '成功率',
+        p50Col: 'p50',
+        lastErrorCol: '最近错误',
+        noClientData: '最近 24h 暂无客户端请求。',
+        failureReasons: '失败原因',
+        recentRequests: '最近请求'
       },
       ja: {
         uptime: '稼働時間',
@@ -551,7 +615,16 @@ export function renderUiHtml(): string {
         activeRequests: 'アクティブなリクエスト',
         noRequestsYet: 'リクエスト待機中...',
         latestRoute: '最新のルーティング',
-        failoverCount: 'フェイルオーバー'
+        failoverCount: 'フェイルオーバー',
+        clientsTitle: 'クライアント（直近 24h）',
+        clientCol: 'クライアント',
+        endpointCol: 'エンドポイント',
+        successCol: '成功率',
+        p50Col: 'p50',
+        lastErrorCol: '直近のエラー',
+        noClientData: '直近 24 時間のクライアントリクエストはありません。',
+        failureReasons: '失敗理由',
+        recentRequests: '最近のリクエスト'
       },
       ko: {
         uptime: '가동 시간',
@@ -583,7 +656,16 @@ export function renderUiHtml(): string {
         activeRequests: '활성 요청',
         noRequestsYet: '요청 대기 중...',
         latestRoute: '최신 라우팅',
-        failoverCount: '장애 조치'
+        failoverCount: '장애 조치',
+        clientsTitle: '클라이언트 (최근 24시간)',
+        clientCol: '클라이언트',
+        endpointCol: '엔드포인트',
+        successCol: '성공률',
+        p50Col: 'p50',
+        lastErrorCol: '최근 오류',
+        noClientData: '최근 24시간 동안 클라이언트 요청이 없습니다.',
+        failureReasons: '실패 원인',
+        recentRequests: '최근 요청'
       },
       de: {
         uptime: 'Betriebszeit',
@@ -615,7 +697,16 @@ export function renderUiHtml(): string {
         activeRequests: 'Aktive Anfragen',
         noRequestsYet: 'Warten auf eingehende Anfragen...',
         latestRoute: 'Neueste Route',
-        failoverCount: 'Failovers'
+        failoverCount: 'Failovers',
+        clientsTitle: 'Clients (letzte 24h)',
+        clientCol: 'Client',
+        endpointCol: 'Endpunkt',
+        successCol: 'Erfolgsquote',
+        p50Col: 'p50',
+        lastErrorCol: 'Letzter Fehler',
+        noClientData: 'Keine Client-Anfragen in den letzten 24 Stunden.',
+        failureReasons: 'Fehlerursachen',
+        recentRequests: 'Letzte Anfragen'
       },
       fr: {
         uptime: 'Temps de fonctionnement',
@@ -647,7 +738,16 @@ export function renderUiHtml(): string {
         activeRequests: 'Requêtes actives',
         noRequestsYet: 'En attente de requêtes entrantes...',
         latestRoute: 'Dernière route',
-        failoverCount: 'basculements'
+        failoverCount: 'basculements',
+        clientsTitle: 'Clients (dernières 24h)',
+        clientCol: 'Client',
+        endpointCol: 'Point d\\'accès',
+        successCol: 'Taux de succès',
+        p50Col: 'p50',
+        lastErrorCol: 'Dernière erreur',
+        noClientData: 'Aucune requête client au cours des dernières 24 heures.',
+        failureReasons: 'Causes d\\'échec',
+        recentRequests: 'Requêtes récentes'
       },
       es: {
         uptime: 'Tiempo de actividad',
@@ -679,7 +779,16 @@ export function renderUiHtml(): string {
         activeRequests: 'Solicitudes activas',
         noRequestsYet: 'Esperando solicitudes entrantes...',
         latestRoute: 'Última ruta',
-        failoverCount: 'conmutaciones'
+        failoverCount: 'conmutaciones',
+        clientsTitle: 'Clientes (últimas 24h)',
+        clientCol: 'Cliente',
+        endpointCol: 'Endpoint',
+        successCol: 'Tasa de éxito',
+        p50Col: 'p50',
+        lastErrorCol: 'Último error',
+        noClientData: 'No hay solicitudes de clientes en las últimas 24 horas.',
+        failureReasons: 'Causas de fallo',
+        recentRequests: 'Solicitudes recientes'
       },
       it: {
         uptime: 'Tempo di attività',
@@ -711,7 +820,16 @@ export function renderUiHtml(): string {
         activeRequests: 'Richieste attive',
         noRequestsYet: 'In attesa di richieste in arrivo...',
         latestRoute: 'Ultimo instradamento',
-        failoverCount: 'failover'
+        failoverCount: 'failover',
+        clientsTitle: 'Client (ultime 24h)',
+        clientCol: 'Client',
+        endpointCol: 'Endpoint',
+        successCol: 'Tasso di successo',
+        p50Col: 'p50',
+        lastErrorCol: 'Ultimo errore',
+        noClientData: 'Nessuna richiesta client nelle ultime 24 ore.',
+        failureReasons: 'Cause di errore',
+        recentRequests: 'Richieste recenti'
       },
       ar: {
         uptime: 'وقت التشغيل',
@@ -743,7 +861,16 @@ export function renderUiHtml(): string {
         activeRequests: 'الطلبات النشطة',
         noRequestsYet: 'في انتظار الطلبات الواردة...',
         latestRoute: 'أحدث مسار',
-        failoverCount: 'التبديل عند الفشل'
+        failoverCount: 'التبديل عند الفشل',
+        clientsTitle: 'العملاء (آخر 24 ساعة)',
+        clientCol: 'العميل',
+        endpointCol: 'نقطة النهاية',
+        successCol: 'نسبة النجاح',
+        p50Col: 'p50',
+        lastErrorCol: 'آخر خطأ',
+        noClientData: 'لا توجد طلبات عملاء في آخر 24 ساعة.',
+        failureReasons: 'أسباب الفشل',
+        recentRequests: 'الطلبات الأخيرة'
       },
       tr: {
         uptime: 'Çalışma süresi',
@@ -775,7 +902,16 @@ export function renderUiHtml(): string {
         activeRequests: 'Aktif istekler',
         noRequestsYet: 'Gelen istekler bekleniyor...',
         latestRoute: 'Son Rota',
-        failoverCount: 'yük devretme'
+        failoverCount: 'yük devretme',
+        clientsTitle: 'İstemciler (son 24 saat)',
+        clientCol: 'İstemci',
+        endpointCol: 'Uç Nokta',
+        successCol: 'Başarı oranı',
+        p50Col: 'p50',
+        lastErrorCol: 'Son Hata',
+        noClientData: 'Son 24 saatte istemci isteği yok.',
+        failureReasons: 'Hata nedenleri',
+        recentRequests: 'Son istekler'
       }
     };
 
@@ -803,7 +939,8 @@ export function renderUiHtml(): string {
       status: null,
       lastConnStatus: null,
       latestActivity: null,
-      inFlightCount: 0
+      inFlightCount: 0,
+      clientStatus: null
     };
 
     function t(key) {
@@ -922,8 +1059,13 @@ export function renderUiHtml(): string {
 
     function updateStaticTexts() {
       document.documentElement.lang = state.lang;
-      const eventsTitle = document.querySelector('.events-title');
+      const eventsTitle = document.querySelector('#events-panel .events-title');
       if (eventsTitle) eventsTitle.textContent = t('recentEvents');
+      const clientsTitle = document.querySelector('.clients-title');
+      if (clientsTitle) clientsTitle.textContent = t('clientsTitle');
+      if (state.clientStatus) {
+        renderClients();
+      }
       if (state.events.length === 0) {
         const list = document.getElementById('events-list');
         if (list) list.innerHTML = '<div style="color: var(--text-muted); padding: 8px;">' + escapeHtml(t('noEvents')) + '</div>';
@@ -1060,6 +1202,89 @@ export function renderUiHtml(): string {
       }
     }
 
+    function formatMs(ms) {
+      if (ms === null || ms === undefined) return '—';
+      if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+      return Math.round(ms) + 'ms';
+    }
+
+    // Same semantics as the model cards: green ≥ 99%, yellow 90–99% or any
+    // failover, red < 90%.
+    function clientDotClass(rate, failovers) {
+      if (rate < 0.9) return 'dot-red';
+      if (rate < 0.99 || failovers > 0) return 'dot-yellow';
+      return 'dot-green';
+    }
+
+    function renderClients() {
+      const wrap = document.getElementById('clients-wrap');
+      if (!wrap) return;
+      const clients = (state.clientStatus && state.clientStatus.clients) || [];
+      if (clients.length === 0) {
+        wrap.innerHTML = '<div style="color: var(--text-muted); padding: 8px;">' + escapeHtml(t('noClientData')) + '</div>';
+        return;
+      }
+      const table = document.createElement('table');
+      table.className = 'clients-table';
+      table.innerHTML =
+        '<thead><tr>' +
+          '<th>' + escapeHtml(t('clientCol')) + '</th>' +
+          '<th>' + escapeHtml(t('endpointCol')) + '</th>' +
+          '<th class="num">' + escapeHtml(t('requests')) + '</th>' +
+          '<th class="num">' + escapeHtml(t('successCol')) + '</th>' +
+          '<th class="num">' + escapeHtml(t('p50Col')) + '</th>' +
+          '<th>' + escapeHtml(t('lastErrorCol')) + '</th>' +
+        '</tr></thead>';
+      const tbody = document.createElement('tbody');
+      for (const entry of clients) {
+        const rate = Math.round((entry.successRate || 0) * 100);
+        const lastErrorText = entry.lastError ? entry.lastError.reason : '—';
+        const row = document.createElement('tr');
+        row.className = 'client-row';
+        row.innerHTML =
+          '<td><span class="dot ' + clientDotClass(entry.successRate || 0, entry.failovers) + '"></span> ' + escapeHtml(entry.client) + '</td>' +
+          '<td>' + escapeHtml(entry.endpoint) + '</td>' +
+          '<td class="num">' + escapeHtml(String(entry.requests)) + '</td>' +
+          '<td class="num">' + rate + '%</td>' +
+          '<td class="num">' + formatMs(entry.p50Ms) + '</td>' +
+          '<td class="client-error">' + escapeHtml(lastErrorText) + '</td>';
+
+        const reasons = (entry.topFailures || []).map(function(f) { return f.count + '× ' + f.reason; }).join(' · ');
+        const recent = (entry.recent || []).map(function(r) {
+          const timeStr = r.at ? new Date(r.at).toLocaleTimeString() : '';
+          return timeStr + ' · ' + r.status + ' · ' + formatMs(r.durationMs) +
+            (r.failovers > 0 ? ' · ' + escapeHtml(t('failoverCount')) + ' ' + r.failovers : '');
+        }).join('<br>');
+        const detail = document.createElement('tr');
+        detail.className = 'client-detail';
+        detail.style.display = 'none';
+        detail.innerHTML =
+          '<td colspan="6">' +
+            '<div class="client-detail-line"><span class="client-detail-label">' + escapeHtml(t('failureReasons')) + '</span>' + escapeHtml(reasons || '—') + '</div>' +
+            '<div class="client-detail-line"><span class="client-detail-label">' + escapeHtml(t('failoverCount')) + '</span>' + escapeHtml(String(entry.failovers || 0)) + '</div>' +
+            '<div class="client-detail-line"><span class="client-detail-label">' + escapeHtml(t('recentRequests')) + '</span>' + (recent || '—') + '</div>' +
+          '</td>';
+        row.addEventListener('click', function() {
+          detail.style.display = detail.style.display === 'none' ? '' : 'none';
+        });
+        tbody.appendChild(row);
+        tbody.appendChild(detail);
+      }
+      table.appendChild(tbody);
+      wrap.innerHTML = '';
+      wrap.appendChild(table);
+    }
+
+    function refreshClients() {
+      fetch('/v1/clientstatus')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          state.clientStatus = data;
+          renderClients();
+        })
+        .catch(function() {});
+    }
+
     function addEvent(evt) {
       state.events.unshift(evt);
       if (state.events.length > 50) state.events.pop();
@@ -1140,6 +1365,9 @@ export function renderUiHtml(): string {
 
     // Initial static text initialization
     updateStaticTexts();
+
+    refreshClients();
+    setInterval(refreshClients, 5000);
 
     // Connect SSE
     function startSSE() {

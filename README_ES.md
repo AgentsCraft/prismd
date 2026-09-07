@@ -54,12 +54,21 @@ git clone https://github.com/AgentsCraft/prismd.git
 cd prismd && npm install
 ```
 
-### Paso 2: Configuración de Claves API
+### Paso 2: Inicialización y Configuración (Asistente Interactivo)
 
-Añade tus claves en `~/.prismd/keys.yaml` o en `./.env` (configura uno o más; los no configurados se omiten automáticamente):
+Ejecuta el asistente de configuración interactivo:
+```bash
+prismd init
+```
+El asistente te guiará para:
+1. Definir tu token local (`prismd:`).
+2. Seleccionar proveedores gratuitos (OpenRouter, Groq, Google Gemini, etc.) e ingresar sus claves.
+3. **Configurar automáticamente tus agentes** (Claude Code, Codex CLI, OpenCode, Pi Agent) con copias de seguridad automáticas (`.bak.<marca_de_tiempo>`) de tus archivos existentes.
+
+*(¿Prefieres configuración manual? Edita `~/.prismd/keys.yaml` o define `PRISMD_HOME`).*
 
 ```yaml
-# ~/.prismd/keys.yaml (permisos recomendados: chmod 600)
+# Configuración manual: ~/.prismd/keys.yaml (permisos recomendados: chmod 600)
 prismd: "mi-secreto-local"      # Token de protección local (usado por los clientes)
 
 # Proveedores Cloud (admite clave única o pool multi-key para round-robin):
@@ -87,14 +96,14 @@ prismd
 
 ### Paso 3: Configuración del Agente
 
-| Cliente | Configuración Rápida | Guía |
+| Cliente | Inicio Rápido (`prismd init` auto-config) | Guía |
 |---|---|---|
-| **Claude Code** | `export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"`<br>`export ANTHROPIC_API_KEY="mi-secreto-local"`<br>`claude` | [Guía](examples/claude-code/README.md) |
-| **Codex CLI** | `PRISMD_API_KEY=mi-secreto-local codex --profile prismd` | [Guía](examples/codex/README.md) |
+| **Claude Code** | `claude` (configurado en `~/.claude/settings.json`) | [Guía](examples/claude-code/README.md) |
+| **Codex CLI** | `codex` (configurado en `~/.codex/config.toml` & `auth.json`) | [Guía](examples/codex/README.md) |
+| **OpenCode** | `opencode` (configurado en `~/.config/opencode/opencode.json`) | [Guía](examples/opencode/README.md) |
+| **Pi Agent** | `pi` (configurado en `~/.pi/config.json`) | [Guía](examples/pi/README.md) |
 | **Cursor** | Settings → Models → Activar OpenAI API Key (`mi-secreto-local`)<br>Marcar **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Añadir modelo: `free-auto` | [Guía](examples/cursor/README.md) |
-| **OpenCode** | Configurar `baseUrl: "http://127.0.0.1:8787/v1"` en `~/.config/opencode/config.json` | [Guía](examples/opencode/README.md) |
 | **DeepSeek Harness (dsh)** | Configurar `base_url = "http://127.0.0.1:8787/v1"` en `~/.dsh/config.toml`<br>`PRISMD_API_KEY=mi-secreto-local dsh --model prismd:free-auto` | [Guía](examples/dsh/README.md) |
-| **Pi Agent** | Configurar `endpoint: "http://127.0.0.1:8787/v1"` en `~/.pi/config.json`<br>`pi run` | [Guía](examples/pi/README.md) |
 | **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="mi-secreto-local"` `aider --model openai/free-auto` | [Guía](examples/aider/README.md) |
 
 > 📖 **Documentación completa**: Consulte la [Guía de integración de clientes](docs/clients/README.md) para detalles de protocolos y configuraciones.
@@ -191,12 +200,14 @@ kill -HUP $(pgrep -f "prismd")
 - **Panel Web**: Abre `http://127.0.0.1:8787/ui` en tu navegador:
   - Estado de salud en tiempo real (`healthy` / `rate_limited` / `cooldown`)
   - Barras de progreso de cuotas y estadísticas de tokens
+  - **Tabla de uso de clientes (últimas 24h)**: solicitudes, tasa de éxito, latencia P50, conteo de failovers y últimos errores por cliente × endpoint
   - Selector de 10 idiomas y botón de «Restablecer uso (Reset usage)»
 - **Estado CLI**:
   ```bash
-  prismd status
+  prismd status      # Matriz de estado + sección de clientes (si la pasarela está activa)
+  prismd generate    # Recompilar ~/.prismd/prismd.json
   ```
-  Muestra una matriz a color en la terminal.
+- **API**: `GET /v1/clientstatus` — instantánea JSON de solo lectura de la ventana de uso de clientes (sin autenticación, solo loopback).
 
 ---
 
@@ -208,3 +219,6 @@ kill -HUP $(pgrep -f "prismd")
   - Añade más claves para ese proveedor, o agrega un candidato local de Ollama a la cola vía `config.user.json`.
 - **Q: ¿Cómo restablecer los contadores diarios?**
   - Haz clic en «Reset usage» en el panel Web o elimina `data/prismd.sqlite`.
+- **Q: ¿Advertencia sobre clave de configuración desconocida al iniciar?**
+  - Las claves de nivel superior desconocidas en `config.user.json` se toleran con una advertencia y se ignoran. Es seguro — la clave puede provenir de una versión más nueva o de un error tipográfico. Elimina o corrige la clave para suprimir la advertencia.
+
