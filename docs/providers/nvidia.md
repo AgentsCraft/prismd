@@ -24,6 +24,7 @@ export NVIDIA_API_KEY="nvapi-xxxxxxxx"
 | --- | --- | --- | --- |
 | `meta/llama-3.3-70b-instruct` | 131,072 | 4,096 | Llama 3.3 70B 高性能指令模型 |
 | `deepseek-ai/deepseek-r1` | 131,072 | 4,096 | DeepSeek 深度推理模型 |
+| `nvidia/llama-3.1-nemotron-70b-instruct` | 131,072 | 4,096 | NVIDIA 自研强化推理与对齐模型 |
 | `qwen/qwen2.5-coder-32b-instruct` | 32,768 | 4,096 | 阿里开源代码生成模型 |
 | `mistralai/mistral-large-2-instruct` | 131,072 | 4,096 | Mistral 旗舰模型 |
 
@@ -50,7 +51,7 @@ export NVIDIA_API_KEY="nvapi-xxxxxxxx"
       "maxOutputTokens": 4096,
       "supportsTools": true,
       "supportsReasoning": false,
-      "limits": { "dailyRequests": 1000, "rpm": 20, "maxConcurrent": 2 },
+      "limits": { "rpm": 20, "maxConcurrent": 2 },
       "tags": ["free", "nvidia", "llama"]
     },
     "deepseek-ai/deepseek-r1": {
@@ -59,14 +60,24 @@ export NVIDIA_API_KEY="nvapi-xxxxxxxx"
       "maxOutputTokens": 4096,
       "supportsTools": false,
       "supportsReasoning": true,
-      "limits": { "dailyRequests": 500, "rpm": 10, "maxConcurrent": 1 },
+      "limits": { "rpm": 10, "maxConcurrent": 1 },
       "tags": ["free", "nvidia", "reasoning"]
+    },
+    "nvidia/llama-3.1-nemotron-70b-instruct": {
+      "provider": "nvidia",
+      "contextWindow": 131072,
+      "maxOutputTokens": 4096,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "nvidia", "nemotron"]
     }
   },
   "aliases": {
     "free-auto": {
       "candidates": [
         "meta/llama-3.3-70b-instruct",
+        "nvidia/llama-3.1-nemotron-70b-instruct",
         "llama-3.3-70b"
       ]
     }

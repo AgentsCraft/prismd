@@ -63,6 +63,28 @@
     }
   },
   "models": {
+    "nvidia/nemotron-3.5-lightning:free": {
+      "provider": "openrouter",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": true,
+      "limits": { "dailyRequests": 50, "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "long-context", "reasoning"],
+      "source": "https://openrouter.ai/api/v1/models",
+      "checkedAt": "2026-09-07"
+    },
+    "minimax/minimax-m3:free": {
+      "provider": "openrouter",
+      "contextWindow": 1048576,
+      "maxOutputTokens": 8192,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "dailyRequests": 50, "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "long-context"],
+      "source": "https://openrouter.ai/api/v1/models",
+      "checkedAt": "2026-09-07"
+    },
     "poolside/laguna-s-2.1:free": {
       "provider": "openrouter",
       "contextWindow": 262144,
@@ -223,7 +245,7 @@
       "maxOutputTokens": 4096,
       "supportsTools": true,
       "supportsReasoning": false,
-      "limits": { "dailyRequests": 1000, "rpm": 20, "maxConcurrent": 2 },
+      "limits": { "rpm": 20, "maxConcurrent": 2 },
       "tags": ["free", "nvidia", "llama"],
       "source": "https://build.nvidia.com",
       "checkedAt": "2026-09-01"
@@ -234,10 +256,21 @@
       "maxOutputTokens": 4096,
       "supportsTools": false,
       "supportsReasoning": true,
-      "limits": { "dailyRequests": 500, "rpm": 10, "maxConcurrent": 1 },
+      "limits": { "rpm": 10, "maxConcurrent": 1 },
       "tags": ["free", "nvidia", "reasoning"],
       "source": "https://build.nvidia.com",
       "checkedAt": "2026-09-01"
+    },
+    "nvidia/llama-3.1-nemotron-70b-instruct": {
+      "provider": "nvidia",
+      "contextWindow": 131072,
+      "maxOutputTokens": 4096,
+      "supportsTools": true,
+      "supportsReasoning": false,
+      "limits": { "rpm": 20, "maxConcurrent": 2 },
+      "tags": ["free", "nvidia", "nemotron"],
+      "source": "https://build.nvidia.com",
+      "checkedAt": "2026-09-08"
     },
     "gpt-4o-mini": {
       "provider": "github",
@@ -290,6 +323,10 @@
       "description": "Auto-select a free coding model, with fallback candidates",
       "candidates": [
         "gemini-2.0-flash",
+        "meta/llama-3.3-70b-instruct",
+        "nvidia/llama-3.1-nemotron-70b-instruct",
+        "nvidia/nemotron-3.5-lightning:free",
+        "minimax/minimax-m3:free",
         "openai/gpt-oss-20b",
         "qwen/qwen3.8-27b",
         "openai/gpt-oss-120b",

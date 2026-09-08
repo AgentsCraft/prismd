@@ -106,8 +106,8 @@
     "limits": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Soft limits used as routing weights, never hard blocks. dailyRequests may be null when unknown.",
-      "required": ["dailyRequests", "rpm", "maxConcurrent"],
+      "description": "Soft limits used as routing weights, never hard blocks. dailyRequests may be null or omitted when unknown.",
+      "required": ["rpm", "maxConcurrent"],
       "properties": {
         "dailyRequests": { "type": ["integer", "null"], "minimum": 0 },
         "rpm": { "type": "integer", "minimum": 0 },

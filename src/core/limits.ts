@@ -152,7 +152,7 @@ export function selectCandidate(
 
     const daily = candidate.limits.dailyRequests;
     const used = ctx.dailyRequests(candidate.provider, candidate.providerModelId);
-    if (daily !== null && used >= daily) {
+    if (daily != null && used >= daily) {
       filtered.push({
         provider: candidate.provider,
         model: candidate.providerModelId,
@@ -165,7 +165,7 @@ export function selectCandidate(
     const tagScore = computeTagScore(candidate, ctx.tags);
 
     // Soft demotion: quota nearly exhausted -> try other candidates first.
-    if (daily !== null && softThreshold > 0 && used >= daily * softThreshold) {
+    if (daily != null && softThreshold > 0 && used >= daily * softThreshold) {
       rawDemoted.push({ candidate, index: i, tagScore });
     } else {
       rawSurvivors.push({ candidate, index: i, tagScore });

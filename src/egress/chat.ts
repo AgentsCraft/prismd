@@ -5,6 +5,7 @@
 import type { ProviderConfig } from "../types/config.js";
 import type { ResponsesRequestBody, UpstreamRequest } from "../types/protocol.js";
 import { createRequest as cerebrasCreateRequest } from "../providers/cerebras.js";
+import { createRequest as nvidiaCreateRequest } from "../providers/nvidia.js";
 import {
   convertResponsesToChatRequest,
   convertChatToResponsesResponse,
@@ -29,6 +30,7 @@ type RequestBuilder = (
 
 const builders: Record<string, RequestBuilder> = {
   cerebras: cerebrasCreateRequest,
+  nvidia: nvidiaCreateRequest,
 };
 
 function defaultChatCreateRequest(
