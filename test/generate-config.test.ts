@@ -198,6 +198,7 @@ test('buildConfig expands aliases, applies defaults, drops presets-only fields',
   assert.equal(config.policies.failThreshold, 3);
   assert.equal(config.policies.cooldownMs, 60000);
   assert.deepEqual(config.policies.failoverOn, [
+    '400',
     '401',
     '403',
     '404',

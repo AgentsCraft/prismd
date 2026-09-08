@@ -13,6 +13,12 @@ id = "groq-api-key"
 description = "Detected a Groq API key (gsk_), risking unauthorized use of upstream LLM quota"
 regex = '''gsk_[A-Za-z0-9]{20,}'''
 
+[[rules]]
+id = "nvidia-api-key"
+description = "Detected an NVIDIA NIM API key (nvapi-), risking unauthorized use of upstream LLM quota"
+regex = '''nvapi-[A-Za-z0-9_-]{20,}'''
+
+
 [allowlist]
 description = "构建产物与测试夹具（fixtures 必须用假密钥）"
 paths = [

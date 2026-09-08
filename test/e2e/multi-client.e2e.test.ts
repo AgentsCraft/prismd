@@ -89,6 +89,23 @@ test("旅程 16a：Claude Code (POST /v1/messages) 经网关完成流式与工�
   assert.ok(text.includes('"type":"input_json_delta"'));
   assert.ok(text.includes("event: message_delta"));
   assert.ok(text.includes("event: message_stop"));
+
+  // Also verify tolerant path aliases (/messages and /v1/v1/messages) work transparently
+  for (const altPath of ["/messages", "/v1/v1/messages"]) {
+    const altRes = await fetch(`${gateway.url}${altPath}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": GATEWAY_TOKEN,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet",
+        messages: [{ role: "user", content: "ping" }],
+      }),
+    });
+    assert.equal(altRes.status, 200, `alternate path ${altPath} should succeed`);
+  }
 });
 
 test("旅程 16b：OpenCode (POST /v1/chat/completions) 经网关完成非流式调用", async (t) => {

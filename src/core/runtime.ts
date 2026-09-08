@@ -58,7 +58,7 @@ function makeQuota(): QuotaManager {
             provider,
             model,
             usedRequests,
-            candidate.limits.dailyRequests,
+            candidate.limits.dailyRequests ?? null,
             config.policies.quotaSoftLimitRatio,
           );
           break;
