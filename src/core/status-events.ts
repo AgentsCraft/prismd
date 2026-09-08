@@ -141,10 +141,10 @@ export class StatusBroadcaster extends EventEmitter {
     provider: string,
     model: string,
     used: number,
-    limit: number | null,
+    limit: number | null | undefined,
     softLimitRatio: number = 0.8,
   ): void {
-    if (limit === null || limit <= 0) return;
+    if (limit == null || limit <= 0) return;
     const key = `${provider}\u0000${model}`;
     const prevRatio = this.lastQuotaRatios.get(key) ?? 0;
     const currentRatio = used / limit;

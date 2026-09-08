@@ -316,7 +316,7 @@ export const ERROR_BODY_READ_TIMEOUT_MS = 2000;
 
 /** API-key shapes that must never survive into client-visible snippets. */
 const SECRET_PATTERNS: RegExp[] = [
-  /(sk|gsk|rk)-[A-Za-z0-9_-]{6,}/g,
+  /(sk|gsk|rk|nvapi|csk)[-_][A-Za-z0-9_-]{6,}/g,
   /Bearer\s+[A-Za-z0-9._-]{6,}/gi,
   /[?&](?:key|api_?key|token)=[^&\s]{4,}/gi,
 ];

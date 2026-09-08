@@ -29,12 +29,20 @@ test("setupClaudeCode configures ~/.claude/settings.json and auxiliary scripts",
   const home = mkdtempSync(join(tmpdir(), "prismd-client-claude-"));
   const token = "secret-token-xyz";
 
-  // Pre-populate settings.json with existing properties
+  // Pre-populate settings.json with existing properties and stale third-party overrides
   const claudeDir = join(home, ".claude");
   mkdirSync(claudeDir, { recursive: true });
   writeFileSync(
     join(claudeDir, "settings.json"),
-    JSON.stringify({ model: "opus", env: { CUSTOM_VAR: "123" } }),
+    JSON.stringify({
+      model: "opus",
+      modelOverrides: { "claude-sonnet-5": "deepseek-v4-flash" },
+      env: {
+        CUSTOM_VAR: "123",
+        ANTHROPIC_MODEL: "deepseek-v4-flash[1M]",
+        ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek-v4-flash[1M]",
+      },
+    }),
     "utf8",
   );
 
@@ -49,9 +57,12 @@ test("setupClaudeCode configures ~/.claude/settings.json and auxiliary scripts",
   assert.ok(existsSync(settingsPath));
   const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
   assert.equal(settings.model, "opus", "existing properties must be preserved");
-  assert.equal(settings.env.CUSTOM_VAR, "123", "existing env vars must be preserved");
-  assert.equal(settings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:8787/v1");
+  assert.equal(settings.env.CUSTOM_VAR, "123", "existing non-conflicting env vars must be preserved");
+  assert.equal(settings.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:8787");
   assert.equal(settings.env.ANTHROPIC_API_KEY, token);
+  assert.equal(settings.env.ANTHROPIC_MODEL, undefined, "stale ANTHROPIC_MODEL must be removed");
+  assert.equal(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL, undefined, "stale ANTHROPIC_DEFAULT_SONNET_MODEL must be removed");
+  assert.equal(settings.modelOverrides, undefined, "stale modelOverrides must be removed");
 
   // Check auxiliary scripts
   const shPath = join(home, ".prismd", "claude-prismd.sh");

@@ -203,7 +203,30 @@ export function setupClaudeCode(homeDir: string, token: string): SetupResult {
   if (!existingSettings.env || typeof existingSettings.env !== "object") {
     existingSettings.env = {};
   }
-  existingSettings.env.ANTHROPIC_BASE_URL = "http://127.0.0.1:8787/v1";
+
+  // Strip stale third-party proxy model overrides that cause Claude Code client-side validation failures
+  const staleEnvKeys = [
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_SUPPORTED_CAPABILITIES",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_SUPPORTED_CAPABILITIES",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_SUPPORTED_CAPABILITIES",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+    "CLAUDE_CODE_SUBAGENT_MODEL",
+  ];
+  for (const k of staleEnvKeys) {
+    delete existingSettings.env[k];
+  }
+  delete existingSettings.modelOverrides;
+
+  // Anthropic SDK / Claude Code appends `/v1/messages` to ANTHROPIC_BASE_URL.
+  existingSettings.env.ANTHROPIC_BASE_URL = "http://127.0.0.1:8787";
   existingSettings.env.ANTHROPIC_API_KEY = token;
 
   writeFileSync(settingsPath, JSON.stringify(existingSettings, null, 2) + "\n", {
@@ -220,7 +243,8 @@ export function setupClaudeCode(homeDir: string, token: string): SetupResult {
   if (bSh) backups.push(bSh);
   const shContent = [
     "#!/usr/bin/env bash",
-    'export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"',
+    "unset ANTHROPIC_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL CLAUDE_CODE_SUBAGENT_MODEL",
+    'export ANTHROPIC_BASE_URL="http://127.0.0.1:8787"',
     `export ANTHROPIC_API_KEY="${token}"`,
     'exec claude "$@"',
     "",
@@ -233,7 +257,12 @@ export function setupClaudeCode(homeDir: string, token: string): SetupResult {
   if (bCmd) backups.push(bCmd);
   const cmdContent = [
     "@echo off",
-    "set ANTHROPIC_BASE_URL=http://127.0.0.1:8787/v1",
+    "set ANTHROPIC_MODEL=",
+    "set ANTHROPIC_DEFAULT_SONNET_MODEL=",
+    "set ANTHROPIC_DEFAULT_HAIKU_MODEL=",
+    "set ANTHROPIC_DEFAULT_OPUS_MODEL=",
+    "set CLAUDE_CODE_SUBAGENT_MODEL=",
+    "set ANTHROPIC_BASE_URL=http://127.0.0.1:8787",
     `set ANTHROPIC_API_KEY=${token}`,
     "claude %*",
     "",
@@ -245,7 +274,12 @@ export function setupClaudeCode(homeDir: string, token: string): SetupResult {
   const bPs1 = backupFileIfExists(ps1Path);
   if (bPs1) backups.push(bPs1);
   const ps1Content = [
-    '$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8787/v1"',
+    "$env:ANTHROPIC_MODEL = $null",
+    "$env:ANTHROPIC_DEFAULT_SONNET_MODEL = $null",
+    "$env:ANTHROPIC_DEFAULT_HAIKU_MODEL = $null",
+    "$env:ANTHROPIC_DEFAULT_OPUS_MODEL = $null",
+    "$env:CLAUDE_CODE_SUBAGENT_MODEL = $null",
+    '$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8787"',
     `$env:ANTHROPIC_API_KEY = "${token}"`,
     "& claude @args",
     "",

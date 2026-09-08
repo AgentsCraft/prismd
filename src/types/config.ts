@@ -28,10 +28,10 @@ export interface ProviderConfig {
 
 /**
  * Soft limits used as routing weights (M2), never hard blocks.
- * dailyRequests is null when the daily quota is unknown.
+ * dailyRequests is null or omitted when the daily quota is unknown.
  */
 export interface LimitsConfig {
-  dailyRequests: number | null;
+  dailyRequests?: number | null;
   rpm: number;
   maxConcurrent: number;
 }

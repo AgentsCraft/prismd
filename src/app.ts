@@ -26,7 +26,13 @@ app.route("", uiRoute);
 
 // Config is resolved lazily at request time so importing the app never
 // reads prismd.json (server.ts validates it explicitly at startup).
-const v1Paths = ["/v1/responses", "/v1/chat/completions", "/v1/messages"] as const;
+const v1Paths = [
+  "/v1/responses",
+  "/v1/chat/completions",
+  "/v1/messages",
+  "/messages",
+  "/v1/v1/messages",
+] as const;
 
 for (const path of v1Paths) {
   app.use(path, async (c, next) => {
@@ -45,3 +51,6 @@ for (const path of v1Paths) {
 app.post("/v1/responses", responses);
 app.post("/v1/chat/completions", chatCompletions);
 app.post("/v1/messages", messages);
+app.post("/messages", messages);
+app.post("/v1/v1/messages", messages);
+
