@@ -2,6 +2,10 @@
 
 [English](README.md) | [简体中文](README_CN.md) | [日本語](README_JA.md) | [한국어](README_KO.md) | [Deutsch](README_DE.md) | [Français](README_FR.md) | [Español](README_ES.md) | [Italiano](README_IT.md) | [العربية](README_AR.md) | [Türkçe](README_TR.md)
 
+[![npm version](https://img.shields.io/npm/v/@prismd/prismd?logo=npm)](https://www.npmjs.com/package/@prismd/prismd)
+[![npm downloads](https://img.shields.io/npm/dt/@prismd/prismd?logo=npm)](https://www.npmjs.com/package/@prismd/prismd)
+[![License](https://img.shields.io/npm/l/@prismd/prismd)](https://github.com/AgentsCraft/prismd/blob/main/LICENSE)
+
 **本地优先的 LLM 高可用网关**，聚合全球免费/低额度模型 API（OpenRouter、Groq、Cerebras、Gemini、NVIDIA、GitHub 等）与本地 Local LLM（Ollama），为各类编码智能体（Claude Code、Codex CLI、Cursor、OpenCode、Aider 等）提供永不中断、稳定可切换的统一接口。
 
 ```text
