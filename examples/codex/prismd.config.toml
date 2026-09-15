@@ -1,6 +1,6 @@
 # prismd gateway profile for Codex CLI
 # Place at ~/.codex/prismd.config.toml, then run:
-#   PRISMD_API_KEY=<local-token> codex --profile prismd
+#   PRISMD_API_KEY=YOUR_PRISMD_TOKEN codex --profile prismd
 #
 # model is a prismd alias (see presets/providers.json), not an upstream
 # model id. free-auto picks the first available free Responses candidate.

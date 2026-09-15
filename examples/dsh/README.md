@@ -25,7 +25,7 @@ models = [
 在启动命令前传入 `PRISMD_API_KEY`（或在 `~/.zshrc` 中导出）：
 
 ```bash
-PRISMD_API_KEY="my-local-secret" dsh --model prismd:free-auto
+PRISMD_API_KEY="YOUR_PRISMD_TOKEN" dsh --model prismd:free-auto
 ```
 
 `dsh` 发送的请求将通过本地网关透明路由，获得高吞吐和多上游负载均衡。

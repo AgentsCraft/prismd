@@ -20,7 +20,7 @@
 
 ## 2. 在 prismd 中配置 LM Studio
 
-在项目根目录（或工作区）编辑 `config.user.json`，声明 `lmstudio` 提供商并挂载至别名队列：
+编辑 `config.user.json`，声明 `lmstudio` 提供商并挂载至别名队列。全局安装推荐使用 `~/.prismd/config.user.json`，源码运行使用仓库根目录：
 
 ```jsonc
 {
@@ -65,9 +65,13 @@
 
 ## 3. 生成配置与生效
 
-保存 `config.user.json` 后重新编译生成网关配置：
+保存 `config.user.json` 后重新生成网关配置：
 
 ```bash
+# 全局安装
+prismd generate
+
+# 源码运行
 npm run generate:config
 ```
 

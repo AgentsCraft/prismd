@@ -45,7 +45,7 @@
 
 ## البدء السريع في 3 خطوات
 
-### الخطوة 1: التثبيت والتشغيل
+### الخطوة 1: التثبيت
 
 ```bash
 # الخيار أ: التثبيت العام عبر npm
@@ -55,14 +55,17 @@ npm install -g @agentscraft/prismd         # قناة RC
 
 # الخيار ب: التشغيل من المصدر
 git clone https://github.com/AgentsCraft/prismd.git
-cd prismd && npm install
+cd prismd
+npm install
+npm run build
 ```
 
-### الخطوة 2: التهيئة والتكوين (المعالج التفاعلي)
+### الخطوة 2: التهيئة والتشغيل
 
 شغّل معالج الإعداد التفاعلي لتكوين مفاتيحك وعملائك:
 ```bash
 prismd init
+# Source install: node dist/server.js init
 ```
 سيرشدك المعالج إلى:
 1. تعيين رمز الحماية المحلي (`prismd:`).
@@ -73,7 +76,7 @@ prismd init
 
 ```yaml
 # مثال الإعداد اليدوي: ~/.prismd/keys.yaml (الأذونات الموصى بها: chmod 600)
-prismd: "my-local-secret"       # رمز الحماية المحلي (يستخدمه العملاء)
+prismd: "YOUR_PRISMD_TOKEN"       # رمز الحماية المحلي (يستخدمه العملاء)
 
 # مزودو الخدمات السحابية (يدعم المفتاح المفرد أو مجمع المفاتيح المتعددة للتوزيع بالتناوب):
 openrouter: "sk-or-v1-xxxx"
@@ -92,8 +95,9 @@ amd: "amd_token_xxxx"           # اختياري: رمز AMD Developer Cloud
 
 تشغيل البوابة:
 ```bash
+# Global install:
 prismd
-# أو من المصدر: npm run generate:config && npm run dev
+# Source install: node dist/server.js
 ```
 
 > 📖 **أدلة إعداد المزودين**: راجع [أدلة تكامل مزودي النماذج](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)) لمعرفة خطوات الحصول على المفاتيح وقوائم النماذج.
@@ -106,123 +110,10 @@ prismd
 | **Codex CLI** | `codex` (مُهيأ في `~/.codex/config.toml` و `auth.json`) | [الدليل](examples/codex/README.md) |
 | **OpenCode** | `opencode` (مُهيأ في `~/.config/opencode/opencode.json`) | [الدليل](examples/opencode/README.md) |
 | **Pi Agent** | `pi` (مُهيأ في `~/.pi/config.json`) | [الدليل](examples/pi/README.md) |
-| **Cursor** | Settings → Models → تفعيل OpenAI API Key (`my-local-secret`)<br>تحديد **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>إضافة النموذج: `free-auto` | [الدليل](examples/cursor/README.md) |
-| **DeepSeek Harness (dsh)** | اضبط `base_url = "http://127.0.0.1:8787/v1"` في `~/.dsh/config.toml`<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [الدليل](examples/dsh/README.md) |
-| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [الدليل](examples/aider/README.md) |
+| **Cursor** | Settings → Models → تفعيل OpenAI API Key (`YOUR_PRISMD_TOKEN`)<br>تحديد **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>إضافة النموذج: `free-auto` | [الدليل](examples/cursor/README.md) |
+| **DeepSeek Harness (dsh)** | اضبط `base_url = "http://127.0.0.1:8787/v1"` في `~/.dsh/config.toml`<br>`PRISMD_API_KEY=YOUR_PRISMD_TOKEN dsh --model prismd:free-auto` | [الدليل](examples/dsh/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="YOUR_PRISMD_TOKEN"` `aider --model openai/free-auto` | [الدليل](examples/aider/README.md) |
 
-> 📖 **التوثيق الكامل**: راجع [دليل تكامل العملاء](docs/clients/README.md) للحصول على تفاصيل البروتوكولات والإعدادات المتقدمة.
-
----
-
-## تفاصيل الميزات
-
-### 1. التوجيه الذكي وتجاوز الفشل التلقائي
-
-يحدد prismd ديناميكيًا النموذج المرشح الأمثل لكل طلب من خلال مسار تقييم متعدد الأبعاد:
-
-- **التحقق من نافذة السياق (Context Window Check)**: تقدير الرموز المدخلة مسبقًا؛ واستبعاد النماذج ذات النوافذ غير الكافية لمنع أخطاء 400 Context Overflow.
-- **تخفيض الأولوية للحصص المرنة (Quota-Weighted Soft Limit)**: عند وصول النموذج إلى 80% من حصته اليومية (`quotaSoftLimitRatio`)، يتم نقله تلقائيًا إلى نهاية الطابور لحفظ الرصيد المتبقي.
-- **تجاوز الفشل دون انقطاع (Zero-Crash Failover)**: في حال إرجاع خطأ 429 أو 5xx من المزود، يتحول prismd فورًا وبشفافية إلى النموذج التالي في الطابور.
-- **الأسماء المستعارة الافتراضية**:
-  - `free-auto`: طابور البرمجة الأساسي (أولوية Gemini 2.0 Flash / Llama 3.3 70B، وقائمة سحابية افتراضيًا).
-
-### 2. مجمع المفاتيح المتعددة وعزل الأعطال (Key Pool)
-
-تدعم جميع المزودين السحابيين (Groq و Cerebras و Google Gemini و OpenRouter و NVIDIA NIM و GitHub Models وغيرها) تكوين مفاتيح متعددة للتوزيع التلقائي بالتناوب وعزل الأعطال:
-
-- **تنسيق `~/.prismd/keys.yaml`** (قائمة أو مصفوفة مدمجة):
-  ```yaml
-  groq:
-    - "gsk_key1_xxxx"
-    - "gsk_key2_xxxx"
-  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
-  gemini:
-    - "AIzaSy_key1_xxxx"
-    - "AIzaSy_key2_xxxx"
-  ```
-- **تنسيق `.env` أو متغيرات البيئة** (مفصولة بفواصل):
-  ```bash
-  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
-  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
-  ```
-- **آلية العمل**: يتم توزيع الطلبات عبر مفاتيح صالحة باستخدام Round-Robin. عندما يتلقى مفتاح معين (مثل `gsk_key1`) خطأ 429، يدخل ذلك المفتاح فقط في فترة التهدئة (`Retry-After`)، بينما تتحول الطلبات اللاحقة فورًا إلى المفتاح التالي (`gsk_key2`) أو النموذج البديل.
-
-### 3. احتياطي محلي اختياري (Ollama & LM Studio)
-
-prismd يتضمن Ollama و LM Studio كمزودين مدمجين، لكن الأسماء الافتراضية سحابية فقط. تعمل خدمة محلية؟ أضفها كمرشح عبر `config.user.json`:
-
-- **Ollama**: مزود مدمج دون الحاجة إلى تكوين (`http://127.0.0.1:11434/v1`):
-  ```bash
-  ollama run qwen2.5-coder:7b
-  ```
-- **LM Studio**: خادم محلي متوافق مع OpenAI (`http://127.0.0.1:1234/v1`) يشغل نماذج GGUF. راجع [دليل إعداد LM Studio](docs/providers/lmstudio.md).
-- تستمر مهام الوكلاء بأمان دون أي انهيار.
-
-### 4. جسر شفاف متعدد البروتوكولات
-
-تحويل ثنائي الاتجاه بالتدفق المباشر بين البروتوكولات الثلاثة الرئيسية:
-- **Anthropic Messages** (`POST /v1/messages`): دعم كامل لـ Claude Code (الأدوات Tools، كتل التفكير Thinking، وتدفق SSE).
-- **OpenAI Responses** (`POST /v1/responses`): متوافق مع Codex CLI و DeepSeek Harness (`dsh`).
-- **OpenAI Chat Completions** (`POST /v1/chat/completions`): واجهة قياسية لـ Cursor و OpenCode و Pi Agent و Aider.
-
-### 5. تكوين قابل للتوسيع (`config.user.json`)
-
-قم بتعريف مزودين مخصصين، نماذج خاصة، أو طوابير أسماء مستعارة في `config.user.json`:
-
-```jsonc
-{
-  "models": {
-    "my-custom-model": {
-      "provider": "openrouter",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
-      "supportsTools": true,
-      "supportsReasoning": false,
-      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
-    }
-  },
-  "aliases": {
-    "free-auto": {
-      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
-    }
-  }
-}
-```
-أعد توليد التكوين عبر `npm run generate:config`.
-
-### 6. إعادة التحميل الساخن الديناميكي (`SIGHUP`)
-
-تحديث جداول التوجيه والمفاتيح دون إعادة تشغيل العملية ودون قطع الاتصالات النشطة:
-```bash
-kill -HUP $(pgrep -f "prismd")
-```
+> 📖 **التوثيق الكامل**: راجع [فهرس الوثائق](docs/README.md) و[دليل تكامل العملاء](docs/clients/README.md) و[دليل الإعداد](docs/configuration.md).
 
 ---
-
-## المراقبة ولوحة تحكم الويب
-
-- **لوحة تحكم الويب**: افتح `http://127.0.0.1:8787/ui` في المتصفح:
-  - حالة صحة النماذج اللحظية (`healthy` / `rate_limited` / `cooldown`)
-  - أشرطة تقدم الحصص اليومية وإحصائيات الرموز (Tokens)
-  - **جدول استخدام العملاء (آخر 24 ساعة)**: عدد الطلبات ومعدل النجاح وزمن الاستجابة P50 وعدد التحويلات التلقائية وآخر الأخطاء لكل عميل × نقطة نهاية
-  - محدد 10 لغات وزر «إعادة تعيين الاستخدام (Reset usage)»
-- **حالة CLI**:
-  ```bash
-  prismd status      # مصفوفة الحالة + قسم العملاء (عند تشغيل البوابة)
-  prismd generate    # إعادة تجميع ~/.prismd/prismd.json
-  ```
-- **API**: `GET /v1/clientstatus` — لقطة JSON للقراءة فقط لنافذة استخدام العملاء (بدون مصادقة، loopback فقط).
-
----
-
-## استكشاف الأخطاء وإصلاحها
-
-- **س: خطأ `missing API key for provider`؟**
-  - تحقق من المفاتيح في `~/.prismd/keys.yaml` أو `.env` ثم شغل `npm run generate:config`.
-- **س: تكرار أخطاء 429 على النماذج المجانية؟**
-  - أضف مفاتيح متعددة للمزود، أو أضف مرشح Ollama محليًا إلى قائمة الاسم عبر `config.user.json`.
-- **س: كيفية إعادة تعيين عدادات الاستخدام اليومي؟**
-  - انقر على «Reset usage» في لوحة تحكم الويب أو احذف `data/prismd.sqlite`.
-- **س: تظهر تحذيرات بشأن مفتاح تكوين غير معروف عند التشغيل؟**
-  - يتم تسجيل المفاتيح غير المعروفة على المستوى الأول في `config.user.json` كتحذير ثم تجاهلها. هذا آمن — قد يكون المفتاح من إصدار أحدث أو خطأ إملائي. احذف المفتاح أو صحّحه لإزالة التحذير.
-

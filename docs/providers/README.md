@@ -1,6 +1,6 @@
 # 免费 / 低额度模型提供商配置指南
 
-prismd 支持接入任何提供免费额度或低成本 API 的模型服务商。通过在 `~/.prismd/keys.yaml`（或系统环境变量）中配置密钥，并在 `config.user.json` 中定义或引用候选模型，即可将其纳入统一的路由与故障转移（Failover）池。
+prismd 支持接入任何提供免费额度或低成本 API 的模型服务商。在本地密钥来源中配置密钥，并通过 `config.user.json` 引用内置候选或定义新候选。
 
 ## 主流提供商概览
 
@@ -22,5 +22,7 @@ prismd 支持接入任何提供免费额度或低成本 API 的模型服务商�
 
 1. **获取提供商 API Key**：访问对应平台注册并生成 API Key。
 2. **存入本地密钥库**：写入 `~/.prismd/keys.yaml`（或设置 `export <PROVIDER>_API_KEY=...`）。
-3. **在 `config.user.json` 中声明 Provider 与模型**（内置 Provider 如 openrouter/groq/cerebras 无需额外声明）。
-4. **重新生成配置**：运行 `prismd generate`（源码模式运行 `npm run generate:config`）。
+3. **按需编辑 `config.user.json`**：全局安装推荐放在 `~/.prismd/config.user.json`；源码运行放在仓库根目录。内置 Provider 和模型无需重复声明。
+4. **重新生成配置**：全局安装运行 `prismd generate`；源码运行执行 `npm run generate:config`。
+
+完整的配置位置、优先级和示例见 [配置指南](../configuration.md)。

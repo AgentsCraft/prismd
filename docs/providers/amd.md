@@ -72,6 +72,11 @@ vllm serve meta-llama/Llama-3.3-70B-Instruct \
 
 如本地服务无需认证，可在 `.env` 中填入任意占位符：
 ```bash
-echo "AMD_API_KEY=local-token" >> .env
+echo "AMD_API_KEY=local-token" >> ~/.prismd/.env
+
+# 全局安装
+prismd generate
+
+# 源码运行
 npm run generate:config
 ```

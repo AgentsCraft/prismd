@@ -45,7 +45,7 @@ prismd가 시간이나 토큰 비용을 절약하는 데 도움이 되었다면,
 
 ## 3단계 빠른 시작
 
-### 1단계: 설치 및 실행
+### 1단계: 설치
 
 ```bash
 # 옵션 A: npm 글로벌 설치
@@ -55,14 +55,17 @@ npm install -g @agentscraft/prismd         # RC 채널
 
 # 옵션 B: 소스코드 실행
 git clone https://github.com/AgentsCraft/prismd.git
-cd prismd && npm install
+cd prismd
+npm install
+npm run build
 ```
 
-### 2단계: 초기화 및 설정 (대화형 마법사)
+### 2단계: 초기화 및 실행
 
 대화형 설정 마법사를 실행하여 키와 클라이언트를 설정합니다:
 ```bash
 prismd init
+# Source install: node dist/server.js init
 ```
 마법사 제공 기능:
 1. 로컬 보호 토큰(`prismd:`) 설정.
@@ -73,7 +76,7 @@ prismd init
 
 ```yaml
 # 수동 설정 예시: ~/.prismd/keys.yaml (권장 권한: chmod 600)
-prismd: "my-local-secret"       # 로컬 보호 토큰 (클라이언트 연결용)
+prismd: "YOUR_PRISMD_TOKEN"       # 로컬 보호 토큰 (클라이언트 연결용)
 
 # 클라우드 제공자 (단일 Key 또는 다중 Key 라운드로빈 풀 지원):
 openrouter: "sk-or-v1-xxxx"
@@ -92,8 +95,9 @@ amd: "amd_token_xxxx"           # 선택: AMD Developer Cloud 토큰
 
 게이트웨이 실행:
 ```bash
+# Global install:
 prismd
-# 또는 소스 모드: npm run generate:config && npm run dev
+# Source install: node dist/server.js
 ```
 
 > 📖 **제공자별 설정 가이드**: [모델 제공자 연동 총괄 가이드](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md))를 참조하세요.
@@ -106,123 +110,10 @@ prismd
 | **Codex CLI** | `codex` (`~/.codex/config.toml` 및 `auth.json`에 자동 구성) | [가이드](examples/codex/README.md) |
 | **OpenCode** | `opencode` (`~/.config/opencode/opencode.json`에 자동 구성) | [가이드](examples/opencode/README.md) |
 | **Pi Agent** | `pi` (`~/.pi/config.json`에 자동 구성) | [가이드](examples/pi/README.md) |
-| **Cursor** | Settings → Models → OpenAI API Key 활성화 (`my-local-secret` 입력)<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>모델 추가: `free-auto` | [가이드](examples/cursor/README.md) |
-| **DeepSeek Harness (dsh)** | `~/.dsh/config.toml`에서 `base_url = "http://127.0.0.1:8787/v1"` 설정<br>`PRISMD_API_KEY=my-local-secret dsh --model prismd:free-auto` | [가이드](examples/dsh/README.md) |
-| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="my-local-secret"` `aider --model openai/free-auto` | [가이드](examples/aider/README.md) |
+| **Cursor** | Settings → Models → OpenAI API Key 활성화 (`YOUR_PRISMD_TOKEN` 입력)<br>**Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>모델 추가: `free-auto` | [가이드](examples/cursor/README.md) |
+| **DeepSeek Harness (dsh)** | `~/.dsh/config.toml`에서 `base_url = "http://127.0.0.1:8787/v1"` 설정<br>`PRISMD_API_KEY=YOUR_PRISMD_TOKEN dsh --model prismd:free-auto` | [가이드](examples/dsh/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="YOUR_PRISMD_TOKEN"` `aider --model openai/free-auto` | [가이드](examples/aider/README.md) |
 
-> 📖 **전체 문서**: [클라이언트 연동 가이드 및 프로토콜 상세](docs/clients/README.md)를 참조하세요.
-
----
-
-## 기능 상세
-
-### 1. 지능형 라우팅 및 무중단 장애 조치
-
-prismd는 다차원 평가 파이프라인을 통해 요청마다 최적의 후보 모델을 동적으로 선택합니다:
-
-- **컨텍스트 윈도우 검증 (Context Window Check)**: 전송 전 입력 토큰 수를 사전 추정하여 컨텍스트가 부족한 모델을 자동 제외(400 Context Overflow 오류 사전 방지).
-- **소프트 할당량 우선순위 강등 (Quota-Weighted Soft Limit)**: 일일 할당량 80%(`quotaSoftLimitRatio`)에 도달한 모델은 큐의 후순위로 자동 배치되어 고우선순위 작업을 위한 잔여량을 보존.
-- **무중단 429 장애 조치 (Zero-Crash Failover)**: 업스트림에서 429 속도 제한 또는 5xx 오류 반환 시 즉시 다음 후보 모델로 투명하게 재시도.
-- **기본 별칭 목록**:
-  - `free-auto`: 범용 코딩 모델 (Gemini 2.0 Flash / Llama 3.3 70B 우선, 기본은 클라우드 전용).
-
-### 2. 다중 Key 풀과 서킷 브레이커 (Key Pool)
-
-모든 클라우드 제공자(Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models 등)에서 다중 Key 라운드로빈 요청 분배와 단일 Key 격리 냉각을 지원합니다:
-
-- **`~/.prismd/keys.yaml` 형식** (목록 또는 인라인 배열):
-  ```yaml
-  groq:
-    - "gsk_key1_xxxx"
-    - "gsk_key2_xxxx"
-  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
-  gemini:
-    - "AIzaSy_key1_xxxx"
-    - "AIzaSy_key2_xxxx"
-  ```
-- **`.env` 또는 환경 변수** (쉼표로 구분):
-  ```bash
-  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
-  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
-  ```
-- **작동 방식**: 라운드로빈 방식으로 정상 Key들에 요청을 분산합니다. 특정 Key(예: `gsk_key1`)가 429 속도 제한 오류를 받으면 해당 Key만 냉각 기간(`Retry-After` 준수)에 들어가며, 후속 요청은 즉시 다음 정상 Key(`gsk_key2`) 또는 다음 후보 모델로 자동 전환됩니다.
-
-### 3. 로컬 LLM 대체 (Ollama & LM Studio, 선택)
-
-prismd는 Ollama와 LM Studio를 내장 제공자로 포함하지만, 기본 별칭은 클라우드 전용입니다. 로컬 서비스를 실행 중이라면 `config.user.json`으로 후보를 추가하세요:
-
-- **Ollama**: 내장 제로 설정 제공자 (`http://127.0.0.1:11434/v1`):
-  ```bash
-  ollama run qwen2.5-coder:7b
-  ```
-- **LM Studio**: 로컬 OpenAI 호환 서버 (`http://127.0.0.1:1234/v1`)에서 GGUF 모델 구동. [LM Studio 가이드](docs/providers/lmstudio.md) 참조.
-- 에이전트 작업이 중단 없이 안전하게 완료됩니다.
-
-### 4. 전 프로토콜 투명 변환 브리지
-
-주요 3대 에이전트 프로토콜 간 양방향 스트리밍 변환을 완벽 지원합니다:
-- **Anthropic Messages** (`POST /v1/messages`): Claude Code (도구 호출, Thinking 블록, SSE 스트림) 지원.
-- **OpenAI Responses** (`POST /v1/responses`): Codex CLI 및 DeepSeek Harness (`dsh`) 호환.
-- **OpenAI Chat Completions** (`POST /v1/chat/completions`): Cursor, OpenCode, Pi Agent, Aider 표준 인터페이스.
-
-### 5. 사용자 정의 설정 확장 (`config.user.json`)
-
-사용자 정의 제공자, 프라이빗 모델, 별칭 큐를 `config.user.json`에서 자유롭게 선언:
-
-```jsonc
-{
-  "models": {
-    "my-custom-model": {
-      "provider": "openrouter",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
-      "supportsTools": true,
-      "supportsReasoning": false,
-      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
-    }
-  },
-  "aliases": {
-    "free-auto": {
-      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
-    }
-  }
-}
-```
-`npm run generate:config`로 구성을 다시 생성합니다.
-
-### 6. 동적 설정 핫 리로드 (`SIGHUP`)
-
-연결 중단 없이 라우팅 테이블과 Key 구성을 즉시 갱신:
-```bash
-kill -HUP $(pgrep -f "prismd")
-```
+> 📖 **전체 문서**: [문서 색인](docs/README.md), [클라이언트 연동 가이드](docs/clients/README.md), [설정 가이드](docs/configuration.md)를 참조하세요.
 
 ---
-
-## 모니터링 및 Web 대시보드
-
-- **Web 대시보드**: 브라우저에서 `http://127.0.0.1:8787/ui` 접속:
-  - 모델 실시간 상태 (`healthy` / `rate_limited` / `cooldown`)
-  - 일일 할당량 진행률 및 토큰 사용량 통계
-  - **클라이언트 사용량 테이블 (최근 24h)**: 클라이언트 × 엔드포인트별 요청 수·성공률·P50 레이턴시·페일오버 횟수·최근 오류
-  - 10개 언어 지원 및 "사용량 초기화 (Reset usage)" 버튼
-- **CLI 상태 확인**:
-  ```bash
-  prismd status      # 상태 매트릭스 + 클라이언트 사용량 섹션 출력 (게이트웨이 실행 중 시)
-  prismd generate    # ~/.prismd/prismd.json 재컴파일
-  ```
-- **API**: `GET /v1/clientstatus` — 클라이언트 사용량 윈도우의 읽기 전용 JSON 스냅샷 (인증 불필요·루프백 전용).
-
----
-
-## 문제 해결
-
-- **Q: `missing API key for provider` 오류 발생 시**
-  - `~/.prismd/keys.yaml` 또는 `.env` 파일 설정을 확인하고 `npm run generate:config`를 실행하세요.
-- **Q: 무료 모델에서 429 오류가 빈번한 경우**
-  - 해당 제공자의 다중 Key를 등록하거나, `config.user.json`으로 로컬 Ollama 후보를 큐에 추가하세요.
-- **Q: 일일 사용량 카운터를 초기화하려면?**
-  - Web 대시보드에서 "Reset usage"를 클릭하거나 `data/prismd.sqlite` 파일을 삭제하세요.
-- **Q: 시작 시 알 수 없는 설정 키에 대한 경고가 표시되는 경우?**
-  - `config.user.json`의 알 수 없는 최상위 키는 경고를 출력하고 무시됩니다. 이는 안전합니다 — 새 버전에서 추가된 키이거나 오타일 수 있습니다. 경고를 없애려면 해당 키를 삭제하거나 수정하세요.
-

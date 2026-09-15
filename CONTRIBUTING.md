@@ -132,3 +132,11 @@ npm run build
 2. Open a Pull Request targeting `develop`.
 3. Complete the [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md) with details on changes and verification steps.
 4. Ensure all GitHub Actions CI checks pass.
+
+---
+
+## 8. Documentation
+
+- User-facing usage, configuration, client, and provider documentation lives under [`docs/`](docs/README.md).
+- Public documentation describes shipped behavior only.
+- Design rationale, internal planning, and decision records are not committed to this repository.
