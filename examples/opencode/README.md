@@ -14,7 +14,7 @@ OpenCode 支持配置自定义 OpenAI 兼容 Provider 接入本地 prismd 网关
     "prismd": {
       "type": "openai",
       "baseUrl": "http://127.0.0.1:8787/v1",
-      "apiKey": "my-local-secret",
+      "apiKey": "YOUR_PRISMD_TOKEN",
       "models": [
         "free-auto",
       ]

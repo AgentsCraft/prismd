@@ -101,5 +101,9 @@ prismd 内置了以下 Ollama 模型（默认**不挂载**到任何别名，需�
 
 配置完成后重新生成配置并重启/热重载网关：
 ```bash
+# 全局安装
+prismd generate
+
+# 源码运行
 npm run generate:config
 ```

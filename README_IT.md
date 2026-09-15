@@ -45,7 +45,7 @@ Se prismd ti fa risparmiare tempo o costi di API, puoi offrire un caffè all'aut
 
 ## Avvio Rapido in 3 Passaggi
 
-### Passaggio 1: Installazione e Avvio
+### Passaggio 1: Installazione
 
 ```bash
 # Opzione A: Installazione globale npm
@@ -55,14 +55,17 @@ npm install -g @agentscraft/prismd         # Canale RC
 
 # Opzione B: Esecuzione dal codice sorgente
 git clone https://github.com/AgentsCraft/prismd.git
-cd prismd && npm install
+cd prismd
+npm install
+npm run build
 ```
 
-### Passaggio 2: Inizializzazione & Configurazione (Assistente Interattivo)
+### Passaggio 2: Inizializzazione e Avvio
 
 Esegui la configurazione guidata interattiva:
 ```bash
 prismd init
+# Source install: node dist/server.js init
 ```
 La procedura ti guiderà a:
 1. Impostare il token di protezione locale (`prismd:`).
@@ -73,7 +76,7 @@ La procedura ti guiderà a:
 
 ```yaml
 # Configurazione manuale: ~/.prismd/keys.yaml (permessi consigliati: chmod 600)
-prismd: "mio-segreto-locale"    # Token di protezione locale (usato dai client)
+prismd: "YOUR_PRISMD_TOKEN"    # Token di protezione locale (usato dai client)
 
 # Provider Cloud (chiave singola o pool multi-key per round-robin):
 openrouter: "sk-or-v1-xxxx"
@@ -92,8 +95,9 @@ amd: "amd_token_xxxx"           # Opzionale: Token AMD Developer Cloud
 
 Avviare il gateway:
 ```bash
+# Global install:
 prismd
-# Oppure in modalità sorgente: npm run generate:config && npm run dev
+# Source install: node dist/server.js
 ```
 
 > 📖 **Guide per i provider**: Consulta le [Guide all'integrazione dei provider](docs/providers/README.md) ([OpenRouter](docs/providers/openrouter.md), [Groq](docs/providers/groq.md), [Cerebras](docs/providers/cerebras.md), [Google Gemini](docs/providers/gemini.md), [NVIDIA NIM](docs/providers/nvidia.md), [GitHub Models](docs/providers/github-models.md), [AMD](docs/providers/amd.md), [Ollama](docs/providers/ollama.md), [LM Studio](docs/providers/lmstudio.md)) per la generazione delle chiavi e i modelli supportati.
@@ -106,123 +110,10 @@ prismd
 | **Codex CLI** | `codex` (configurato in `~/.codex/config.toml` & `auth.json`) | [Guida](examples/codex/README.md) |
 | **OpenCode** | `opencode` (configurato in `~/.config/opencode/opencode.json`) | [Guida](examples/opencode/README.md) |
 | **Pi Agent** | `pi` (configurato in `~/.pi/config.json`) | [Guida](examples/pi/README.md) |
-| **Cursor** | Settings → Models → Abilita OpenAI API Key (`mio-segreto-locale`)<br>Spunta **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Aggiungi modello: `free-auto` | [Guida](examples/cursor/README.md) |
-| **DeepSeek Harness (dsh)** | Imposta `base_url = "http://127.0.0.1:8787/v1"` in `~/.dsh/config.toml`<br>`PRISMD_API_KEY=mio-segreto-locale dsh --model prismd:free-auto` | [Guida](examples/dsh/README.md) |
-| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="mio-segreto-locale"` `aider --model openai/free-auto` | [Guida](examples/aider/README.md) |
+| **Cursor** | Settings → Models → Abilita OpenAI API Key (`YOUR_PRISMD_TOKEN`)<br>Spunta **Override OpenAI Base URL**: `http://127.0.0.1:8787/v1`<br>Aggiungi modello: `free-auto` | [Guida](examples/cursor/README.md) |
+| **DeepSeek Harness (dsh)** | Imposta `base_url = "http://127.0.0.1:8787/v1"` in `~/.dsh/config.toml`<br>`PRISMD_API_KEY=YOUR_PRISMD_TOKEN dsh --model prismd:free-auto` | [Guida](examples/dsh/README.md) |
+| **Aider** | `OPENAI_API_BASE="http://127.0.0.1:8787/v1"` `OPENAI_API_KEY="YOUR_PRISMD_TOKEN"` `aider --model openai/free-auto` | [Guida](examples/aider/README.md) |
 
-> 📖 **Documentazione completa**: Consulta la [Guida all'integrazione dei client](docs/clients/README.md) per dettagli sui protocolli e configurazioni avanzate.
-
----
-
-## Funzionalità nel Dettaglio
-
-### 1. Routing Intelligente e Failover Automatico
-
-prismd seleziona dinamicamente il candidato ottimale per ciascuna richiesta tramite una pipeline di valutazione:
-
-- **Verifica della finestra di contesto (Context Window Check)**: Stima preventiva dei token di input; esclude i modelli con contesto insufficiente per evitare errori 400 Context Overflow.
-- **Limiti morbidi di quota (Quota-Weighted Soft Limit)**: Al raggiungimento dell'80% della quota giornaliera (`quotaSoftLimitRatio`), il modello viene retrocesso in coda per preservare le risorse residue.
-- **Failover senza interruzioni (Zero-Crash Failover)**: In caso di errore 429 di rate limit o 5xx, prismd passa istantaneamente al modello candidato successivo nella coda.
-- **Alias Predefiniti**:
-  - `free-auto`: Coda principale di programmazione (priorità Gemini 2.0 Flash / Llama 3.3 70B, solo cloud per impostazione predefinita).
-
-### 2. Multi-Key e Isolamento Errori (Key Pool)
-
-Tutti i provider Cloud (Groq, Cerebras, Google Gemini, OpenRouter, NVIDIA NIM, GitHub Models, ecc.) supportano la configurazione multi-key per la distribuzione round-robin e l'isolamento dei guasti:
-
-- **Formato `~/.prismd/keys.yaml`** (lista YAML o array inline):
-  ```yaml
-  groq:
-    - "gsk_key1_xxxx"
-    - "gsk_key2_xxxx"
-  cerebras: ["csk_1_xxxx", "csk_2_xxxx"]
-  gemini:
-    - "AIzaSy_key1_xxxx"
-    - "AIzaSy_key2_xxxx"
-  ```
-- **Formato `.env` o variabili d'ambiente** (separate da virgola):
-  ```bash
-  GROQ_API_KEY="gsk_key1,gsk_key2,gsk_key3"
-  GEMINI_API_KEY="AIzaSy1,AIzaSy2"
-  ```
-- **Funzionamento**: Le richieste vengono distribuite tramite Round-Robin tra le chiavi integre. Quando una chiave (es. `gsk_key1`) riceve un errore 429, solo quella chiave viene isolata in cooldown (`Retry-After`), e le richieste successive passano immediatamente a `gsk_key2` o al candidato successivo.
-
-### 3. Fallback Locale LLM (Ollama & LM Studio, opzionale)
-
-prismd include Ollama e LM Studio come provider integrati, ma gli alias predefiniti restano solo cloud. Hai un servizio locale? Aggiungilo come candidata via `config.user.json`:
-
-- **Ollama**: Provider integrato zero configurazione (`http://127.0.0.1:11434/v1`):
-  ```bash
-  ollama run qwen2.5-coder:7b
-  ```
-- **LM Studio**: Server locale compatibile OpenAI (`http://127.0.0.1:1234/v1`) con modelli GGUF. Consulta la [Guida a LM Studio](docs/providers/lmstudio.md).
-- I task degli agenti continuano senza arresti anomali.
-
-### 4. Bridge Multiprotocollo Trasparente
-
-Conversione bidirezionale in streaming tra i tre protocolli agenti principali:
-- **Anthropic Messages** (`POST /v1/messages`): Supporto completo a Claude Code (Tools, blocchi Thinking, stream SSE).
-- **OpenAI Responses** (`POST /v1/responses`): Compatibile con Codex CLI e DeepSeek Harness (`dsh`).
-- **OpenAI Chat Completions** (`POST /v1/chat/completions`): Interfaccia standard per Cursor, OpenCode, Pi Agent e Aider.
-
-### 5. Configurazione Estensibile (`config.user.json`)
-
-Dichiara provider personalizzati, modelli privati e code di alias in `config.user.json`:
-
-```jsonc
-{
-  "models": {
-    "my-custom-model": {
-      "provider": "openrouter",
-      "contextWindow": 131072,
-      "maxOutputTokens": 8192,
-      "supportsTools": true,
-      "supportsReasoning": false,
-      "limits": { "dailyRequests": 100, "rpm": 20, "maxConcurrent": 2 }
-    }
-  },
-  "aliases": {
-    "free-auto": {
-      "candidates": ["my-custom-model", "gemini-2.0-flash", "qwen2.5-coder:7b"]
-    }
-  }
-}
-```
-Rigenera la configurazione con `npm run generate:config`.
-
-### 6. Ricaricamento Dinamico a Caldo (`SIGHUP`)
-
-Aggiorna tabelle di routing e chiavi senza riavviare il processo né interrompere flussi in streaming:
-```bash
-kill -HUP $(pgrep -f "prismd")
-```
+> 📖 **Documentazione completa**: Vedi l'[indice della documentazione](docs/README.md), la [guida all'integrazione dei client](docs/clients/README.md) e la [configurazione](docs/configuration.md).
 
 ---
-
-## Monitoraggio e Dashboard Web
-
-- **Dashboard Web**: Apri `http://127.0.0.1:8787/ui` nel browser:
-  - Stato di salute in tempo reale (`healthy` / `rate_limited` / `cooldown`)
-  - Barre di progresso quote e statistiche token
-  - **Tabella utilizzo client (ultime 24h)**: richieste, tasso di successo, latenza P50, conteggio failover e ultimi errori per client × endpoint
-  - Selettore per 10 lingue e pulsante «Reimposta utilizzo (Reset usage)»
-- **Stato CLI**:
-  ```bash
-  prismd status      # Matrice di stato + sezione client (se il gateway è attivo)
-  prismd generate    # Ricompilare ~/.prismd/prismd.json
-  ```
-- **API**: `GET /v1/clientstatus` — snapshot JSON in sola lettura della finestra di utilizzo client (non autenticato, solo loopback).
-
----
-
-## Risoluzione dei Problemi
-
-- **Q: Errore `missing API key for provider`?**
-  - Verifica le chiavi in `~/.prismd/keys.yaml` o `.env` ed esegui `npm run generate:config`.
-- **Q: Errori 429 frequenti sui modelli gratuiti?**
-  - Aggiungi più chiavi per il provider, oppure aggiungi una candidata Ollama locale alla coda via `config.user.json`.
-- **Q: Come azzerare i conteggi giornalieri?**
-  - Clicca su «Reset usage» nella dashboard Web o elimina `data/prismd.sqlite`.
-- **Q: Avviso su chiave di configurazione sconosciuta all'avvio?**
-  - Le chiavi di primo livello sconosciute in `config.user.json` vengono tollerate con un avviso e ignorate. È sicuro — la chiave potrebbe provenire da una versione più recente o da un errore di battitura. Rimuovi o correggi la chiave per eliminare l'avviso.
-

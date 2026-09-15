@@ -26,11 +26,11 @@ prismd 对外提供三套标准协议端点，覆盖绝大多数主流编码智�
    ```bash
    # 测试 Chat Completions 端点连通性
    curl -s http://127.0.0.1:8787/v1/chat/completions \
-     -H "Authorization: Bearer test" \
+     -H "Authorization: Bearer YOUR_PRISMD_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"model":"free-auto","messages":[{"role":"user","content":"ping"}]}'
    ```
-   > 提示：本地令牌对应 `~/.prismd/keys.yaml` 中的 `prismd` 字段，或启动网关时的 `PRISMD_API_KEY` 环境变量（默认值为 `my-local-secret`）。
+   > 提示：本地令牌对应 `~/.prismd/keys.yaml` 中的 `prismd` 字段，或启动网关时的 `PRISMD_API_KEY` 环境变量。运行 `prismd init` 会生成随机令牌并在结束时输出。
 
 ---
 
@@ -44,7 +44,7 @@ Claude Code 原生支持通过环境变量重定向 Anthropic API 端点。
 - **配置环境变量**：
   ```bash
   export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"
-  export ANTHROPIC_API_KEY="your-prismd-local-token"
+  export ANTHROPIC_API_KEY="YOUR_PRISMD_TOKEN"
   ```
 - **运行命令**：
   ```bash
@@ -77,7 +77,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
   ```
 - **运行命令**：
   ```bash
-  PRISMD_API_KEY="your-prismd-local-token" codex --profile prismd
+  PRISMD_API_KEY="YOUR_PRISMD_TOKEN" codex --profile prismd
   ```
 - **详细指引**：见 [Codex CLI 接入指南](../../examples/codex/README.md)。
 
@@ -88,7 +88,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
 #### 3. Cursor
 - **配置步骤**：
   1. 打开 Cursor：`Settings` → `Models`。
-  2. 启用 **OpenAI API Key**，输入网关本地令牌（如 `my-local-secret`）。
+  2. 启用 **OpenAI API Key**，输入 `prismd init` 输出的本地令牌。
   3. 勾选 **Override OpenAI Base URL**，填写：`http://127.0.0.1:8787/v1`。
   4. 点击 **Add Model** 添加虚拟模型别名：`free-auto`。
 - **详细指引**：见 [Cursor 接入指南](../../examples/cursor/README.md)。
@@ -101,7 +101,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
       "prismd": {
         "type": "openai",
         "baseUrl": "http://127.0.0.1:8787/v1",
-        "apiKey": "your-prismd-local-token",
+        "apiKey": "YOUR_PRISMD_TOKEN",
         "models": ["free-auto"]
       }
     }
@@ -124,7 +124,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
   ```
 - **运行命令**：
   ```bash
-  PRISMD_API_KEY="your-prismd-local-token" dsh --model prismd:free-auto
+  PRISMD_API_KEY="YOUR_PRISMD_TOKEN" dsh --model prismd:free-auto
   ```
 - **详细指引**：见 [dsh 接入指南](../../examples/dsh/README.md)。
 
@@ -136,7 +136,7 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
       "name": "prismd",
       "protocol": "openai-completions",
       "endpoint": "http://127.0.0.1:8787/v1",
-      "apiKey": "your-prismd-local-token",
+      "apiKey": "YOUR_PRISMD_TOKEN",
       "defaultModel": "free-auto"
     }
   }
@@ -151,13 +151,13 @@ Codex CLI 可通过 `wire_api = "responses"` 配置接入本地网关。
 - **环境变量运行方式**：
   ```bash
   export OPENAI_API_BASE="http://127.0.0.1:8787/v1"
-  export OPENAI_API_KEY="your-prismd-local-token"
+  export OPENAI_API_KEY="YOUR_PRISMD_TOKEN"
   aider --model openai/free-auto
   ```
 - **配置文件方式** (`~/.aider.conf.yml`)：
   ```yaml
   openai-api-base: http://127.0.0.1:8787/v1
-  openai-api-key: your-prismd-local-token
+  openai-api-key: YOUR_PRISMD_TOKEN
   model: openai/free-auto
   ```
 - **详细指引**：见 [Aider 接入指南](../../examples/aider/README.md)。

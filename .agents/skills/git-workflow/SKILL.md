@@ -38,7 +38,7 @@ fix(router): filter candidates without free quota
 2. **提交**：小步提交，一个提交只做一件事；不要混入无关改动。提交前先跑 `/security-audit`；`.githooks/pre-commit` 会强制 gitleaks 暂存扫描（本机未装 gitleaks 时提交被阻止，先按提示安装）。
 3. **合回**：功能完成后合回 `develop`（保留提交历史，不 squash 无关提交）。
 4. **推送**：默认不自动推送。推送前必须向用户确认；推送的是公开仓库时再次确认。推送前再跑 `/security-audit`（全仓）；`.githooks/pre-push` 强制全历史 gitleaks 扫描。
-5. **发布**：`develop` → `main`，打 tag `vX.Y.Z`，走 `release` skill（`.agents/skills/release/SKILL.md`）。
+5. **发布**：合入 `develop` 触发 RC，合入 `main` 触发正式版；由 CI 生成 tag、npm 包和 GitHub Release。执行前走 `release` skill（`.agents/skills/release/SKILL.md`）。
 
 ## 禁止
 

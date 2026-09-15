@@ -4,8 +4,10 @@ prismd：本地优先的 LLM 网关，聚合多个免费/低额度模型 API（O
 
 ## 仓库边界
 
-- 本仓库**只放代码**与工具无关的 agent 配置（`.agents/`）。规划与设计文档不随本仓库发布。
+- 本仓库放代码、公开使用与配置文档，以及与工具无关的 agent 配置（`.agents/`）。设计、决策和内部规划不进入本仓库。
 - 除标准 `AGENTS.md` 与 `.agents/` 外，不接受任何特定客户端配置（如 `.codebuddy/`、`.cursor/` 等）。
+
+公开文档只描述已经发布的行为、用户配置和客户端/Provider 接入方式。文档入口见 [`docs/README.md`](docs/README.md)。
 
 ## `.agents/` 目录
 
@@ -42,7 +44,7 @@ prismd：本地优先的 LLM 网关，聚合多个免费/低额度模型 API（O
 
 ## 版本与发布
 
-tag 与 npm 发布由 CI 自动生成：合入 `develop` 出 RC（`@agentscraft/prismd`），合入 `main` 出正式版（`@prismd/prismd`）。**禁止手动打 tag、手动改 `package.json` version**。流程与运维细节见 [`docs/release.md`](docs/release.md)。
+tag 与 npm 发布由 CI 自动生成：合入 `develop` 出 RC（`@agentscraft/prismd`），合入 `main` 出正式版（`@prismd/prismd`）。**禁止手动打 tag、手动改 `package.json` version**。发布行为以 `.github/workflows/` 为准。
 
 ## 安全核查
 

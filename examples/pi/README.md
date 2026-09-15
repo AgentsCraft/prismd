@@ -14,7 +14,7 @@ Pi Agent 支持通过标准 OpenAI Completions 接口配置自定义提供商接
     "name": "prismd",
     "protocol": "openai-completions",
     "endpoint": "http://127.0.0.1:8787/v1",
-    "apiKey": "my-local-secret",
+    "apiKey": "YOUR_PRISMD_TOKEN",
     "defaultModel": "free-auto"
   }
 }

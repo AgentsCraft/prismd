@@ -30,12 +30,12 @@ stream_idle_timeout_ms = 180000
 在运行 Codex 时传入本地网关密钥（或导出至环境变量）：
 
 ```bash
-PRISMD_API_KEY="my-local-secret" codex --profile prismd
+PRISMD_API_KEY="YOUR_PRISMD_TOKEN" codex --profile prismd
 ```
 
 ### 持久化环境变量
 ```bash
-echo 'export PRISMD_API_KEY="my-local-secret"' >> ~/.zshrc
+echo 'export PRISMD_API_KEY="YOUR_PRISMD_TOKEN"' >> ~/.zshrc
 source ~/.zshrc
 
 codex --profile prismd

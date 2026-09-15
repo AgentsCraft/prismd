@@ -13,14 +13,14 @@ Claude Code 支持通过设置环境变量自定义 Anthropic API 端点，将�
 export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"
 
 # 本地网关 Token (与 ~/.prismd/keys.yaml 中的 prismd 字段或 PRISMD_API_KEY 一致)
-export ANTHROPIC_API_KEY="my-local-secret"
+export ANTHROPIC_API_KEY="YOUR_PRISMD_TOKEN"
 ```
 
 ### 持久化配置（推荐）
 将上述环境变量写入终端配置文件（如 `~/.zshrc` 或 `~/.bashrc`）：
 ```bash
 echo 'export ANTHROPIC_BASE_URL="http://127.0.0.1:8787/v1"' >> ~/.zshrc
-echo 'export ANTHROPIC_API_KEY="my-local-secret"' >> ~/.zshrc
+echo 'export ANTHROPIC_API_KEY="YOUR_PRISMD_TOKEN"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
